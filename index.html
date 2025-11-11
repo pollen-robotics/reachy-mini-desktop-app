@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reachy Mini Control</title>
+    <style>
+      /* Désactiver les animations de slide - seulement fade in */
+      #root > * {
+        animation: fadeIn 0.2s ease-in-out !important;
+      }
+      
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      
+      /* Désactiver les view transitions natives */
+      * {
+        view-transition-name: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reachy Mini Control</title>
+    <script type="module" src="/main.js" defer></script>
+  </head>
+
+  <body>
+    <main class="container">
+      <h1>🤖 Reachy Mini</h1>
+
+      <div class="status-card">
+        <h2>Daemon Status</h2>
+        <div class="status-indicator">
+          <div id="status-dot" class="dot inactive"></div>
+          <span id="status-text">Checking...</span>
+        </div>
+        <p id="status-details" class="details"></p>
+      </div>
+
+      <div class="controls">
+        <button id="start-btn" class="control-button start-button">▶️ Start Daemon</button>
+        <button id="stop-btn" class="control-button stop-button">⏹️ Stop Daemon</button>
+      </div>
+
+      <button id="refresh-btn" class="refresh-button">🔄 Refresh Status</button>
+    </main>
+  </body>
+</html>
