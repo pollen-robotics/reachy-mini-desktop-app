@@ -228,18 +228,25 @@ else
     echo -e "${BLUE}   File to sign: ${BUNDLE_FILE}${NC}"
     echo -e "${BLUE}   Signature will be: ${SIGNATURE_FILE}${NC}"
     
+    # Afficher les premières lignes de la clé privée pour debug (sans révéler le contenu complet)
+    if [ -f "$PRIVATE_KEY" ]; then
+        KEY_SIZE=$(wc -c < "$PRIVATE_KEY")
+        KEY_LINES=$(wc -l < "$PRIVATE_KEY")
+        echo -e "${BLUE}   Private key size: ${KEY_SIZE} bytes, ${KEY_LINES} lines${NC}"
+        echo -e "${BLUE}   First line of key: $(head -1 "$PRIVATE_KEY" | cut -c1-50)...${NC}"
+    fi
+    
     # Essayer avec verbose pour voir plus de détails
-    SIGN_OUTPUT=$(yarn tauri signer sign -v -f "$PRIVATE_KEY" "$BUNDLE_FILE" 2>&1)
+    # Exécuter directement pour voir la sortie en temps réel
+    echo -e "${YELLOW}   Running: yarn tauri signer sign -v -f \"$PRIVATE_KEY\" \"$BUNDLE_FILE\"${NC}"
+    set +e  # Temporairement désactiver set -e pour capturer l'erreur
+    yarn tauri signer sign -v -f "$PRIVATE_KEY" "$BUNDLE_FILE" 2>&1
     SIGN_EXIT_CODE=$?
+    set -e  # Réactiver set -e
     
     if [ $SIGN_EXIT_CODE -eq 0 ]; then
         echo -e "${GREEN}✅ Signature réussie avec tauri signer${NC}"
-        if [ -n "$SIGN_OUTPUT" ]; then
-            echo "$SIGN_OUTPUT"
-        fi
     else
-        echo -e "${YELLOW}⚠️  tauri signer output:${NC}"
-        echo "$SIGN_OUTPUT"
         echo -e "${YELLOW}⚠️  Exit code: $SIGN_EXIT_CODE${NC}"
         
         # Vérifier si le fichier de signature existe quand même
