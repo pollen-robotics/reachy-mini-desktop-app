@@ -87,18 +87,22 @@ jobs:
         run: |
           mkdir -p ~/.tauri
           if [ -n "$TAURI_SIGNING_KEY" ]; then
-            echo "$TAURI_SIGNING_KEY" > ~/.tauri/reachy-mini.key
+            # Clean the private key: remove leading/trailing whitespace and newlines
+            CLEANED_KEY=$(echo -n "$TAURI_SIGNING_KEY" | tr -d '\n\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            printf '%s' "$CLEANED_KEY" > ~/.tauri/reachy-mini.key
             chmod 600 ~/.tauri/reachy-mini.key
             # Use public key from secret if provided, otherwise extract from tauri.conf.json
             if [ -n "$TAURI_PUBLIC_KEY" ]; then
-              echo "$TAURI_PUBLIC_KEY" > ~/.tauri/reachy-mini.key.pub
+              # Clean the public key as well
+              CLEANED_PUBKEY=$(echo -n "$TAURI_PUBLIC_KEY" | tr -d '\n\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+              printf '%s' "$CLEANED_PUBKEY" > ~/.tauri/reachy-mini.key.pub
               echo "✅ Public key loaded from secret"
             else
               # Extract public key from tauri.conf.json (it's already there in base64 format)
               PUBKEY=$(grep -o '"pubkey": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
               if [ -n "$PUBKEY" ]; then
                 # The public key in tauri.conf.json is base64 encoded, write it to the .pub file
-                echo "$PUBKEY" > ~/.tauri/reachy-mini.key.pub
+                printf '%s' "$PUBKEY" > ~/.tauri/reachy-mini.key.pub
                 echo "✅ Public key extracted from tauri.conf.json"
               else
                 echo "⚠️ Could not find public key in tauri.conf.json"
