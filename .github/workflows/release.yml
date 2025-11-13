@@ -58,10 +58,6 @@ jobs:
         run: |
           pwsh -File ./build_sidecar_windows.ps1 || echo "Sidecar build skipped for this platform"
 
-      - name: Build application
-        run: |
-          yarn tauri build --target ${{ matrix.target }}
-
       - name: Setup Tauri CLI
         run: |
           yarn add -D @tauri-apps/cli
@@ -81,6 +77,25 @@ jobs:
           
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
+
+      - name: Update version in tauri.conf.json
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          # Update version in tauri.conf.json using sed (works on all platforms)
+          # macOS requires empty string after -i, Linux/Windows Git Bash don't
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
+          else
+            # Windows Git Bash and Linux: create backup then remove it
+            sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json && rm -f src-tauri/tauri.conf.json.bak
+          fi
+          echo "✅ Updated version in tauri.conf.json to $VERSION"
+          grep '"version"' src-tauri/tauri.conf.json
+
+      - name: Build application
+        run: |
+          yarn tauri build --target ${{ matrix.target }}
 
       - name: Setup signing key
         # Use bash on all platforms (Git Bash is available on Windows)
@@ -229,65 +244,83 @@ jobs:
 
       - name: Prepare release files (deduplicate and organize)
         run: |
+          # Debug: Show structure of release-artifacts
+          echo "📁 Structure of release-artifacts:"
+          find release-artifacts -type f -name "*.tar.gz" -o -name "*.msi" -o -name "*.sig" -o -name "*.json" | head -20
+          echo ""
+          
           # Create a clean directory for release files
           mkdir -p release-files
           
           # Find and copy unique files (avoid duplicates)
-          # MSI files
-          find release-artifacts -name "*.msi" -type f | while read file; do
-            filename=$(basename "$file")
-            # Only copy if not already copied (handle duplicates)
-            if [ ! -f "release-files/$filename" ]; then
+          # Use a function to safely copy files
+          copy_unique_file() {
+            local file="$1"
+            local filename=$(basename "$file")
+            if [ ! -f "release-files/$filename" ] && [ -f "$file" ]; then
               cp "$file" "release-files/"
+              echo "✅ Copied: $filename"
+            elif [ -f "release-files/$filename" ]; then
+              echo "⚠️ Skipped duplicate: $filename"
             fi
+          }
+          
+          # MSI files
+          echo "📦 Processing MSI files..."
+          find release-artifacts -name "*.msi" -type f | while read file; do
+            copy_unique_file "$file"
           done
           
           # MSI signatures
+          echo "📦 Processing MSI signatures..."
           find release-artifacts -name "*.msi.sig" -type f | while read file; do
-            filename=$(basename "$file")
-            if [ ! -f "release-files/$filename" ]; then
-              cp "$file" "release-files/"
-            fi
+            copy_unique_file "$file"
           done
           
           # App tar.gz files
+          echo "📦 Processing app tar.gz files..."
           find release-artifacts -name "*.app.tar.gz" -type f | while read file; do
-            filename=$(basename "$file")
-            if [ ! -f "release-files/$filename" ]; then
-              cp "$file" "release-files/"
-            fi
+            copy_unique_file "$file"
           done
           
           # App tar.gz signatures
+          echo "📦 Processing app tar.gz signatures..."
           find release-artifacts -name "*.app.tar.gz.sig" -type f | while read file; do
-            filename=$(basename "$file")
-            if [ ! -f "release-files/$filename" ]; then
-              cp "$file" "release-files/"
-            fi
+            copy_unique_file "$file"
           done
           
-          # AppImage files (if any)
-          find release-artifacts -name "*.AppImage" -type f | while read file; do
-            filename=$(basename "$file")
-            if [ ! -f "release-files/$filename" ]; then
-              cp "$file" "release-files/"
-            fi
-          done
+          # AppImage files (if any - optional)
+          echo "📦 Processing AppImage files (if any)..."
+          find release-artifacts -name "*.AppImage" -type f 2>/dev/null | while read file; do
+            copy_unique_file "$file"
+          done || echo "ℹ️ No AppImage files found (this is normal if not building for Linux)"
           
-          # AppImage signatures (if any)
-          find release-artifacts -name "*.AppImage.sig" -type f | while read file; do
-            filename=$(basename "$file")
-            if [ ! -f "release-files/$filename" ]; then
-              cp "$file" "release-files/"
-            fi
-          done
+          # AppImage signatures (if any - optional)
+          echo "📦 Processing AppImage signatures (if any)..."
+          find release-artifacts -name "*.AppImage.sig" -type f 2>/dev/null | while read file; do
+            copy_unique_file "$file"
+          done || echo "ℹ️ No AppImage signatures found (this is normal if not building for Linux)"
           
-          # Copy latest.json
-          cp release-artifacts/latest.json release-files/ 2>/dev/null || true
+          # Copy latest.json (required)
+          if [ -f "release-artifacts/latest.json" ]; then
+            cp release-artifacts/latest.json release-files/
+            echo "✅ Copied: latest.json"
+          else
+            echo "⚠️ Warning: latest.json not found"
+          fi
+          
+          # Verify we have files to upload
+          FILE_COUNT=$(find release-files -type f | wc -l)
+          if [ "$FILE_COUNT" -eq 0 ]; then
+            echo "❌ Error: No files found to upload!"
+            exit 1
+          fi
           
           # List files to be uploaded
-          echo "📦 Files to upload:"
+          echo ""
+          echo "📦 Files to upload ($FILE_COUNT total):"
           ls -lh release-files/
+          echo ""
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -297,5 +330,6 @@ jobs:
           files: release-files/*
           draft: false
           prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'alpha') }}
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
