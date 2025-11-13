@@ -208,10 +208,22 @@ if [ -n "$TAURI_SIGNING_KEY_PASSWORD" ]; then
         echo -e "${RED}❌ Erreur lors de la signature${NC}"
         exit 1
     }
+else
+    # Essayer sans mot de passe (pour clés générées avec --ci)
+    echo -e "${YELLOW}   Attempting to sign without password...${NC}"
+    SIGN_OUTPUT=$(yarn tauri signer sign -f "$PRIVATE_KEY" "$BUNDLE_FILE" 2>&1)
+    SIGN_EXIT_CODE=$?
+    
+    if [ $SIGN_EXIT_CODE -eq 0 ]; then
+        echo -e "${GREEN}✅ Signature réussie avec tauri signer${NC}"
     else
-        # Essayer sans mot de passe (pour clés générées avec --ci)
-        if yarn tauri signer sign -f "$PRIVATE_KEY" "$BUNDLE_FILE" 2>/dev/null; then
-            echo -e "${GREEN}✅ Signature réussie avec tauri signer${NC}"
+        echo -e "${YELLOW}⚠️  tauri signer output:${NC}"
+        echo "$SIGN_OUTPUT"
+        echo -e "${YELLOW}⚠️  Exit code: $SIGN_EXIT_CODE${NC}"
+        
+        # Vérifier si le fichier de signature existe quand même
+        if [ -f "$SIGNATURE_FILE" ]; then
+            echo -e "${GREEN}✅ Signature file created despite error code${NC}"
         else
             # Si tauri signer échoue, essayer minisign directement (si disponible)
             if command -v minisign &> /dev/null && [ -f ~/.minisign/minisign-dev.key ]; then
@@ -240,6 +252,7 @@ if [ -n "$TAURI_SIGNING_KEY_PASSWORD" ]; then
             fi
         fi
     fi
+fi
 
 # Vérifier que la signature a été créée
 if [ ! -f "$SIGNATURE_FILE" ]; then
