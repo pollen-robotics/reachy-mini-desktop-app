@@ -238,9 +238,10 @@ else
     
     # Essayer avec verbose pour voir plus de détails
     # Exécuter directement pour voir la sortie en temps réel
-    echo -e "${YELLOW}   Running: yarn tauri signer sign -v -f \"$PRIVATE_KEY\" \"$BUNDLE_FILE\"${NC}"
+    # Passer explicitement une chaîne vide pour le mot de passe pour éviter de lire depuis stdin
+    echo -e "${YELLOW}   Running: yarn tauri signer sign -v -f \"$PRIVATE_KEY\" -p \"\" \"$BUNDLE_FILE\"${NC}"
     set +e  # Temporairement désactiver set -e pour capturer l'erreur
-    yarn tauri signer sign -v -f "$PRIVATE_KEY" "$BUNDLE_FILE" 2>&1
+    yarn tauri signer sign -v -f "$PRIVATE_KEY" -p "" "$BUNDLE_FILE" 2>&1
     SIGN_EXIT_CODE=$?
     set -e  # Réactiver set -e
     
