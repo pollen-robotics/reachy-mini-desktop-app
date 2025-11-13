@@ -44,28 +44,23 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd tauri-app
           yarn install
 
       - name: Build sidecar
         run: |
-          cd tauri-app
           yarn build:sidecar-macos || echo "Sidecar build skipped for this platform"
 
       - name: Build application
         run: |
-          cd tauri-app
           yarn tauri build --target ${{ matrix.target }}
 
       - name: Setup Tauri CLI
         run: |
-          cd tauri-app
           yarn add -D @tauri-apps/cli
 
       - name: Extract version
         id: version
         run: |
-          cd tauri-app
           VERSION=${GITHUB_REF#refs/tags/v}
           if [ "$VERSION" = "$GITHUB_REF" ]; then
             VERSION=${{ github.event.inputs.version }}
@@ -88,7 +83,6 @@ jobs:
             chmod 600 ~/.tauri/reachy-mini.key
           else
             echo "⚠️ No signing key provided, generating temporary key..."
-            cd tauri-app
             yarn tauri signer generate -w ~/.tauri/reachy-mini.key --ci || true
           fi
 
@@ -96,7 +90,6 @@ jobs:
         env:
           RELEASE_URL_BASE: ${{ secrets.RELEASE_URL_BASE || 'https://github.com/${{ github.repository }}/releases/download/v' }}
         run: |
-          cd tauri-app
           export RELEASE_URL_BASE
           bash ./scripts/build-update.sh prod "${{ steps.version.outputs.version }}"
 
@@ -105,8 +98,8 @@ jobs:
         with:
           name: release-${{ matrix.platform }}
           path: |
-            tauri-app/releases/**
-            tauri-app/src-tauri/target/${{ matrix.target }}/release/bundle/**
+            releases/**
+            src-tauri/target/${{ matrix.target }}/release/bundle/**
           retention-days: 30
 
   create-release:
@@ -127,7 +120,7 @@ jobs:
           fi
           
           if [ -z "$VERSION" ]; then
-            VERSION=$(grep -o '"version": "[^"]*"' tauri-app/src-tauri/tauri.conf.json | cut -d'"' -f4)
+            VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
           fi
           
           echo "version=$VERSION" >> $GITHUB_OUTPUT
