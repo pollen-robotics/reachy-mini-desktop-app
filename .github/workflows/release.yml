@@ -82,6 +82,7 @@ jobs:
           echo "Version: $VERSION"
 
       - name: Setup signing key
+        # Use bash on all platforms (Git Bash is available on Windows)
         shell: bash
         env:
           TAURI_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_KEY }}
@@ -121,13 +122,26 @@ jobs:
             yarn tauri signer generate -w ~/.tauri/reachy-mini.key --ci || true
           fi
 
-      - name: Build and sign update
+      - name: Build and sign update (Unix)
+        if: matrix.os != 'windows-latest'
         env:
           RELEASE_URL_BASE: ${{ secrets.RELEASE_URL_BASE || 'https://github.com/pollen-robotics/reachy-mini-desktop-app/releases/download/v' }}
           TARGET_TRIPLET: ${{ matrix.target }}
+        shell: bash
         run: |
           export RELEASE_URL_BASE
           export TARGET_TRIPLET
+          bash ./scripts/build-update.sh prod "${{ steps.version.outputs.version }}"
+
+      - name: Build and sign update (Windows)
+        if: matrix.os == 'windows-latest'
+        env:
+          RELEASE_URL_BASE: ${{ secrets.RELEASE_URL_BASE || 'https://github.com/pollen-robotics/reachy-mini-desktop-app/releases/download/v' }}
+          TARGET_TRIPLET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          # Variables from env: block are already available in bash on Windows (Git Bash)
+          # No need to export, they're already in the environment
           bash ./scripts/build-update.sh prod "${{ steps.version.outputs.version }}"
 
       - name: Upload release artifacts
