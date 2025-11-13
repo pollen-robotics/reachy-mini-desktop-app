@@ -4,43 +4,65 @@ import { DAEMON_CONFIG, fetchWithTimeout, buildApiUrl } from '../config/daemon';
 import { fetchHuggingFaceAppList } from '../components/views/active-robot/application-store/huggingFaceApi';
 
 /**
- * Hook pour gérer les applications (liste, installation, lancement)
- * Intégré avec l'API FastAPI du daemon Reachy
+ * Hook to manage applications (list, installation, launch)
+ * Integrated with the FastAPI daemon API
  */
 export function useApps(isActive) {
   const appStore = useAppStore();
-  const { addFrontendLog } = appStore; // ⚡ Déstructurer pour compatibilité
+  const { addFrontendLog } = appStore; // ⚡ Destructure for compatibility
   const [availableApps, setAvailableApps] = useState([]);
   const [installedApps, setInstalledApps] = useState([]);
   const [currentApp, setCurrentApp] = useState(null);
-  const [isLoading, setIsLoading] = useState(true); // ✅ Initialiser à true pour afficher le spinner au début
+  const [isLoading, setIsLoading] = useState(true); // ✅ Initialize to true to show spinner at start
   const [error, setError] = useState(null);
   
-  // Jobs en cours (installations/désinstallations)
+  // Active jobs (installations/uninstallations)
   const [activeJobs, setActiveJobs] = useState(new Map()); // job_id -> { type: 'install'/'remove', appName, status, logs }
   const jobPollingIntervals = useRef(new Map());
   
   /**
-   * Fetch toutes les apps disponibles
-   * Combine les apps du dataset Hugging Face avec les apps installées du daemon
+   * Fetch all available apps
+   * Combines apps from Hugging Face dataset with installed apps from daemon
    */
   const fetchAvailableApps = useCallback(async () => {
     try {
       setIsLoading(true);
       
-      // 1. Fetch les apps du daemon (source principale - contient toutes les apps disponibles)
+      // 1. Fetch apps from daemon (primary source - contains all available apps)
       let daemonApps = [];
       try {
         const response = await fetchWithTimeout(
           buildApiUrl('/api/apps/list-available'),
           {},
           DAEMON_CONFIG.TIMEOUTS.APPS_LIST,
-          { silent: true } // ⚡ Polling silencieux
+          { silent: true } // ⚡ Silent polling
         );
         
         if (response.ok) {
           daemonApps = await response.json();
-          console.log('📦 Fetched', daemonApps.length, 'apps from daemon (source principale)');
+          console.log('📦 Fetched', daemonApps.length, 'apps from daemon (primary source)');
+          // Debug: log installed apps structure
+          const installedFromDaemon = daemonApps.filter(app => app.source_kind === 'installed');
+          if (installedFromDaemon.length > 0) {
+            console.log('📦 Installed apps from daemon:', installedFromDaemon.map(app => ({
+              name: app.name,
+              id: app.id,
+              icon: app.icon,
+              extra: app.extra,
+              fullApp: app, // Full app object for debugging
+            })));
+          }
+          
+          // Debug: log available apps structure (to see if they have icons)
+          const availableFromDaemon = daemonApps.filter(app => app.source_kind !== 'installed');
+          if (availableFromDaemon.length > 0) {
+            console.log('📦 Available apps from daemon (first 3):', availableFromDaemon.slice(0, 3).map(app => ({
+              name: app.name,
+              id: app.id,
+              icon: app.icon,
+              extra: app.extra,
+            })));
+          }
         } else {
           console.warn('⚠️ Failed to fetch apps from daemon:', response.status);
         }
@@ -48,7 +70,7 @@ export function useApps(isActive) {
         console.warn('⚠️ Daemon not available:', daemonErr.message);
       }
       
-      // 2. Fetch les métadonnées depuis Hugging Face dataset (pour enrichir avec likes, downloads, etc.)
+      // 2. Fetch metadata from Hugging Face dataset (to enrich with likes, downloads, etc.)
       let hfApps = [];
       try {
         hfApps = await fetchHuggingFaceAppList();
@@ -57,22 +79,128 @@ export function useApps(isActive) {
         console.warn('⚠️ Failed to fetch Hugging Face metadata:', hfErr.message);
       }
       
-      // 3. Créer une map des métadonnées HF pour lookup rapide
+      // 3. Create a map of HF metadata for fast lookup
       const hfMetadataMap = new Map();
       hfApps.forEach(hfApp => {
-        // Index par name et id pour faciliter le matching
-        if (hfApp.name) hfMetadataMap.set(hfApp.name, hfApp);
-        if (hfApp.id) hfMetadataMap.set(hfApp.id, hfApp);
+        // Index by id FIRST (primary identifier in Hugging Face)
+        if (hfApp.id) {
+          hfMetadataMap.set(hfApp.id, hfApp);
+          hfMetadataMap.set(hfApp.id.toLowerCase(), hfApp);
+          // Also index normalized versions (replace underscores/dashes)
+          const normalizedId = hfApp.id.replace(/[_-]/g, '').toLowerCase();
+          if (normalizedId !== hfApp.id.toLowerCase()) {
+            hfMetadataMap.set(normalizedId, hfApp);
+          }
+          // Index with underscores replaced by dashes and vice versa
+          const idWithDashes = hfApp.id.replace(/_/g, '-');
+          const idWithUnderscores = hfApp.id.replace(/-/g, '_');
+          if (idWithDashes !== hfApp.id) {
+            hfMetadataMap.set(idWithDashes, hfApp);
+            hfMetadataMap.set(idWithDashes.toLowerCase(), hfApp);
+          }
+          if (idWithUnderscores !== hfApp.id) {
+            hfMetadataMap.set(idWithUnderscores, hfApp);
+            hfMetadataMap.set(idWithUnderscores.toLowerCase(), hfApp);
+          }
+        }
+        // Also index by name (secondary)
+        if (hfApp.name) {
+          hfMetadataMap.set(hfApp.name, hfApp);
+          hfMetadataMap.set(hfApp.name.toLowerCase(), hfApp);
+          // Also index normalized versions (replace underscores/dashes)
+          const normalizedName = hfApp.name.replace(/[_-]/g, '').toLowerCase();
+          if (normalizedName !== hfApp.name.toLowerCase()) {
+            hfMetadataMap.set(normalizedName, hfApp);
+          }
+          // Index with underscores replaced by dashes and vice versa
+          const nameWithDashes = hfApp.name.replace(/_/g, '-');
+          const nameWithUnderscores = hfApp.name.replace(/-/g, '_');
+          if (nameWithDashes !== hfApp.name) {
+            hfMetadataMap.set(nameWithDashes, hfApp);
+            hfMetadataMap.set(nameWithDashes.toLowerCase(), hfApp);
+          }
+          if (nameWithUnderscores !== hfApp.name) {
+            hfMetadataMap.set(nameWithUnderscores, hfApp);
+            hfMetadataMap.set(nameWithUnderscores.toLowerCase(), hfApp);
+          }
+        }
       });
       
-      // 4. Enrichir les apps du daemon avec les métadonnées HF
+      // Debug: log all HF app ids/names for debugging
+      console.log('📦 HF apps indexed:', hfApps.slice(0, 5).map(app => ({
+        id: app.id,
+        name: app.name,
+        icon: app.icon,
+      })));
+      
+      // 4. Enrich daemon apps with HF metadata
       const enrichedApps = daemonApps.map(daemonApp => {
-        // Chercher les métadonnées HF correspondantes
-        const hfMetadata = hfMetadataMap.get(daemonApp.name) || 
-                          hfMetadataMap.get(daemonApp.id) ||
-                          (daemonApp.name ? hfMetadataMap.get(daemonApp.name.toLowerCase()) : null);
+        // Find corresponding HF metadata (try multiple matching strategies)
+        // Priority: id > normalized id > name > normalized name > variants
+        const normalizedDaemonName = daemonApp.name ? daemonApp.name.replace(/[_-]/g, '').toLowerCase() : null;
+        const normalizedDaemonId = daemonApp.id ? daemonApp.id.replace(/[_-]/g, '').toLowerCase() : null;
+        const daemonNameWithDashes = daemonApp.name ? daemonApp.name.replace(/_/g, '-') : null;
+        const daemonNameWithUnderscores = daemonApp.name ? daemonApp.name.replace(/-/g, '_') : null;
+        const daemonIdWithDashes = daemonApp.id ? daemonApp.id.replace(/_/g, '-') : null;
+        const daemonIdWithUnderscores = daemonApp.id ? daemonApp.id.replace(/-/g, '_') : null;
         
-        // Construire l'app enrichie
+        const hfMetadata = 
+          // Try by id first (most reliable)
+          hfMetadataMap.get(daemonApp.id) ||
+          hfMetadataMap.get(daemonApp.id?.toLowerCase()) ||
+          hfMetadataMap.get(normalizedDaemonId) ||
+          hfMetadataMap.get(daemonIdWithDashes) ||
+          hfMetadataMap.get(daemonIdWithDashes?.toLowerCase()) ||
+          hfMetadataMap.get(daemonIdWithUnderscores) ||
+          hfMetadataMap.get(daemonIdWithUnderscores?.toLowerCase()) ||
+          // Then try by name
+          hfMetadataMap.get(daemonApp.name) ||
+          hfMetadataMap.get(daemonApp.name?.toLowerCase()) ||
+          hfMetadataMap.get(normalizedDaemonName) ||
+          hfMetadataMap.get(daemonNameWithDashes) ||
+          hfMetadataMap.get(daemonNameWithDashes?.toLowerCase()) ||
+          hfMetadataMap.get(daemonNameWithUnderscores) ||
+          hfMetadataMap.get(daemonNameWithUnderscores?.toLowerCase()) ||
+          // Fallback: try to find by partial match (contains)
+          (daemonApp.name ? hfApps.find(hfApp => 
+            (hfApp.id && (hfApp.id.toLowerCase().includes(daemonApp.name.toLowerCase()) || 
+                          daemonApp.name.toLowerCase().includes(hfApp.id.toLowerCase()))) ||
+            (hfApp.name && (hfApp.name.toLowerCase().includes(daemonApp.name.toLowerCase()) || 
+                            daemonApp.name.toLowerCase().includes(hfApp.name.toLowerCase())))
+          ) : null);
+        
+        // Debug matching for installed apps
+        if (daemonApp.source_kind === 'installed') {
+          if (!hfMetadata) {
+            console.warn(`⚠️ No HF metadata found for installed app "${daemonApp.name}"`, {
+              daemonApp: {
+                name: daemonApp.name,
+                id: daemonApp.id,
+                extra: daemonApp.extra,
+              },
+              triedNames: [
+                daemonApp.id,
+                daemonApp.id?.toLowerCase(),
+                normalizedDaemonId,
+                daemonApp.name,
+                daemonApp.name?.toLowerCase(),
+                normalizedDaemonName,
+                daemonApp.name?.replace(/_/g, '-'),
+                daemonApp.name?.replace(/-/g, '_'),
+              ],
+              availableKeys: Array.from(hfMetadataMap.keys()).slice(0, 20), // Show first 20 for debugging
+              totalHfApps: hfApps.length,
+            });
+          } else {
+            console.log(`✅ HF metadata found for installed app "${daemonApp.name}":`, {
+              hfId: hfMetadata.id,
+              hfName: hfMetadata.name,
+              hfIcon: hfMetadata.icon,
+            });
+          }
+        }
+        
+        // Build enriched app
         const enrichedApp = {
           name: daemonApp.name,
           id: hfMetadata?.id || daemonApp.name,
@@ -82,18 +210,25 @@ export function useApps(isActive) {
             : null),
           source_kind: daemonApp.source_kind,
           extra: {
+            // Spread daemonApp.extra first (to preserve any existing data)
             ...daemonApp.extra,
+            // Then ALWAYS override cardData with correct emoji (this ensures our emoji wins)
+            // Priority: HF metadata > daemon extra.cardData > daemon icon > fallback
+            cardData: {
+              emoji: hfMetadata?.icon || 
+                     daemonApp.extra?.cardData?.emoji || 
+                     daemonApp.icon || 
+                     daemonApp.emoji || // Also check for emoji field directly
+                     '📦',
+            },
+            // Add HF metadata if available
             ...(hfMetadata && {
-              // Enrichir avec les métadonnées HF si disponibles
-              cardData: {
-                emoji: hfMetadata.icon || '📦',
-              },
               likes: hfMetadata.likes || 0,
               downloads: hfMetadata.downloads || 0,
               lastModified: hfMetadata.lastModified || new Date().toISOString(),
             }),
           },
-          // Données du daemon (version, path si installée)
+          // Daemon data (version, path if installed)
           ...(daemonApp.version && { version: daemonApp.version }),
           ...(daemonApp.path && { path: daemonApp.path }),
         };
@@ -101,14 +236,55 @@ export function useApps(isActive) {
         return enrichedApp;
       });
       
-      // 5. Séparer les apps installées
+      // 5. Separate installed and available apps
       const installed = enrichedApps.filter(app => app.source_kind === 'installed');
+      const available = enrichedApps.filter(app => app.source_kind !== 'installed');
+      
+      // 6. For installed apps that don't have emoji, try to find it from available apps
+      // (available apps have the correct Hugging Face metadata)
+      const installedWithEmoji = installed.map(installedApp => {
+        // If already has emoji (not the fallback box), keep it
+        if (installedApp.extra?.cardData?.emoji && installedApp.extra.cardData.emoji !== '📦') {
+          return installedApp;
+        }
+        
+        // Try to find matching available app by name/id
+        const matchingAvailable = available.find(availApp => 
+          availApp.name === installedApp.name ||
+          availApp.id === installedApp.name ||
+          availApp.name?.toLowerCase() === installedApp.name?.toLowerCase() ||
+          availApp.id?.toLowerCase() === installedApp.name?.toLowerCase()
+        );
+        
+        if (matchingAvailable && matchingAvailable.extra?.cardData?.emoji) {
+          console.log(`✅ Found emoji for installed app "${installedApp.name}" from available app:`, matchingAvailable.extra.cardData.emoji);
+          return {
+            ...installedApp,
+            extra: {
+              ...installedApp.extra,
+              cardData: {
+                emoji: matchingAvailable.extra.cardData.emoji,
+              },
+            },
+          };
+        }
+        
+        return installedApp;
+      });
       
       setAvailableApps(enrichedApps);
-      setInstalledApps(installed);
+      setInstalledApps(installedWithEmoji);
       
       console.log('📦 Apps processed:', enrichedApps.length, 'total,', installed.length, 'installed');
       console.log('📦 Available apps (not installed):', enrichedApps.filter(app => app.source_kind !== 'installed').length);
+      if (installed.length > 0) {
+        console.log('📦 Installed app sample:', {
+          name: installed[0].name,
+          emoji: installed[0].extra?.cardData?.emoji,
+          hasCardData: !!installed[0].extra?.cardData,
+          hasIcon: !!installed[0].icon,
+        });
+      }
       if (enrichedApps.length > 0) {
         console.log('📦 Sample app:', enrichedApps.find(app => app.source_kind !== 'installed') || enrichedApps[0]);
       }
@@ -123,7 +299,7 @@ export function useApps(isActive) {
   }, []);
   
   /**
-   * Fetch le statut d'un job (install/remove)
+   * Fetch job status (install/remove)
    */
   const fetchJobStatus = useCallback(async (jobId) => {
     try {
@@ -131,15 +307,15 @@ export function useApps(isActive) {
         buildApiUrl(`/api/apps/job-status/${encodeURIComponent(jobId)}`),
         {},
         DAEMON_CONFIG.TIMEOUTS.JOB_STATUS,
-        { silent: true } // ⚡ Polling job status silencieux
+        { silent: true } // ⚡ Silent job status polling
       );
       
       if (!response.ok) {
-        // Ne pas throw pour les erreurs de permission pendant le polling
-        // On continue à poller, le job peut reprendre après acceptation
+        // Don't throw for permission errors during polling
+        // Continue polling, job can resume after acceptance
         if (response.status === 403 || response.status === 401) {
           console.warn(`⚠️ Permission issue while polling job ${jobId}, continuing...`);
-          return null; // Retourner null pour continuer le polling
+          return null; // Return null to continue polling
         }
         throw new Error(`Failed to fetch job status: ${response.status}`);
       }
@@ -148,10 +324,10 @@ export function useApps(isActive) {
       console.log(`📊 Job ${jobId} status:`, jobStatus);
       return jobStatus;
     } catch (err) {
-      // Gérer gracieusement les timeouts de popup système pendant le polling
+      // Gracefully handle system popup timeouts during polling
       if (err.name === 'SystemPopupTimeoutError' || err.name === 'PermissionDeniedError') {
         console.warn(`⚠️ System popup detected while polling job ${jobId}, continuing...`);
-        return null; // Continuer le polling, la popup peut être acceptée après
+        return null; // Continue polling, popup can be accepted later
       }
       
       console.error('❌ Failed to fetch job status:', err);
@@ -160,7 +336,7 @@ export function useApps(isActive) {
   }, []);
   
   /**
-   * Arrêter le polling d'un job
+   * Stop job polling
    */
   const stopJobPolling = useCallback((jobId) => {
     const interval = jobPollingIntervals.current.get(jobId);
@@ -172,10 +348,10 @@ export function useApps(isActive) {
   }, []);
   
   /**
-   * Démarrer le polling d'un job
+   * Start job polling
    */
   const startJobPolling = useCallback((jobId) => {
-    // Éviter les doublons
+    // Avoid duplicates
     if (jobPollingIntervals.current.has(jobId)) {
       console.warn('⚠️ Polling already active for job:', jobId);
       return;
@@ -184,32 +360,32 @@ export function useApps(isActive) {
     console.log('⏱️ Start polling job:', jobId);
     
     const pollJob = async () => {
-      // Vérifier si le polling est toujours actif (peut avoir été arrêté)
+      // Check if polling is still active (may have been stopped)
       if (!jobPollingIntervals.current.has(jobId)) {
-        return; // Polling arrêté, ne pas continuer
+        return; // Polling stopped, don't continue
       }
       
       const jobStatus = await fetchJobStatus(jobId);
       
       if (!jobStatus) {
-        // Job pas trouvé : incrémenter le compteur d'échecs
+        // Job not found: increment failure counter
         setActiveJobs(prev => {
           const job = prev.get(jobId);
           if (!job) return prev;
           
           const failCount = (job.fetchFailCount || 0) + 1;
           
-          // Arrêter seulement après N tentatives ratées
+          // Stop only after N failed attempts
           if (failCount > DAEMON_CONFIG.CRASH_DETECTION.JOB_MAX_FAILS) {
             console.warn(`⚠️ Job ${jobId} polling failed after ${failCount} attempts (network timeout), marking as failed`);
             stopJobPolling(jobId);
             
-            // ⚡ Logger dans le LogConsole
+            // ⚡ Log to LogConsole
             if (job.appName) {
               addFrontendLog(`❌ ${job.type === 'install' ? 'Install' : 'Uninstall'} ${job.appName} TIMEOUT - Daemon non responsive`);
             }
             
-            // Marquer le job comme failed au lieu de le supprimer
+            // Mark job as failed instead of deleting it
             const updated = new Map(prev);
             updated.set(jobId, {
               ...job,
@@ -218,7 +394,7 @@ export function useApps(isActive) {
               fetchFailCount: failCount,
             });
             
-            // Cleanup après un délai pour que l'utilisateur voie l'erreur
+            // Cleanup after delay so user can see the error
             setTimeout(() => {
               setActiveJobs(prevJobs => {
                 const clean = new Map(prevJobs);
@@ -230,7 +406,7 @@ export function useApps(isActive) {
             return updated;
           }
           
-          // Sinon, garder le job et incrémenter le compteur
+          // Otherwise, keep job and increment counter
           const updated = new Map(prev);
           updated.set(jobId, {
             ...job,
@@ -241,8 +417,8 @@ export function useApps(isActive) {
         return;
       }
       
-      // Si job terminé, arrêter IMMÉDIATEMENT avant de mettre à jour le state
-      // Détecter aussi la fin via les logs si l'API ne retourne pas status:"completed"
+      // If job finished, stop IMMEDIATELY before updating state
+      // Also detect completion via logs if API doesn't return status:"completed"
       const logsText = (jobStatus.logs || []).join('\n').toLowerCase();
       const isSuccessInLogs = logsText.includes('completed successfully') || 
                               logsText.includes("job 'install' completed") || 
@@ -254,7 +430,7 @@ export function useApps(isActive) {
         const finalStatus = jobStatus.status === 'failed' ? 'failed' : 'completed';
         console.log(`${finalStatus === 'completed' ? '✅' : '❌'} Job ${jobId} finished:`, finalStatus, isSuccessInLogs ? '(detected from logs)' : '(from status field)');
         
-        // ⚡ Logger dans le LogConsole visible
+        // ⚡ Log to visible LogConsole
         const jobInfo = activeJobs.get(jobId);
         if (jobInfo) {
           if (finalStatus === 'failed') {
@@ -266,11 +442,11 @@ export function useApps(isActive) {
           }
         }
         
-        // Forcer le status à "completed" si détecté dans les logs
+        // Force status to "completed" if detected in logs
         jobStatus.status = finalStatus;
       }
       
-      // Mettre à jour le job dans activeJobs
+      // Update job in activeJobs
       setActiveJobs(prev => {
         const job = prev.get(jobId);
         if (!job) return prev;
@@ -279,7 +455,7 @@ export function useApps(isActive) {
         const newLogs = jobStatus.logs || [];
         const oldLogs = job.logs || [];
         
-        // Logger les nouvelles lignes (seulement si pas déjà loggées)
+        // Log new lines (only if not already logged)
         if (newLogs.length > oldLogs.length) {
           const newLines = newLogs.slice(oldLogs.length);
           newLines.forEach(line => {
@@ -296,9 +472,9 @@ export function useApps(isActive) {
         return updated;
       });
       
-      // Si terminé, marquer comme terminé IMMÉDIATEMENT puis cleanup
+      // If finished, mark as finished IMMEDIATELY then cleanup
       if (isFinished) {
-        // Marquer le job comme terminé (change le status)
+        // Mark job as finished (changes status)
         setActiveJobs(prev => {
           const job = prev.get(jobId);
           if (!job) return prev;
@@ -306,18 +482,18 @@ export function useApps(isActive) {
           const updated = new Map(prev);
           updated.set(jobId, {
             ...job,
-            status: jobStatus.status, // "completed" ou "failed"
+            status: jobStatus.status, // "completed" or "failed"
           });
           return updated;
         });
         
-        // Refresh la liste après un court délai (laisser le daemon mettre à jour sa DB)
+        // Refresh list after short delay (let daemon update its DB)
         setTimeout(() => {
           console.log('🔄 Refreshing apps list after job completion');
           fetchAvailableApps();
         }, 500);
         
-        // Retirer le job : très rapide si succès, 8s si échec (pour voir l'erreur)
+        // Remove job: very fast if success, 8s if failure (to see error)
         const delay = jobStatus.status === 'failed' ? 8000 : 100;
         setTimeout(() => {
           setActiveJobs(prev => {
@@ -329,16 +505,16 @@ export function useApps(isActive) {
       }
     };
     
-    // Polling du job
+    // Job polling
     const interval = setInterval(pollJob, DAEMON_CONFIG.INTERVALS.JOB_POLLING);
     jobPollingIntervals.current.set(jobId, interval);
     
-    // Premier poll immédiat
+    // First poll immediately
     pollJob();
   }, [fetchJobStatus, fetchAvailableApps, stopJobPolling]);
   
   /**
-   * Installer une app (retourne job_id)
+   * Install an app (returns job_id)
    */
   const installApp = useCallback(async (appInfo) => {
     try {
@@ -352,11 +528,11 @@ export function useApps(isActive) {
           body: JSON.stringify(appInfo),
         },
         DAEMON_CONFIG.TIMEOUTS.APP_INSTALL,
-        { label: `Install ${appInfo.name}` } // ⚡ Log automatique
+        { label: `Install ${appInfo.name}` } // ⚡ Automatic log
       );
       
       if (!response.ok) {
-        // Vérifier si c'est une erreur de permission
+        // Check if it's a permission error
         if (response.status === 403 || response.status === 401) {
           const permissionError = new Error('Permission denied: System may have blocked the installation');
           permissionError.name = 'PermissionDeniedError';
@@ -368,7 +544,7 @@ export function useApps(isActive) {
       const result = await response.json();
       console.log('📦 Install API response:', result);
       
-      // Le résultat peut être {"job_id": "xxx"} ou {"uuid": ...}
+      // Result can be {"job_id": "xxx"} or {"uuid": ...}
       const jobId = result.job_id || Object.keys(result)[0];
       
       if (!jobId) {
@@ -377,23 +553,23 @@ export function useApps(isActive) {
       
       console.log('✅ Installation started, job_id:', jobId);
       
-      // Ajouter le job au tracking
+      // Add job to tracking
       setActiveJobs(prev => new Map(prev).set(jobId, {
         type: 'install',
         appName: appInfo.name,
         appInfo,
-        status: 'running', // Démarrer directement en "running" pour l'UI
+        status: 'running', // Start directly in "running" for UI
         logs: [],
       }));
       
-      // Démarrer le polling du job
+      // Start job polling
       startJobPolling(jobId);
       
       return jobId;
     } catch (err) {
       console.error('❌ Installation error:', err);
       
-      // Gestion spécifique des erreurs de permission
+      // Specific handling of permission errors
       if (err.name === 'PermissionDeniedError' || err.name === 'SystemPopupTimeoutError') {
         const userMessage = err.name === 'PermissionDeniedError'
           ? `Permission denied: Please accept system permissions to install ${appInfo.name}`
@@ -402,14 +578,14 @@ export function useApps(isActive) {
         addFrontendLog(`🔒 ${userMessage}`);
         setError(userMessage);
         
-        // Créer une erreur avec un message utilisateur clair
+        // Create error with clear user message
         const userFriendlyError = new Error(userMessage);
         userFriendlyError.name = err.name;
         userFriendlyError.userFriendly = true;
         throw userFriendlyError;
       }
       
-      // Erreur standard
+      // Standard error
       addFrontendLog(`❌ Failed to start install ${appInfo.name}: ${err.message}`);
       setError(err.message);
       throw err;
@@ -417,7 +593,7 @@ export function useApps(isActive) {
   }, [startJobPolling, addFrontendLog]);
   
   /**
-   * Désinstaller une app (retourne job_id)
+   * Uninstall an app (returns job_id)
    */
   const removeApp = useCallback(async (appName) => {
     try {
@@ -427,11 +603,11 @@ export function useApps(isActive) {
         buildApiUrl(`/api/apps/remove/${encodeURIComponent(appName)}`),
         { method: 'POST' },
         DAEMON_CONFIG.TIMEOUTS.APP_REMOVE,
-        { label: `Uninstall ${appName}` } // ⚡ Log automatique
+        { label: `Uninstall ${appName}` } // ⚡ Automatic log
       );
       
       if (!response.ok) {
-        // Vérifier si c'est une erreur de permission
+        // Check if it's a permission error
         if (response.status === 403 || response.status === 401) {
           const permissionError = new Error('Permission denied: System may have blocked the removal');
           permissionError.name = 'PermissionDeniedError';
@@ -443,7 +619,7 @@ export function useApps(isActive) {
       const result = await response.json();
       console.log('📦 Remove API response:', result);
       
-      // Le résultat peut être {"job_id": "xxx"} ou {"uuid": ...}
+      // Result can be {"job_id": "xxx"} or {"uuid": ...}
       const jobId = result.job_id || Object.keys(result)[0];
       
       if (!jobId) {
@@ -452,22 +628,22 @@ export function useApps(isActive) {
       
       console.log('✅ Removal started, job_id:', jobId);
       
-      // Ajouter le job au tracking
+      // Add job to tracking
       setActiveJobs(prev => new Map(prev).set(jobId, {
         type: 'remove',
         appName,
-        status: 'running', // Démarrer directement en "running" pour l'UI
+        status: 'running', // Start directly in "running" for UI
         logs: [],
       }));
       
-      // Démarrer le polling du job
+      // Start job polling
       startJobPolling(jobId);
       
       return jobId;
     } catch (err) {
       console.error('❌ Removal error:', err);
       
-      // Gestion spécifique des erreurs de permission
+      // Specific handling of permission errors
       if (err.name === 'PermissionDeniedError' || err.name === 'SystemPopupTimeoutError') {
         const userMessage = err.name === 'PermissionDeniedError'
           ? `Permission denied: Please accept system permissions to remove ${appName}`
@@ -476,7 +652,7 @@ export function useApps(isActive) {
         addFrontendLog(`🔒 ${userMessage}`);
         setError(userMessage);
         
-        // Créer une erreur avec un message utilisateur clair
+        // Create error with clear user message
         const userFriendlyError = new Error(userMessage);
         userFriendlyError.name = err.name;
         userFriendlyError.userFriendly = true;
@@ -489,7 +665,7 @@ export function useApps(isActive) {
   }, [startJobPolling, addFrontendLog]);
   
   /**
-   * Fetch le statut de l'app en cours
+   * Fetch current app status
    */
   const fetchCurrentAppStatus = useCallback(async () => {
     try {
@@ -497,7 +673,7 @@ export function useApps(isActive) {
         buildApiUrl('/api/apps/current-app-status'),
         {},
         DAEMON_CONFIG.TIMEOUTS.APPS_LIST,
-        { silent: true } // ⚡ Polling silencieux
+        { silent: true } // ⚡ Silent polling
       );
       
       if (!response.ok) {
@@ -506,7 +682,7 @@ export function useApps(isActive) {
       
       const status = await response.json();
       
-      // Si pas d'app en cours, l'API retourne probablement null ou un objet vide
+      // If no app running, API probably returns null or empty object
       if (status && status.info) {
         setCurrentApp(status);
       } else {
@@ -515,14 +691,14 @@ export function useApps(isActive) {
       
       return status;
     } catch (err) {
-      // Pas d'erreur si pas d'app en cours
+      // No error if no app running
       setCurrentApp(null);
       return null;
     }
   }, []);
   
   /**
-   * Lancer une app
+   * Launch an app
    */
   const startApp = useCallback(async (appName) => {
     try {
@@ -532,7 +708,7 @@ export function useApps(isActive) {
         buildApiUrl(`/api/apps/start-app/${encodeURIComponent(appName)}`),
         { method: 'POST' },
         DAEMON_CONFIG.TIMEOUTS.APP_START,
-        { label: `Start ${appName}` } // ⚡ Log automatique
+        { label: `Start ${appName}` } // ⚡ Automatic log
       );
       
       if (!response.ok) {
@@ -555,7 +731,7 @@ export function useApps(isActive) {
   }, [fetchCurrentAppStatus, addFrontendLog]);
   
   /**
-   * Arrêter l'app en cours
+   * Stop current app
    */
   const stopCurrentApp = useCallback(async () => {
     try {
@@ -565,7 +741,7 @@ export function useApps(isActive) {
         buildApiUrl('/api/apps/stop-current-app'),
         { method: 'POST' },
         DAEMON_CONFIG.TIMEOUTS.APP_STOP,
-        { label: 'Stop current app' } // ⚡ Log automatique
+        { label: 'Stop current app' } // ⚡ Automatic log
       );
       
       if (!response.ok) {
@@ -575,13 +751,13 @@ export function useApps(isActive) {
       const message = await response.json();
       console.log('✅ App stopped:', message);
       
-      // Réinitialiser immédiatement l'état
+      // Reset state immediately
       setCurrentApp(null);
       
-      // ✅ Déverrouiller le robot pour permettre les quick actions
+      // ✅ Unlock robot to allow quick actions
       useAppStore.getState().unlockApp();
       
-      // Refresh pour vérifier
+      // Refresh to verify
       setTimeout(() => fetchCurrentAppStatus(), DAEMON_CONFIG.INTERVALS.CURRENT_APP_REFRESH);
       
       return message;
@@ -589,14 +765,14 @@ export function useApps(isActive) {
       console.error('❌ Failed to stop app:', err);
       addFrontendLog(`❌ Failed to stop app: ${err.message}`);
       setError(err.message);
-      // ✅ S'assurer de déverrouiller même en cas d'erreur
+      // ✅ Ensure unlock even on error
       useAppStore.getState().unlockApp();
       throw err;
     }
   }, [fetchCurrentAppStatus, addFrontendLog]);
   
   /**
-   * Cleanup : arrêter tous les pollings au démontage
+   * Cleanup: stop all pollings on unmount
    */
   useEffect(() => {
     return () => {
@@ -606,16 +782,16 @@ export function useApps(isActive) {
   }, []);
   
   /**
-   * Fetch initial + polling du statut de l'app en cours
+   * Initial fetch + polling of current app status
    */
   useEffect(() => {
     if (!isActive) return;
     
-    // Fetch initial
+    // Initial fetch
     fetchAvailableApps();
     fetchCurrentAppStatus();
     
-    // Polling du statut de l'app en cours
+    // Polling current app status
     const interval = setInterval(fetchCurrentAppStatus, DAEMON_CONFIG.INTERVALS.APP_STATUS);
     
     return () => clearInterval(interval);
@@ -626,7 +802,7 @@ export function useApps(isActive) {
     availableApps,
     installedApps,
     currentApp,
-    activeJobs, // Map de job_id -> job info
+    activeJobs, // Map of job_id -> job info
     isLoading,
     error,
     

@@ -7,7 +7,7 @@ import StopCircleOutlinedIcon from '@mui/icons-material/StopCircleOutlined';
 import { open } from '@tauri-apps/plugin-shell';
 
 /**
- * Section affichant les apps installées
+ * Section displaying installed apps
  */
 export default function InstalledAppsSection({
   installedApps,
@@ -87,7 +87,7 @@ export default function InstalledAppsSection({
             const settings = appSettings[app.name] || {};
             const isRemoving = isJobRunning(app.name, 'remove');
             
-            // Gérer tous les états de l'app en cours (avec protections)
+            // Handle all current app states (with protections)
             const isThisAppCurrent = currentApp && currentApp.info && currentApp.info.name === app.name;
             const appState = isThisAppCurrent && currentApp.state ? currentApp.state : null;
             const isCurrentlyRunning = appState === 'running';
@@ -103,7 +103,7 @@ export default function InstalledAppsSection({
                   borderRadius: '14px',
                   bgcolor: darkMode ? 'rgba(255, 255, 255, 0.02)' : 'white',
                   border: `1px solid ${isExpanded ? '#FF9500' : (darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)')}`,
-                  // ✅ Pas de transition sur bgcolor/border pour éviter l'animation lors du changement de dark mode
+                  // ✅ No transition on bgcolor/border to avoid animation on dark mode change
                   transition: 'transform 0.25s ease, box-shadow 0.25s ease, opacity 0.25s ease, filter 0.25s ease',
                   overflow: 'hidden',
                   boxShadow: isExpanded ? (darkMode ? '0 4px 12px rgba(0, 0, 0, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.08)') : 'none',
@@ -127,7 +127,7 @@ export default function InstalledAppsSection({
                     bgcolor: isExpanded 
                       ? (darkMode ? 'rgba(255, 149, 0, 0.05)' : 'rgba(255, 149, 0, 0.03)') 
                       : 'transparent',
-                    // ✅ Pas de transition sur bgcolor pour éviter l'animation lors du changement de dark mode
+                    // ✅ No transition on bgcolor to avoid animation on dark mode change
                     transition: 'box-shadow 0.25s ease',
                     '&:hover': {
                       bgcolor: isExpanded
@@ -140,14 +140,16 @@ export default function InstalledAppsSection({
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1 }}>
                     <Box
                       sx={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: '10px',
+                        fontSize: 28,
+                        width: 52,
+                        height: 52,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        fontSize: 20,
-                        bgcolor: darkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)',
+                        borderRadius: '12px',
+                        bgcolor: darkMode ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.03)',
+                        border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)'}`,
+                        flexShrink: 0,
                       }}
                     >
                       {app.extra?.cardData?.emoji || app.icon || '📦'}
@@ -166,7 +168,7 @@ export default function InstalledAppsSection({
                           {app.name}
                         </Typography>
                         
-                        {/* Status Badges - Priorité aux états d'erreur/running */}
+                        {/* Status Badges - Priority to error/running states */}
                         {hasAppError && (
                           <Chip 
                             label="Error" 
@@ -252,53 +254,75 @@ export default function InstalledAppsSection({
                     
                     {/* Play/Stop button */}
                     {isCurrentlyRunning ? (
-                      <IconButton
+                      <Button
                         size="small"
                         disabled={isBusy && !isCurrentlyRunning}
                         onClick={(e) => {
                           e.stopPropagation();
                           stopCurrentApp();
                         }}
+                        startIcon={<StopCircleOutlinedIcon sx={{ fontSize: 13 }} />}
                         sx={{
-                          width: 32,
-                          height: 32,
-                          bgcolor: 'rgba(239, 68, 68, 0.1)',
+                          minWidth: 'auto',
+                          px: 1.75,
+                          py: 0.75,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          textTransform: 'none',
+                          borderRadius: '8px',
+                          flexShrink: 0,
+                          bgcolor: 'transparent',
                           color: '#ef4444',
+                          border: '1px solid #ef4444',
+                          transition: 'all 0.2s ease',
                           '&:hover': {
-                            bgcolor: 'rgba(239, 68, 68, 0.15)',
+                            bgcolor: 'rgba(239, 68, 68, 0.08)',
+                            borderColor: '#ef4444',
+                          },
+                          '&:disabled': {
+                            bgcolor: darkMode ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.02)',
+                            color: darkMode ? '#555' : '#999',
+                            borderColor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.12)',
                           },
                         }}
                       >
-                        <StopCircleOutlinedIcon sx={{ fontSize: 16 }} />
-                      </IconButton>
+                        Stop
+                      </Button>
                     ) : (
-                      <IconButton
+                      <Button
                         size="small"
                         disabled={isStarting || isBusy || isRemoving}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleStartApp(app.name);
                         }}
+                        startIcon={isStarting ? <CircularProgress size={12} sx={{ color: '#FF9500' }} /> : <PlayArrowOutlinedIcon sx={{ fontSize: 13 }} />}
                         sx={{
-                          width: 32,
-                          height: 32,
-                          bgcolor: 'rgba(34, 197, 94, 0.1)',
-                          color: '#22c55e',
+                          minWidth: 'auto',
+                          px: 1.75,
+                          py: 0.75,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          textTransform: 'none',
+                          borderRadius: '8px',
+                          flexShrink: 0,
+                          bgcolor: 'transparent',
+                          color: '#FF9500',
+                          border: '1px solid #FF9500',
+                          transition: 'all 0.2s ease',
                           '&:hover': {
-                            bgcolor: 'rgba(34, 197, 94, 0.15)',
+                            bgcolor: 'rgba(255, 149, 0, 0.08)',
+                            borderColor: '#FF9500',
                           },
                           '&:disabled': {
-                            bgcolor: 'rgba(0, 0, 0, 0.02)',
-                            color: '#ccc',
+                            bgcolor: darkMode ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.02)',
+                            color: darkMode ? '#555' : '#999',
+                            borderColor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.12)',
                           },
                         }}
                       >
-                        {isStarting ? (
-                          <CircularProgress size={14} sx={{ color: '#22c55e' }} />
-                        ) : (
-                          <PlayArrowOutlinedIcon sx={{ fontSize: 16 }} />
-                        )}
-                      </IconButton>
+                        {isStarting ? 'Starting...' : 'Play'}
+                      </Button>
                     )}
                   </Box>
                 </Box>

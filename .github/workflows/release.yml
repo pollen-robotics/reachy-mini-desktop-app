@@ -227,20 +227,74 @@ jobs:
           echo "✅ Created latest.json with all platforms"
           cat release-artifacts/latest.json
 
+      - name: Prepare release files (deduplicate and organize)
+        run: |
+          # Create a clean directory for release files
+          mkdir -p release-files
+          
+          # Find and copy unique files (avoid duplicates)
+          # MSI files
+          find release-artifacts -name "*.msi" -type f | while read file; do
+            filename=$(basename "$file")
+            # Only copy if not already copied (handle duplicates)
+            if [ ! -f "release-files/$filename" ]; then
+              cp "$file" "release-files/"
+            fi
+          done
+          
+          # MSI signatures
+          find release-artifacts -name "*.msi.sig" -type f | while read file; do
+            filename=$(basename "$file")
+            if [ ! -f "release-files/$filename" ]; then
+              cp "$file" "release-files/"
+            fi
+          done
+          
+          # App tar.gz files
+          find release-artifacts -name "*.app.tar.gz" -type f | while read file; do
+            filename=$(basename "$file")
+            if [ ! -f "release-files/$filename" ]; then
+              cp "$file" "release-files/"
+            fi
+          done
+          
+          # App tar.gz signatures
+          find release-artifacts -name "*.app.tar.gz.sig" -type f | while read file; do
+            filename=$(basename "$file")
+            if [ ! -f "release-files/$filename" ]; then
+              cp "$file" "release-files/"
+            fi
+          done
+          
+          # AppImage files (if any)
+          find release-artifacts -name "*.AppImage" -type f | while read file; do
+            filename=$(basename "$file")
+            if [ ! -f "release-files/$filename" ]; then
+              cp "$file" "release-files/"
+            fi
+          done
+          
+          # AppImage signatures (if any)
+          find release-artifacts -name "*.AppImage.sig" -type f | while read file; do
+            filename=$(basename "$file")
+            if [ ! -f "release-files/$filename" ]; then
+              cp "$file" "release-files/"
+            fi
+          done
+          
+          # Copy latest.json
+          cp release-artifacts/latest.json release-files/ 2>/dev/null || true
+          
+          # List files to be uploaded
+          echo "📦 Files to upload:"
+          ls -lh release-files/
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: Release v${{ steps.version.outputs.version }}
-          files: |
-            release-artifacts/**/*.msi
-            release-artifacts/**/*.msi.sig
-            release-artifacts/**/*.app.tar.gz
-            release-artifacts/**/*.app.tar.gz.sig
-            release-artifacts/**/*.AppImage
-            release-artifacts/**/*.AppImage.sig
-            release-artifacts/**/update.json
-            release-artifacts/latest.json
+          files: release-files/*
           draft: false
           prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'alpha') }}
         env:
