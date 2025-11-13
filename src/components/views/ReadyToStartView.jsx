@@ -7,7 +7,7 @@ import reachyBusteSvg from '../../assets/reachy-buste.svg';
 import reachyUpdateBoxSvg from '../../assets/reachy-update-box.svg';
 import useAppStore from '../../store/useAppStore';
 
-// 🤖 Messages de démarrage (titre fixe)
+// 🤖 Startup messages (fixed title)
 const START_MESSAGES = [
   { 
     text: 'Press the button to ', 

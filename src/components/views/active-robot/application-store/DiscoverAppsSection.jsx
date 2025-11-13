@@ -400,6 +400,108 @@ export default function DiscoverAppsSection({
           );
         })
         )}
+        
+        {/* Ghost item: Build your own */}
+        <Box
+          component="button"
+          onClick={async () => {
+            try {
+              await open('https://huggingface.co/new-space');
+              console.log('🌐 Opening Hugging Face Space creation');
+            } catch (err) {
+              console.error('Failed to open Hugging Face URL:', err);
+            }
+          }}
+          sx={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 2,
+            p: 2.5,
+            borderRadius: '14px',
+            bgcolor: 'transparent',
+            border: (theme) => `1px dashed ${theme.palette.primary.main}`,
+            cursor: 'pointer',
+            transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+            position: 'relative',
+            overflow: 'hidden',
+            '&:hover': {
+              borderColor: 'primary.main',
+              bgcolor: (theme) => darkMode 
+                ? 'rgba(255, 149, 0, 0.05)' 
+                : 'rgba(255, 149, 0, 0.03)',
+              transform: 'translateY(-1px)',
+              boxShadow: (theme) => darkMode 
+                ? `0 4px 12px rgba(255, 149, 0, 0.15)` 
+                : `0 4px 12px rgba(255, 149, 0, 0.1)`,
+              '& > :last-child': {
+                transform: 'translateX(2px)',
+              },
+            },
+            '&:active': {
+              transform: 'translateY(0)',
+            },
+          }}
+        >
+          {/* Icon container */}
+          <Box
+            sx={{
+              width: 48,
+              height: 48,
+              borderRadius: '12px',
+              bgcolor: (theme) => darkMode 
+                ? 'rgba(255, 149, 0, 0.08)' 
+                : 'rgba(255, 149, 0, 0.05)',
+              border: (theme) => `1px solid ${theme.palette.primary.main}40`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              transition: 'all 0.25s ease',
+              fontSize: 24,
+            }}
+          >
+            📦
+          </Box>
+          
+          {/* Text content */}
+          <Box sx={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+            <Typography
+              color="primary"
+              sx={{
+                fontSize: 13,
+                fontWeight: 700,
+                mb: 0.3,
+                letterSpacing: '-0.2px',
+                textAlign: 'left',
+              }}
+            >
+              Build your own app
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: 10,
+                color: darkMode ? '#888' : '#999',
+                lineHeight: 1.4,
+                textAlign: 'left',
+              }}
+            >
+              Create and share your Reachy Mini app on Hugging Face Spaces
+            </Typography>
+          </Box>
+          
+          {/* Arrow icon */}
+          <Box
+            sx={{
+              color: 'primary.main',
+              fontSize: 18,
+              flexShrink: 0,
+              transition: 'transform 0.25s ease',
+            }}
+          >
+            →
+          </Box>
+        </Box>
       </Box>
     </Box>
   );

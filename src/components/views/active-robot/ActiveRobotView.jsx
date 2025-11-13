@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Box, Typography, IconButton, Button, CircularProgress, Snackbar, Alert, LinearProgress } from '@mui/material';
+import { Box, Typography, IconButton, Button, CircularProgress, Snackbar, Alert, LinearProgress, ButtonGroup } from '@mui/material';
 import PowerSettingsNewOutlinedIcon from '@mui/icons-material/PowerSettingsNewOutlined';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { open } from '@tauri-apps/plugin-shell';
@@ -420,68 +420,59 @@ function ActiveRobotView({
           darkMode={darkMode}
         />
 
-        {/* Quick Actions - Grouped together with separators */}
+        {/* Quick Actions - Using MUI ButtonGroup for cleaner layout */}
         <Box sx={{ width: '100%', mb: 2 }}>
           <Typography sx={{ fontSize: 11, fontWeight: 600, color: darkMode ? '#888' : '#999', textTransform: 'uppercase', letterSpacing: '0.5px', mb: 1.5 }}>
             Quick Actions
           </Typography>
-          <Box 
-            sx={{ 
-              display: 'inline-flex',
-              padding: '6px',
-              borderRadius: '14px',
-              background: darkMode ? 
-                'linear-gradient(135deg, rgba(255, 149, 0, 0.12) 0%, rgba(255, 179, 64, 0.15) 100%)' :
-                'linear-gradient(135deg, rgba(255, 149, 0, 0.06) 0%, rgba(255, 179, 64, 0.08) 100%)',
-              border: '1px solid #FF9500',
+          <ButtonGroup
+            variant="outlined"
+            disabled={!isReady}
+            sx={{
               width: '100%',
-              justifyContent: 'space-around',
+              display: 'flex',
+              borderRadius: '14px',
+              overflow: 'hidden',
+              border: '1px solid #FF9500',
+              '& .MuiButtonGroup-grouped': {
+                flex: 1,
+                border: 'none',
+                borderColor: 'transparent',
+                color: darkMode ? '#fff' : '#000',
+                opacity: !isActive || isBusy ? 0.3 : 1,
+                filter: !isActive || isBusy ? 'grayscale(100%)' : 'none',
+                fontSize: '24px',
+                minWidth: 0,
+                padding: '12px 8px',
+                '&:hover': {
+                  bgcolor: !isActive || isBusy ? 'transparent' : (darkMode ? 'rgba(255, 149, 0, 0.15)' : 'rgba(255, 149, 0, 0.1)'),
+                  zIndex: 1,
+                },
+                '&:not(:last-of-type)': {
+                  borderRight: '1px solid #FF9500',
+                },
+              },
+              '& .MuiButtonGroup-grouped:not(:first-of-type)': {
+                borderLeft: 'none',
+              },
             }}
           >
-            {quickActions.map((action, index) => (
-              <Box key={action.name} sx={{ display: 'flex', alignItems: 'center' }}>
-                <IconButton
-                  disabled={!isReady}
-                  onClick={() => handleQuickAction(action)}
-                  sx={{
-                    width: 52,
-                    height: 52,
-                    bgcolor: 'transparent',
-                    fontSize: 24,
-                    borderRadius: '50%',
-                    transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                    opacity: !isActive || isBusy ? 0.3 : 1,
-                    filter: !isActive || isBusy ? 'grayscale(100%)' : 'none',
-                    '&:hover': { 
-                      bgcolor: !isActive || isBusy ? 'transparent' : (darkMode ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.35)'),
-                      transform: !isActive || isBusy ? 'none' : 'scale(1.15)',
-                      zIndex: 1,
-                    },
-                    '&:active': {
-                      transform: !isActive || isBusy ? 'none' : 'scale(1.08)',
-                      bgcolor: !isActive || isBusy ? 'transparent' : (darkMode ? 'rgba(0, 0, 0, 0.3)' : 'rgba(255, 255, 255, 0.55)'),
-                    },
-                  }}
-                  title={action.label}
-                >
-                  {action.emoji}
-                </IconButton>
-                
-                {/* Vertical separator between buttons (except the last one) */}
-                {index < quickActions.length - 1 && (
-                  <Box
-                    sx={{
-                      width: '1px',
-                      height: '44px',
-                      bgcolor: '#FF9500',
-                      opacity: 0.5,
-                      mx: '3px',
-                    }}
-                  />
-                )}
-              </Box>
+            {quickActions.map((action) => (
+              <Button
+                key={action.name}
+                onClick={() => handleQuickAction(action)}
+                disabled={!isActive || isBusy}
+                sx={{
+                  fontSize: '24px',
+                  padding: '12px 8px',
+                  transition: 'background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                }}
+                title={action.label}
+              >
+                {action.emoji}
+              </Button>
             ))}
-          </Box>
+          </ButtonGroup>
         </Box>
         
         {/* Logs Console */}
@@ -530,7 +521,9 @@ function ActiveRobotView({
             flexShrink: 0,
             display: 'flex',
             flexDirection: 'column',
-            borderLeft: '1px solid rgba(0, 0, 0, 0.06)',
+            borderLeft: darkMode 
+              ? '1px solid rgba(255, 255, 255, 0.08)' 
+              : '1px solid rgba(0, 0, 0, 0.06)',
           }}
         >
           <ApplicationStore 

@@ -1,13 +1,13 @@
 # build_sidecar_windows.ps1
-# Script PowerShell équivalent à build_sidecar_unix.sh
+# PowerShell script equivalent to build_sidecar_unix.sh
 
 $DST_DIR = "src-tauri/binaries"
 
-# Supprimer l'ancien build
+# Remove old build
 if (Test-Path $DST_DIR) { Remove-Item $DST_DIR -Recurse -Force }
 New-Item -ItemType Directory -Path $DST_DIR | Out-Null
 
-# Récupérer le triplet cible Rust
+# Get Rust target triplet
 $TRIPLET = (rustc -Vv | Select-String "host:" | ForEach-Object { $_.Line.Split(" ")[1] })
 
 Push-Location uv-wrapper

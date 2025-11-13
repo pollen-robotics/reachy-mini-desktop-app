@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script pour builder et signer les fichiers de mise à jour
+# Script to build and sign update files
 # Usage: ./scripts/build-update.sh [dev|prod] [version]
 
 set -e
@@ -24,17 +24,17 @@ PUBLIC_KEY="${HOME}/.tauri/reachy-mini.key.pub"
 RELEASES_DIR="releases"
 DEV_RELEASES_DIR="test-updates"
 
-# Vérifier les arguments
+# Check arguments
 if [ "$ENV" != "dev" ] && [ "$ENV" != "prod" ]; then
     echo -e "${RED}❌ Usage: $0 [dev|prod] [version]${NC}"
     exit 1
 fi
 
-# Récupérer la version depuis tauri.conf.json si non fournie
+# Get version from tauri.conf.json if not provided
 if [ -z "$VERSION" ]; then
     VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
     if [ -z "$VERSION" ]; then
-        echo -e "${RED}❌ Impossible de récupérer la version depuis tauri.conf.json${NC}"
+        echo -e "${RED}❌ Unable to retrieve version from tauri.conf.json${NC}"
         exit 1
     fi
 fi
@@ -43,30 +43,30 @@ echo -e "${BLUE}🚀 Building update for ${ENV} environment${NC}"
 echo -e "${BLUE}   Version: ${VERSION}${NC}"
 echo ""
 
-# Vérifier que la clé privée existe
+# Check that private key exists
 if [ ! -f "$PRIVATE_KEY" ]; then
-    echo -e "${RED}❌ Clé privée non trouvée: ${PRIVATE_KEY}${NC}"
-    echo -e "${YELLOW}   Générer avec: yarn tauri signer generate -w ${PRIVATE_KEY}${NC}"
+    echo -e "${RED}❌ Private key not found: ${PRIVATE_KEY}${NC}"
+    echo -e "${YELLOW}   Generate with: yarn tauri signer generate -w ${PRIVATE_KEY}${NC}"
     exit 1
 fi
 
-# Vérifier que la clé publique existe
+# Check that public key exists
 if [ ! -f "$PUBLIC_KEY" ]; then
-    echo -e "${RED}❌ Clé publique non trouvée: ${PUBLIC_KEY}${NC}"
+    echo -e "${RED}❌ Public key not found: ${PUBLIC_KEY}${NC}"
     exit 1
 fi
 
-# Déterminer le répertoire de sortie
+# Determine output directory
 if [ "$ENV" = "dev" ]; then
     OUTPUT_DIR="$DEV_RELEASES_DIR"
 else
     OUTPUT_DIR="$RELEASES_DIR"
 fi
 
-# Créer le répertoire de sortie
+# Create output directory
 mkdir -p "$OUTPUT_DIR"
 
-# Détecter la plateforme
+# Detect platform
 PLATFORM=""
 if [[ "$OSTYPE" == "darwin"* ]]; then
     ARCH=$(uname -m)
@@ -80,13 +80,13 @@ elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
 elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "win32" ]]; then
     PLATFORM="windows-x86_64"
 else
-    echo -e "${RED}❌ Plateforme non supportée: $OSTYPE${NC}"
+    echo -e "${RED}❌ Unsupported platform: $OSTYPE${NC}"
     exit 1
 fi
 
 echo -e "${BLUE}📦 Platform: ${PLATFORM}${NC}"
 
-# 1. Builder l'application
+# 1. Build the application
 echo ""
 echo -e "${BLUE}🔨 Step 1: Building application...${NC}"
 
@@ -123,36 +123,36 @@ if [ -n "$TARGET_TRIPLET" ]; then
     fi
 fi
 
-# 2. Trouver le fichier bundle selon la plateforme
+# 2. Find bundle file according to platform
 BUNDLE_FILE=""
 if [[ "$PLATFORM" == darwin-* ]]; then
     APP_NAME="Reachy Mini Control.app"
     APP_PATH="$BUNDLE_DIR/macos/$APP_NAME"
     if [ ! -d "$APP_PATH" ]; then
-        echo -e "${RED}❌ Bundle non trouvé: ${APP_PATH}${NC}"
+        echo -e "${RED}❌ Bundle not found: ${APP_PATH}${NC}"
         exit 1
     fi
-    # Créer le tar.gz
+    # Create tar.gz
     BUNDLE_FILE="$OUTPUT_DIR/reachy-mini-control_${VERSION}_${PLATFORM}.app.tar.gz"
     echo -e "${BLUE}📦 Creating archive: ${BUNDLE_FILE}${NC}"
     
-    # Nettoyer les fichiers de métadonnées macOS avant de créer l'archive
+    # Clean macOS metadata files before creating archive
     echo -e "${YELLOW}   Cleaning macOS metadata files...${NC}"
     find "$APP_PATH" -name "._*" -type f -delete 2>/dev/null || true
     find "$APP_PATH" -name ".DS_Store" -type f -delete 2>/dev/null || true
     
     cd "$BUNDLE_DIR/macos"
-    # Utiliser ditto pour copier dans un répertoire temporaire propre (sans resource forks)
-    # puis tar pour créer l'archive finale
+    # Use ditto to copy to a clean temporary directory (without resource forks)
+    # then tar to create the final archive
     TEMP_DIR=$(mktemp -d -t bundle-clean-XXXXXX)
     ditto --norsrc "$APP_NAME" "$TEMP_DIR/$APP_NAME" 2>/dev/null || {
-        # Si ditto échoue, utiliser tar directement avec COPYFILE_DISABLE
+        # If ditto fails, use tar directly with COPYFILE_DISABLE
         echo -e "${YELLOW}   ditto failed, using tar with COPYFILE_DISABLE...${NC}"
         COPYFILE_DISABLE=1 tar --disable-copyfile -czf "$PROJECT_DIR/$BUNDLE_FILE" --exclude='._*' --exclude='.DS_Store' "$APP_NAME"
         cd "$PROJECT_DIR"
     }
     
-    # Si ditto a réussi, créer l'archive tar.gz depuis le répertoire propre
+    # If ditto succeeded, create tar.gz archive from clean directory
     if [ -d "$TEMP_DIR/$APP_NAME" ]; then
         COPYFILE_DISABLE=1 tar --disable-copyfile -czf "$PROJECT_DIR/$BUNDLE_FILE" -C "$TEMP_DIR" "$APP_NAME"
         rm -rf "$TEMP_DIR"
@@ -161,7 +161,7 @@ if [[ "$PLATFORM" == darwin-* ]]; then
 elif [[ "$PLATFORM" == windows-* ]]; then
     BUNDLE_FILE=$(find "$BUNDLE_DIR/msi" -name "*.msi" | head -1)
     if [ -z "$BUNDLE_FILE" ]; then
-        echo -e "${RED}❌ Bundle MSI non trouvé${NC}"
+        echo -e "${RED}❌ MSI bundle not found${NC}"
         exit 1
     fi
     cp "$BUNDLE_FILE" "$OUTPUT_DIR/"
@@ -169,7 +169,7 @@ elif [[ "$PLATFORM" == windows-* ]]; then
 elif [[ "$PLATFORM" == linux-* ]]; then
     BUNDLE_FILE=$(find "$BUNDLE_DIR/appimage" -name "*.AppImage" | head -1)
     if [ -z "$BUNDLE_FILE" ]; then
-        echo -e "${RED}❌ Bundle AppImage non trouvé${NC}"
+        echo -e "${RED}❌ AppImage bundle not found${NC}"
         exit 1
     fi
     cp "$BUNDLE_FILE" "$OUTPUT_DIR/"
@@ -177,50 +177,50 @@ elif [[ "$PLATFORM" == linux-* ]]; then
 fi
 
 if [ ! -f "$BUNDLE_FILE" ]; then
-    echo -e "${RED}❌ Fichier bundle non créé: ${BUNDLE_FILE}${NC}"
+    echo -e "${RED}❌ Bundle file not created: ${BUNDLE_FILE}${NC}"
     exit 1
 fi
 
-echo -e "${GREEN}✅ Bundle créé: ${BUNDLE_FILE}${NC}"
+echo -e "${GREEN}✅ Bundle created: ${BUNDLE_FILE}${NC}"
 
-# 3. Signer le fichier
+# 3. Sign the file
 echo ""
 echo -e "${BLUE}🔐 Step 2: Signing bundle...${NC}"
 SIGNATURE_FILE="${BUNDLE_FILE}.sig"
 
-# Vérifier si tauri CLI est disponible
+# Check if tauri CLI is available
 if ! command -v yarn &> /dev/null; then
-    echo -e "${RED}❌ yarn non trouvé${NC}"
+    echo -e "${RED}❌ yarn not found${NC}"
     exit 1
 fi
 
-# Signer avec tauri signer
+# Sign with tauri signer
 echo -e "${YELLOW}   Signing with tauri signer...${NC}"
 
-# Convertir le chemin relatif en absolu si nécessaire
+# Convert relative path to absolute if necessary
 if [[ "$PRIVATE_KEY" == ~* ]]; then
     PRIVATE_KEY="${PRIVATE_KEY/#\~/$HOME}"
 fi
 
-# Utiliser le mot de passe si fourni via variable d'environnement
+# Use password if provided via environment variable
 if [ -n "$TAURI_SIGNING_KEY_PASSWORD" ]; then
     yarn tauri signer sign -f "$PRIVATE_KEY" -p "$TAURI_SIGNING_KEY_PASSWORD" "$BUNDLE_FILE" || {
-        echo -e "${RED}❌ Erreur lors de la signature${NC}"
+        echo -e "${RED}❌ Error during signing${NC}"
         exit 1
     }
 else
-    # Essayer sans mot de passe (pour clés générées avec --ci)
+    # Try without password (for keys generated with --ci)
     echo -e "${YELLOW}   Attempting to sign without password...${NC}"
     
-    # Vérifier que la clé privée existe et est lisible
+    # Check that private key exists and is readable
     if [ ! -r "$PRIVATE_KEY" ]; then
-        echo -e "${RED}❌ Clé privée non lisible: ${PRIVATE_KEY}${NC}"
+        echo -e "${RED}❌ Private key not readable: ${PRIVATE_KEY}${NC}"
         exit 1
     fi
     
-    # Vérifier que le fichier à signer existe
+    # Check that file to sign exists
     if [ ! -f "$BUNDLE_FILE" ]; then
-        echo -e "${RED}❌ Fichier à signer non trouvé: ${BUNDLE_FILE}${NC}"
+        echo -e "${RED}❌ File to sign not found: ${BUNDLE_FILE}${NC}"
         exit 1
     fi
     
@@ -228,7 +228,7 @@ else
     echo -e "${BLUE}   File to sign: ${BUNDLE_FILE}${NC}"
     echo -e "${BLUE}   Signature will be: ${SIGNATURE_FILE}${NC}"
     
-    # Afficher les premières lignes de la clé privée pour debug (sans révéler le contenu complet)
+    # Display first lines of private key for debug (without revealing full content)
     if [ -f "$PRIVATE_KEY" ]; then
         KEY_SIZE=$(wc -c < "$PRIVATE_KEY")
         KEY_LINES=$(wc -l < "$PRIVATE_KEY")
@@ -236,46 +236,46 @@ else
         echo -e "${BLUE}   First line of key: $(head -1 "$PRIVATE_KEY" | cut -c1-50)...${NC}"
     fi
     
-    # Essayer avec verbose pour voir plus de détails
-    # Exécuter directement pour voir la sortie en temps réel
-    # Passer explicitement une chaîne vide pour le mot de passe pour éviter de lire depuis stdin
+    # Try with verbose to see more details
+    # Execute directly to see output in real time
+    # Explicitly pass empty string for password to avoid reading from stdin
     echo -e "${YELLOW}   Running: yarn tauri signer sign -v -f \"$PRIVATE_KEY\" -p \"\" \"$BUNDLE_FILE\"${NC}"
-    set +e  # Temporairement désactiver set -e pour capturer l'erreur
+    set +e  # Temporarily disable set -e to capture error
     yarn tauri signer sign -v -f "$PRIVATE_KEY" -p "" "$BUNDLE_FILE" 2>&1
     SIGN_EXIT_CODE=$?
-    set -e  # Réactiver set -e
+    set -e  # Re-enable set -e
     
     if [ $SIGN_EXIT_CODE -eq 0 ]; then
-        echo -e "${GREEN}✅ Signature réussie avec tauri signer${NC}"
+        echo -e "${GREEN}✅ Signature successful with tauri signer${NC}"
     else
         echo -e "${YELLOW}⚠️  Exit code: $SIGN_EXIT_CODE${NC}"
         
-        # Vérifier si le fichier de signature existe quand même
+        # Check if signature file exists anyway
         if [ -f "$SIGNATURE_FILE" ]; then
             echo -e "${GREEN}✅ Signature file created despite error code${NC}"
         else
-            # Si tauri signer échoue, essayer minisign directement (si disponible)
+            # If tauri signer fails, try minisign directly (if available)
             if command -v minisign &> /dev/null && [ -f ~/.minisign/minisign-dev.key ]; then
-                echo -e "${YELLOW}⚠️  tauri signer échoué, utilisation de minisign directement...${NC}"
+                echo -e "${YELLOW}⚠️  tauri signer failed, using minisign directly...${NC}"
                 if minisign -S -s ~/.minisign/minisign-dev.key -m "$BUNDLE_FILE" -x "$SIGNATURE_FILE" 2>/dev/null; then
-                    echo -e "${GREEN}✅ Signature réussie avec minisign${NC}"
+                    echo -e "${GREEN}✅ Signature successful with minisign${NC}"
                 else
                     if [ "$ENV" = "dev" ]; then
-                        echo -e "${RED}❌ Erreur lors de la signature avec minisign${NC}"
+                        echo -e "${RED}❌ Error during signing with minisign${NC}"
                         exit 1
                     else
-                        echo -e "${RED}❌ Erreur lors de la signature (requis en prod)${NC}"
+                        echo -e "${RED}❌ Error during signing (required in prod)${NC}"
                         exit 1
                     fi
                 fi
             else
                 if [ "$ENV" = "dev" ]; then
-                    echo -e "${RED}❌ minisign non disponible et tauri signer échoué${NC}"
-                    echo -e "${YELLOW}   Installer minisign: brew install minisign${NC}"
-                    echo -e "${YELLOW}   Puis générer une clé: minisign -G -s ~/.minisign/minisign-dev.key -p ~/.minisign/minisign-dev.key.pub -W${NC}"
+                    echo -e "${RED}❌ minisign not available and tauri signer failed${NC}"
+                    echo -e "${YELLOW}   Install minisign: brew install minisign${NC}"
+                    echo -e "${YELLOW}   Then generate a key: minisign -G -s ~/.minisign/minisign-dev.key -p ~/.minisign/minisign-dev.key.pub -W${NC}"
                     exit 1
                 else
-                    echo -e "${RED}❌ Erreur lors de la signature (requis en prod)${NC}"
+                    echo -e "${RED}❌ Error during signing (required in prod)${NC}"
                     exit 1
                 fi
             fi
@@ -283,20 +283,20 @@ else
     fi
 fi
 
-# Vérifier que la signature a été créée
+# Check that signature was created
 if [ ! -f "$SIGNATURE_FILE" ]; then
     if [ "$ENV" = "dev" ]; then
-        echo -e "${YELLOW}⚠️  Pas de signature, utilisation d'une signature de test${NC}"
+        echo -e "${YELLOW}⚠️  No signature, using test signature${NC}"
         SIGNATURE="test-signature-placeholder"
     else
-        echo -e "${RED}❌ Fichier de signature non créé${NC}"
+        echo -e "${RED}❌ Signature file not created${NC}"
         exit 1
     fi
 else
-    echo -e "${GREEN}✅ Bundle signé: ${SIGNATURE_FILE}${NC}"
+    echo -e "${GREEN}✅ Bundle signed: ${SIGNATURE_FILE}${NC}"
     
-    # 4. Lire la signature en base64
-    # Compatible macOS et Linux
+    # 4. Read signature in base64
+    # Compatible macOS and Linux
     if [[ "$OSTYPE" == "darwin"* ]]; then
         SIGNATURE=$(base64 -i "$SIGNATURE_FILE" | tr -d '\n')
     else
@@ -304,24 +304,24 @@ else
     fi
     if [ -z "$SIGNATURE" ]; then
         if [ "$ENV" = "dev" ]; then
-            echo -e "${YELLOW}⚠️  Signature vide, utilisation d'une signature de test${NC}"
+            echo -e "${YELLOW}⚠️  Empty signature, using test signature${NC}"
             SIGNATURE="test-signature-placeholder"
         else
-            echo -e "${RED}❌ Impossible de lire la signature${NC}"
+            echo -e "${RED}❌ Unable to read signature${NC}"
             exit 1
         fi
     fi
 fi
 
-# 5. Générer le JSON de métadonnées
+# 5. Generate metadata JSON
 echo ""
 echo -e "${BLUE}📄 Step 3: Generating update metadata...${NC}"
 
-# Créer le répertoire pour le JSON
+# Create directory for JSON
 JSON_DIR="$OUTPUT_DIR/$PLATFORM/$VERSION"
 mkdir -p "$JSON_DIR"
 
-# Nom du fichier selon la plateforme
+# File name according to platform
 if [[ "$PLATFORM" == darwin-* ]]; then
     FILE_NAME="reachy-mini-control_${VERSION}_${PLATFORM}.app.tar.gz"
 elif [[ "$PLATFORM" == windows-* ]]; then
@@ -330,20 +330,20 @@ elif [[ "$PLATFORM" == linux-* ]]; then
     FILE_NAME="reachy-mini-control_${VERSION}_${PLATFORM}.AppImage"
 fi
 
-# URL du fichier (dev = localhost, prod = à configurer)
+# File URL (dev = localhost, prod = to be configured)
 if [ "$ENV" = "dev" ]; then
     FILE_URL="http://localhost:8080/${FILE_NAME}"
 else
-    # Pour prod, utiliser une variable d'environnement ou une valeur par défaut
+    # For prod, use environment variable or default value
     if [ -n "$RELEASE_URL_BASE" ]; then
         FILE_URL="${RELEASE_URL_BASE}/${FILE_NAME}"
     else
         FILE_URL="https://releases.example.com/${FILE_NAME}"
-        echo -e "${YELLOW}⚠️  URL de production à configurer via RELEASE_URL_BASE ou dans le script${NC}"
+        echo -e "${YELLOW}⚠️  Production URL to be configured via RELEASE_URL_BASE or in script${NC}"
     fi
 fi
 
-# Générer le JSON
+# Generate JSON
 UPDATE_JSON="$JSON_DIR/update.json"
 cat > "$UPDATE_JSON" <<EOF
 {
@@ -359,9 +359,9 @@ cat > "$UPDATE_JSON" <<EOF
 }
 EOF
 
-echo -e "${GREEN}✅ Metadata créée: ${UPDATE_JSON}${NC}"
+echo -e "${GREEN}✅ Metadata created: ${UPDATE_JSON}${NC}"
 
-# Résumé
+# Summary
 echo ""
 echo -e "${GREEN}====================================${NC}"
 echo -e "${GREEN}✅ Update build completed!${NC}"

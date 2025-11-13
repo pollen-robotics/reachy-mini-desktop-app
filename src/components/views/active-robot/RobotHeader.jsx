@@ -48,7 +48,7 @@ export default function RobotHeader({ isOn, usbPortName, daemonVersion, darkMode
         </Typography>
       </Box>
 
-      {/* USB Port + Power Tag */}
+      {/* Power Tag + USB Port */}
       <Box
         sx={{
           display: 'flex',
@@ -56,24 +56,6 @@ export default function RobotHeader({ isOn, usbPortName, daemonVersion, darkMode
           gap: 0.75,
         }}
       >
-        
-        {usbPortName && (
-          <Chip
-            label={usbPortName.split('/').pop()}
-            size="small"
-            sx={{
-              height: 20,
-              fontSize: 9,
-              fontWeight: 600,
-              bgcolor: darkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)',
-              color: darkMode ? '#888' : '#86868b',
-              border: darkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.06)',
-              fontFamily: 'SF Mono, Monaco, Menlo, monospace',
-              '& .MuiChip-label': { px: 1.25 },
-            }}
-          />
-        )}
-        
         {/* Tag Power status (si control_mode === enabled) */}
         {isOn === true && (
           <Box
@@ -107,6 +89,23 @@ export default function RobotHeader({ isOn, usbPortName, daemonVersion, darkMode
               ON
             </Typography>
           </Box>
+        )}
+        
+        {usbPortName && (
+          <Chip
+            label={usbPortName.split('/').pop()}
+            size="small"
+            sx={{
+              height: 20,
+              fontSize: 9,
+              fontWeight: 600,
+              bgcolor: darkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)',
+              color: darkMode ? '#888' : '#86868b',
+              border: darkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.06)',
+              fontFamily: 'SF Mono, Monaco, Menlo, monospace',
+              '& .MuiChip-label': { px: 1.25 },
+            }}
+          />
         )}
       </Box>
     </Box>

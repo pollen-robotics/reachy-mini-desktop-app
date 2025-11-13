@@ -16,7 +16,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 
 /**
- * Composant de dialogue pour afficher et gérer les mises à jour disponibles
+ * Dialog component to display and manage available updates
  */
 export default function UpdateDialog({
   open,
@@ -32,7 +32,7 @@ export default function UpdateDialog({
   const formatDate = (dateString) => {
     try {
       const date = new Date(dateString);
-      return date.toLocaleDateString('fr-FR', {
+      return date.toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
@@ -53,7 +53,7 @@ export default function UpdateDialog({
       <DialogTitle>
         <Box display="flex" alignItems="center" gap={1}>
           <DownloadIcon color="primary" />
-          <Typography variant="h6">Mise à jour disponible</Typography>
+          <Typography variant="h6">Update available</Typography>
           <Chip
             label={`v${update.version}`}
             color="primary"
@@ -71,13 +71,13 @@ export default function UpdateDialog({
         )}
 
         <Typography variant="body2" color="text.secondary" gutterBottom>
-          Publiée le {formatDate(update.date)}
+          Published on {formatDate(update.date)}
         </Typography>
 
         {update.body && (
           <Box sx={{ mt: 2, mb: 2 }}>
             <Typography variant="subtitle2" gutterBottom>
-              Notes de version:
+              Release notes:
             </Typography>
             <Typography
               variant="body2"
@@ -98,7 +98,7 @@ export default function UpdateDialog({
         {isDownloading && (
           <Box sx={{ mt: 2 }}>
             <Typography variant="body2" color="text.secondary" gutterBottom>
-              Téléchargement en cours...
+              Downloading...
             </Typography>
             <LinearProgress
               variant="determinate"
@@ -113,13 +113,13 @@ export default function UpdateDialog({
 
         {!isDownloading && !error && (
           <Alert severity="info" sx={{ mt: 2 }}>
-            L'application sera redémarrée automatiquement après l'installation.
+            The application will restart automatically after installation.
           </Alert>
         )}
 
-        {error && error.includes('réseau') && (
+        {error && error.includes('network') && (
           <Alert severity="warning" sx={{ mt: 2 }}>
-            Erreur réseau détectée. Le système réessayera automatiquement.
+            Network error detected. The system will retry automatically.
           </Alert>
         )}
       </DialogContent>
@@ -127,7 +127,7 @@ export default function UpdateDialog({
       <DialogActions>
         {!isDownloading && (
           <Button onClick={onDismiss} startIcon={<CloseIcon />}>
-            Plus tard
+            Later
           </Button>
         )}
         <Button
@@ -136,7 +136,7 @@ export default function UpdateDialog({
           disabled={isDownloading || !!error}
           startIcon={isDownloading ? <DownloadIcon /> : <CheckCircleIcon />}
         >
-          {isDownloading ? 'Installation...' : 'Installer maintenant'}
+          {isDownloading ? 'Installing...' : 'Install now'}
         </Button>
       </DialogActions>
     </Dialog>

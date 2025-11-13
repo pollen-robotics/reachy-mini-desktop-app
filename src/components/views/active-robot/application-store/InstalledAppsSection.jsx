@@ -64,8 +64,10 @@ export default function InstalledAppsSection({
             px: 2,
             textAlign: 'center',
             borderRadius: '12px',
-            bgcolor: 'rgba(0, 0, 0, 0.02)',
-            border: '1px dashed rgba(0, 0, 0, 0.08)',
+            bgcolor: darkMode ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.02)',
+            border: darkMode 
+              ? '1px dashed rgba(255, 255, 255, 0.25)' 
+              : '1px dashed rgba(0, 0, 0, 0.2)',
           }}
         >
           <Typography

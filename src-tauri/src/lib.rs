@@ -169,7 +169,7 @@ fn spawn_and_monitor_sidecar(app_handle: tauri::AppHandle, state: &State<DaemonS
 
 #[tauri::command]
 fn start_daemon(app_handle: tauri::AppHandle, state: State<DaemonState>) -> Result<String, String> {
-    // 1. ⚡ Cleanup agressif de tous les daemons existants (même zombies)
+    // 1. ⚡ Aggressive cleanup of all existing daemons (including zombies)
     add_log(&state, "🧹 Cleaning up existing daemons...".to_string());
     kill_daemon(&state);
     

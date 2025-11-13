@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import useAppStore from '../store/useAppStore';
 import { DAEMON_CONFIG, fetchWithTimeout, buildApiUrl } from '../config/daemon';
+import { fetchHuggingFaceAppList } from '../components/views/active-robot/application-store/huggingFaceApi';
 
 /**
  * Hook pour gérer les applications (liste, installation, lancement)
@@ -21,47 +22,98 @@ export function useApps(isActive) {
   
   /**
    * Fetch toutes les apps disponibles
+   * Combine les apps du dataset Hugging Face avec les apps installées du daemon
    */
   const fetchAvailableApps = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await fetchWithTimeout(
-        buildApiUrl('/api/apps/list-available'),
-        {},
-        DAEMON_CONFIG.TIMEOUTS.APPS_LIST,
-        { silent: true } // ⚡ Polling silencieux
-      );
       
-      if (!response.ok) {
-        throw new Error(`Failed to fetch apps: ${response.status}`);
-      }
-      
-      const apps = await response.json();
-      setAvailableApps(apps);
-      
-      // Séparer les apps installées et enrichir avec les métadonnées des spaces HF
-      const installed = apps.filter(app => app.source_kind === 'installed');
-      
-      // Enrichir les apps installées avec les métadonnées des apps HF correspondantes
-      const enrichedInstalled = installed.map(installedApp => {
-        const hfApp = apps.find(app => 
-          app.name === installedApp.name && app.source_kind === 'hf_space'
+      // 1. Fetch les apps du daemon (source principale - contient toutes les apps disponibles)
+      let daemonApps = [];
+      try {
+        const response = await fetchWithTimeout(
+          buildApiUrl('/api/apps/list-available'),
+          {},
+          DAEMON_CONFIG.TIMEOUTS.APPS_LIST,
+          { silent: true } // ⚡ Polling silencieux
         );
         
-        // Fusionner : garder les infos de l'app installée, enrichir avec extra de HF
-        return {
-          ...installedApp,
-          extra: hfApp?.extra || installedApp.extra,
-          description: installedApp.description || hfApp?.description,
-          url: installedApp.url || hfApp?.url,
-        };
+        if (response.ok) {
+          daemonApps = await response.json();
+          console.log('📦 Fetched', daemonApps.length, 'apps from daemon (source principale)');
+        } else {
+          console.warn('⚠️ Failed to fetch apps from daemon:', response.status);
+        }
+      } catch (daemonErr) {
+        console.warn('⚠️ Daemon not available:', daemonErr.message);
+      }
+      
+      // 2. Fetch les métadonnées depuis Hugging Face dataset (pour enrichir avec likes, downloads, etc.)
+      let hfApps = [];
+      try {
+        hfApps = await fetchHuggingFaceAppList();
+        console.log('📦 Fetched', hfApps.length, 'apps metadata from Hugging Face dataset');
+      } catch (hfErr) {
+        console.warn('⚠️ Failed to fetch Hugging Face metadata:', hfErr.message);
+      }
+      
+      // 3. Créer une map des métadonnées HF pour lookup rapide
+      const hfMetadataMap = new Map();
+      hfApps.forEach(hfApp => {
+        // Index par name et id pour faciliter le matching
+        if (hfApp.name) hfMetadataMap.set(hfApp.name, hfApp);
+        if (hfApp.id) hfMetadataMap.set(hfApp.id, hfApp);
       });
       
-      setInstalledApps(enrichedInstalled);
+      // 4. Enrichir les apps du daemon avec les métadonnées HF
+      const enrichedApps = daemonApps.map(daemonApp => {
+        // Chercher les métadonnées HF correspondantes
+        const hfMetadata = hfMetadataMap.get(daemonApp.name) || 
+                          hfMetadataMap.get(daemonApp.id) ||
+                          (daemonApp.name ? hfMetadataMap.get(daemonApp.name.toLowerCase()) : null);
+        
+        // Construire l'app enrichie
+        const enrichedApp = {
+          name: daemonApp.name,
+          id: hfMetadata?.id || daemonApp.name,
+          description: daemonApp.description || hfMetadata?.description || '',
+          url: daemonApp.url || (hfMetadata?.id 
+            ? `https://huggingface.co/spaces/pollen-robotics/${hfMetadata.id}` 
+            : null),
+          source_kind: daemonApp.source_kind,
+          extra: {
+            ...daemonApp.extra,
+            ...(hfMetadata && {
+              // Enrichir avec les métadonnées HF si disponibles
+              cardData: {
+                emoji: hfMetadata.icon || '📦',
+              },
+              likes: hfMetadata.likes || 0,
+              downloads: hfMetadata.downloads || 0,
+              lastModified: hfMetadata.lastModified || new Date().toISOString(),
+            }),
+          },
+          // Données du daemon (version, path si installée)
+          ...(daemonApp.version && { version: daemonApp.version }),
+          ...(daemonApp.path && { path: daemonApp.path }),
+        };
+        
+        return enrichedApp;
+      });
       
-      console.log('📦 Apps fetched:', apps.length, 'available,', enrichedInstalled.length, 'installed');
+      // 5. Séparer les apps installées
+      const installed = enrichedApps.filter(app => app.source_kind === 'installed');
+      
+      setAvailableApps(enrichedApps);
+      setInstalledApps(installed);
+      
+      console.log('📦 Apps processed:', enrichedApps.length, 'total,', installed.length, 'installed');
+      console.log('📦 Available apps (not installed):', enrichedApps.filter(app => app.source_kind !== 'installed').length);
+      if (enrichedApps.length > 0) {
+        console.log('📦 Sample app:', enrichedApps.find(app => app.source_kind !== 'installed') || enrichedApps[0]);
+      }
       setIsLoading(false);
-      return apps;
+      return enrichedApps;
     } catch (err) {
       console.error('❌ Failed to fetch apps:', err);
       setError(err.message);
