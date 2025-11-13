@@ -1,11 +1,13 @@
 use std::sync::Mutex;
 use std::collections::VecDeque;
-use tauri::{State, Manager, Emitter, RunEvent};
+use tauri::{State, Manager, Emitter};
 use tauri_plugin_shell::{
     process::{CommandChild, CommandEvent},
     ShellExt,
 };
 use serialport;
+
+#[cfg(not(windows))]
 use signal_hook::{consts::TERM_SIGNALS, iterator::Signals};
 
 struct DaemonState {
@@ -221,15 +223,18 @@ fn check_usb_robot() -> Result<Option<String>, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Setup signal handler for brutal kill (SIGTERM, SIGINT, etc.)
-    std::thread::spawn(|| {
-        let mut signals = Signals::new(TERM_SIGNALS).expect("Failed to register signal handlers");
-        for sig in signals.forever() {
-            eprintln!("🔴 Signal {:?} received - cleaning up daemon", sig);
-            cleanup_system_daemons();
-            std::process::exit(0);
-        }
-    });
+    // Setup signal handler for brutal kill (SIGTERM, SIGINT, etc.) - Unix only
+    #[cfg(not(windows))]
+    {
+        std::thread::spawn(|| {
+            let mut signals = Signals::new(TERM_SIGNALS).expect("Failed to register signal handlers");
+            for sig in signals.forever() {
+                eprintln!("🔴 Signal {:?} received - cleaning up daemon", sig);
+                cleanup_system_daemons();
+                std::process::exit(0);
+            }
+        });
+    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
