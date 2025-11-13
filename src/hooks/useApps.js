@@ -83,6 +83,12 @@ export function useApps(isActive) {
       );
       
       if (!response.ok) {
+        // Ne pas throw pour les erreurs de permission pendant le polling
+        // On continue à poller, le job peut reprendre après acceptation
+        if (response.status === 403 || response.status === 401) {
+          console.warn(`⚠️ Permission issue while polling job ${jobId}, continuing...`);
+          return null; // Retourner null pour continuer le polling
+        }
         throw new Error(`Failed to fetch job status: ${response.status}`);
       }
       
@@ -90,6 +96,12 @@ export function useApps(isActive) {
       console.log(`📊 Job ${jobId} status:`, jobStatus);
       return jobStatus;
     } catch (err) {
+      // Gérer gracieusement les timeouts de popup système pendant le polling
+      if (err.name === 'SystemPopupTimeoutError' || err.name === 'PermissionDeniedError') {
+        console.warn(`⚠️ System popup detected while polling job ${jobId}, continuing...`);
+        return null; // Continuer le polling, la popup peut être acceptée après
+      }
+      
       console.error('❌ Failed to fetch job status:', err);
       return null;
     }
@@ -292,6 +304,12 @@ export function useApps(isActive) {
       );
       
       if (!response.ok) {
+        // Vérifier si c'est une erreur de permission
+        if (response.status === 403 || response.status === 401) {
+          const permissionError = new Error('Permission denied: System may have blocked the installation');
+          permissionError.name = 'PermissionDeniedError';
+          throw permissionError;
+        }
         throw new Error(`Installation failed: ${response.status}`);
       }
       
@@ -322,6 +340,24 @@ export function useApps(isActive) {
       return jobId;
     } catch (err) {
       console.error('❌ Installation error:', err);
+      
+      // Gestion spécifique des erreurs de permission
+      if (err.name === 'PermissionDeniedError' || err.name === 'SystemPopupTimeoutError') {
+        const userMessage = err.name === 'PermissionDeniedError'
+          ? `Permission denied: Please accept system permissions to install ${appInfo.name}`
+          : `System permission popup detected: Please accept permissions to continue installing ${appInfo.name}`;
+        
+        addFrontendLog(`🔒 ${userMessage}`);
+        setError(userMessage);
+        
+        // Créer une erreur avec un message utilisateur clair
+        const userFriendlyError = new Error(userMessage);
+        userFriendlyError.name = err.name;
+        userFriendlyError.userFriendly = true;
+        throw userFriendlyError;
+      }
+      
+      // Erreur standard
       addFrontendLog(`❌ Failed to start install ${appInfo.name}: ${err.message}`);
       setError(err.message);
       throw err;
@@ -343,6 +379,12 @@ export function useApps(isActive) {
       );
       
       if (!response.ok) {
+        // Vérifier si c'est une erreur de permission
+        if (response.status === 403 || response.status === 401) {
+          const permissionError = new Error('Permission denied: System may have blocked the removal');
+          permissionError.name = 'PermissionDeniedError';
+          throw permissionError;
+        }
         throw new Error(`Removal failed: ${response.status}`);
       }
       
@@ -372,6 +414,22 @@ export function useApps(isActive) {
       return jobId;
     } catch (err) {
       console.error('❌ Removal error:', err);
+      
+      // Gestion spécifique des erreurs de permission
+      if (err.name === 'PermissionDeniedError' || err.name === 'SystemPopupTimeoutError') {
+        const userMessage = err.name === 'PermissionDeniedError'
+          ? `Permission denied: Please accept system permissions to remove ${appName}`
+          : `System permission popup detected: Please accept permissions to continue removing ${appName}`;
+        
+        addFrontendLog(`🔒 ${userMessage}`);
+        setError(userMessage);
+        
+        // Créer une erreur avec un message utilisateur clair
+        const userFriendlyError = new Error(userMessage);
+        userFriendlyError.name = err.name;
+        userFriendlyError.userFriendly = true;
+        throw userFriendlyError;
+      }
       addFrontendLog(`❌ Failed to start uninstall ${appName}: ${err.message}`);
       setError(err.message);
       throw err;

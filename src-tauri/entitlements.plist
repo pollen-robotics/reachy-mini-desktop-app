@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Autoriser les connexions réseau entrantes (pour le daemon sur port 8000) -->
+	<key>com.apple.security.network.server</key>
+	<true/>
+	
+	<!-- Autoriser les connexions réseau sortantes -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	
+	<!-- Autoriser l'accès au système de fichiers (pour installation d'apps) -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	
+	<key>com.apple.security.files.downloads.read-write</key>
+	<true/>
+	
+	<!-- Autoriser l'exécution de processus enfants (sidecar Python) -->
+	<!-- Note: Ces permissions permettent au sidecar Python de s'exécuter -->
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+	
+	<!-- Autoriser l'exécution de scripts Python -->
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+	
+	<!-- Désactiver le sandbox pour permettre l'exécution du sidecar -->
+	<!-- Important: Nécessaire pour que le daemon Python embarqué fonctionne -->
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+	
+	<!-- Autoriser l'accès aux ports série (USB) -->
+	<key>com.apple.security.device.serial</key>
+	<true/>
+	
+	<!-- Autoriser l'accès USB -->
+	<key>com.apple.security.device.usb</key>
+	<true/>
+</dict>
+</plist>
+

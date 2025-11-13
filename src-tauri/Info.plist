@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Permissions réseau pour le daemon Python -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	
+	<!-- Description pour l'utilisation du réseau local (évite les popups) -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>L'application doit accepter des connexions réseau locales pour communiquer avec le daemon du robot Reachy Mini sur le port 8000.</string>
+	
+	<!-- Désactiver la demande de permission réseau au démarrage -->
+	<!-- Les permissions réseau seront demandées uniquement quand nécessaire -->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+		<string>_https._tcp</string>
+	</array>
+	
+	<!-- Description pour l'accès au système de fichiers -->
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>L'application doit accéder au système de fichiers pour installer et gérer les applications du robot Reachy Mini.</string>
+	
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>L'application doit accéder au dossier Téléchargements pour télécharger et installer les applications du robot.</string>
+	
+	<!-- Autoriser l'exécution de processus enfants (sidecar Python) -->
+	<key>LSEnvironment</key>
+	<dict>
+		<key>PYTHONUNBUFFERED</key>
+		<string>1</string>
+	</dict>
+	
+	<!-- Version système minimale -->
+	<key>LSMinimumSystemVersion</key>
+	<string>10.15</string>
+	
+	<!-- Catégorie de l'application -->
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	
+	<!-- Autoriser l'exécution de processus enfants sans sandbox strict -->
+	<!-- Important pour le sidecar Python embarqué -->
+	<key>LSRequiresNativeExecution</key>
+	<false/>
+</dict>
+</plist>
+

@@ -8,6 +8,7 @@ import { useUsbDetection } from '../hooks/useUsbDetection';
 import { useRobotCommands } from '../hooks/useRobotCommands';
 import { useLogs } from '../hooks/useLogs';
 import { useWindowResize } from '../hooks/useWindowResize';
+import { useUpdater } from '../hooks/useUpdater';
 import { DAEMON_CONFIG, setAppStoreInstance } from '../config/daemon';
 
 function App() {
@@ -20,6 +21,22 @@ function App() {
   const { isUsbConnected, usbPortName, checkUsbRobot } = useUsbDetection();
   const { sendCommand, playRecordedMove, isCommandRunning } = useRobotCommands();
   const { logs, fetchLogs } = useLogs();
+  
+  // 🔄 Système de mise à jour automatique
+  const {
+    updateAvailable,
+    isChecking,
+    isDownloading,
+    downloadProgress,
+    error: updateError,
+    checkForUpdates,
+    installUpdate,
+    dismissUpdate,
+  } = useUpdater({
+    autoCheck: true,
+    checkInterval: 3600000, // Vérifier toutes les heures
+    silent: false,
+  });
   
   // 🏥 Health check centralisé (UN SEUL endroit pour crash detection)
   useDaemonHealthCheck();
@@ -144,7 +161,21 @@ function App() {
     if (hardwareError) {
       setHardwareError(null);
     }
-    return <ReadyToStartView startDaemon={startDaemon} isStarting={isStarting} usbPortName={usbPortName} />;
+    return (
+      <ReadyToStartView 
+        startDaemon={startDaemon} 
+        isStarting={isStarting} 
+        usbPortName={usbPortName}
+        updateAvailable={updateAvailable}
+        isChecking={isChecking}
+        isDownloading={isDownloading}
+        downloadProgress={downloadProgress}
+        updateError={updateError}
+        onInstallUpdate={installUpdate}
+        onDismissUpdate={dismissUpdate}
+        onCheckUpdates={checkForUpdates}
+      />
+    );
   }
 
   // ⚠️ Si erreur hardware détectée, rester bloqué sur StartingView
@@ -154,19 +185,21 @@ function App() {
 
   // Full control view: Robot connected and daemon active
   return (
-    <ActiveRobotView 
-      isActive={isActive}
-      isStarting={isStarting}
-      isStopping={isStopping}
-      stopDaemon={stopDaemon}
-      sendCommand={sendCommand}
-      playRecordedMove={playRecordedMove}
-      isCommandRunning={isCommandRunning}
-      logs={logs}
-      daemonVersion={daemonVersion}
-      usbPortName={usbPortName}
-      onAppsReady={handleAppsReady}
-    />
+    <>
+      <ActiveRobotView 
+        isActive={isActive}
+        isStarting={isStarting}
+        isStopping={isStopping}
+        stopDaemon={stopDaemon}
+        sendCommand={sendCommand}
+        playRecordedMove={playRecordedMove}
+        isCommandRunning={isCommandRunning}
+        logs={logs}
+        daemonVersion={daemonVersion}
+        usbPortName={usbPortName}
+        onAppsReady={handleAppsReady}
+      />
+    </>
   );
 }
 

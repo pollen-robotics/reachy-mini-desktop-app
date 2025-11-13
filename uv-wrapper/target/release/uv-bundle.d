@@ -1,0 +1,1 @@
+/Users/thibaudfrere/Documents/work-projects/huggingface/reachy-mini/standalone-app/tauri-app/uv-wrapper/target/release/uv-bundle: /Users/thibaudfrere/Documents/work-projects/huggingface/reachy-mini/standalone-app/tauri-app/uv-wrapper/src/bin/uv-bundle.rs /Users/thibaudfrere/Documents/work-projects/huggingface/reachy-mini/standalone-app/tauri-app/uv-wrapper/src/lib.rs

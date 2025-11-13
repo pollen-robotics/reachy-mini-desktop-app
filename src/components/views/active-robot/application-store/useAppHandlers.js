@@ -230,8 +230,21 @@ export function useAppHandlers({
       installJobType.current = null;
       setInstallResult(null);
       unlockInstall();
-      if (showToast) {
-        showToast(`❌ Failed to start install ${appInfo.name}`, 'error');
+      
+      // Message utilisateur spécifique pour les erreurs de permission
+      if (err.name === 'PermissionDeniedError' || err.name === 'SystemPopupTimeoutError') {
+        const message = err.userFriendly 
+          ? err.message 
+          : `🔒 ${appInfo.name}: System permission required. Please accept the permission dialog if it appears.`;
+        
+        if (showToast) {
+          showToast(message, 'warning'); // Utiliser 'warning' au lieu de 'error' pour les permissions
+        }
+      } else {
+        // Erreur standard
+        if (showToast) {
+          showToast(`❌ Failed to start install ${appInfo.name}: ${err.message}`, 'error');
+        }
       }
     }
   };
@@ -256,8 +269,20 @@ export function useAppHandlers({
       installJobType.current = null;
       setInstallResult(null);
       unlockInstall();
-      if (showToast) {
-        showToast(`❌ Failed to start uninstall ${appName}`, 'error');
+      
+      // Message utilisateur spécifique pour les erreurs de permission
+      if (err.name === 'PermissionDeniedError' || err.name === 'SystemPopupTimeoutError') {
+        const message = err.userFriendly 
+          ? err.message 
+          : `🔒 ${appName}: System permission required. Please accept the permission dialog if it appears.`;
+        
+        if (showToast) {
+          showToast(message, 'warning');
+        }
+      } else {
+        if (showToast) {
+          showToast(`❌ Failed to start uninstall ${appName}: ${err.message}`, 'error');
+        }
       }
     }
   };

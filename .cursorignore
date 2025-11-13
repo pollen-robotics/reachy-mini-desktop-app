@@ -1,0 +1,46 @@
+# Clés de signature Tauri - NE JAMAIS EXPOSER À L'IA
+# Ces fichiers contiennent des secrets cryptographiques sensibles
+
+# Clés de signature (privées et publiques)
+**/*.key
+**/*.key.pub
+**/*.key.pem
+**/*.key.priv
+**/*private*.key
+**/*secret*.key
+**/keys/
+**/keys/**
+**/.tauri/
+**/.tauri/**
+
+# Fichiers de signature générés
+**/*.sig
+**/*.signature
+**/*.sign
+
+# Fichiers de configuration contenant des clés
+**/config/secrets.*
+**/config/keys.*
+**/*.secrets.*
+**/*.env.local
+**/*.env.production
+**/*.env.*.local
+
+# Dossiers de test contenant des signatures
+**/test-updates/
+**/test-updates/**
+**/mock-updates/
+**/mock-updates/**
+
+# Fichiers de build contenant des signatures
+**/target/release/bundle/**/*.sig
+**/target/release/bundle/**/*.signature
+
+# Fichiers temporaires de signature
+**/tmp/**/*.sig
+**/tmp/**/*.key
+
+# Documentation contenant des exemples de clés réelles (si jamais)
+**/docs/secrets.*
+**/docs/keys.*
+

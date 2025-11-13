@@ -12,11 +12,12 @@ export const DAEMON_CONFIG = {
     VERSION: 3000,          // Info daemon (endpoint léger)
     EMOTIONS_CHECK: 3000,   // Vérification librairie émotions
     APPS_LIST: 5000,        // Liste des apps disponibles
-    APP_INSTALL: 30000,     // Lancer une installation
-    APP_REMOVE: 60000,      // Désinstaller une app
+    APP_INSTALL: 60000,     // Lancer une installation (augmenté pour popups système)
+    APP_REMOVE: 90000,      // Désinstaller une app (augmenté pour popups système)
     APP_START: 30000,       // Démarrer une app
     APP_STOP: 30000,        // Arrêter une app
     JOB_STATUS: 120000,     // Polling job status (installations longues)
+    PERMISSION_POPUP_WAIT: 30000, // Attente max pour popup système (macOS/Windows)
   },
   
   // Polling intervals (en millisecondes)
@@ -84,6 +85,45 @@ export function setAppStoreInstance(store) {
  * @param {boolean} logOptions.silent - Ne pas logger cet appel (pour polling)
  * @param {string} logOptions.label - Label custom pour le log
  */
+/**
+ * Détecte si une erreur est liée à une permission refusée (cross-platform)
+ */
+function isPermissionDeniedError(error) {
+  if (!error) return false;
+  
+  const errorMsg = error.message?.toLowerCase() || '';
+  const errorName = error.name?.toLowerCase() || '';
+  
+  // Patterns communs pour permissions refusées
+  const permissionPatterns = [
+    'permission denied',
+    'access denied',
+    'eacces', // macOS/Linux permission error code
+    'eperm',  // Permission error code
+    'unauthorized',
+    'forbidden',
+    'user denied',
+    'user cancelled',
+    'operation not permitted',
+  ];
+  
+  return permissionPatterns.some(pattern => 
+    errorMsg.includes(pattern) || errorName.includes(pattern)
+  );
+}
+
+/**
+ * Détecte si un timeout peut être dû à une popup système
+ */
+function isLikelySystemPopupTimeout(error, duration, timeoutMs) {
+  if (error?.name !== 'TimeoutError') return false;
+  
+  // Si le timeout arrive très proche de la limite, c'est probablement une popup
+  // qui a bloqué l'exécution pendant presque tout le timeout
+  const timeoutRatio = duration / timeoutMs;
+  return timeoutRatio > 0.9; // 90% du timeout écoulé
+}
+
 export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions = {}) {
   const { silent = false, label = null } = logOptions;
   
@@ -104,11 +144,16 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions 
   }
   
   try {
+    // Créer un AbortController pour pouvoir annuler manuellement si besoin
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    
     const response = await fetch(url, {
       ...options,
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: controller.signal,
     });
     
+    clearTimeout(timeoutId);
     const duration = Date.now() - startTime;
     
     // Log résultat si pas silencieux
@@ -125,10 +170,41 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions 
   } catch (error) {
     const duration = Date.now() - startTime;
     
-    // Log erreur si pas silencieux
+    // Détecter les erreurs de permission
+    if (isPermissionDeniedError(error)) {
+      const permissionError = new Error('Permission denied by user or system');
+      permissionError.name = 'PermissionDeniedError';
+      permissionError.originalError = error;
+      
+      if (!shouldBeSilent && appStoreInstance) {
+        const logLabel = label || `${method} ${baseEndpoint}`;
+        appStoreInstance.getState().addFrontendLog(`🔒 ${logLabel} (permission denied)`);
+      }
+      
+      throw permissionError;
+    }
+    
+    // Détecter les timeouts potentiellement dus à des popups système
+    if (isLikelySystemPopupTimeout(error, duration, timeoutMs)) {
+      const popupError = new Error('Request timed out - system permission popup may be waiting');
+      popupError.name = 'SystemPopupTimeoutError';
+      popupError.originalError = error;
+      popupError.duration = duration;
+      
+      if (!shouldBeSilent && appStoreInstance) {
+        const logLabel = label || `${method} ${baseEndpoint}`;
+        appStoreInstance.getState().addFrontendLog(`⏱️ ${logLabel} (timeout - check system permissions)`);
+      }
+      
+      throw popupError;
+    }
+    
+    // Log erreur standard si pas silencieux
     if (!shouldBeSilent && appStoreInstance) {
       const logLabel = label || `${method} ${baseEndpoint}`;
-      const errorMsg = error.name === 'TimeoutError' ? 'timeout' : error.message;
+      const errorMsg = error.name === 'AbortError' || error.name === 'TimeoutError' 
+        ? 'timeout' 
+        : error.message;
       appStoreInstance.getState().addFrontendLog(`✗ ${logLabel} (${errorMsg})`);
     }
     

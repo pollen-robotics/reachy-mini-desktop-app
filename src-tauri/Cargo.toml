@@ -2,7 +2,7 @@
 name = "reachy-mini-control"
 version = "0.1.0"
 description = "Reachy Mini Control Application"
-authors = ["Thibaud Frere"]
+authors = ["Reachy Mini Contributors"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -22,6 +22,8 @@ tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-opener = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-positioner = "2"
+tauri-plugin-process = "2"
+tauri-plugin-updater = "2.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serialport = "4.2"

@@ -22,3 +22,20 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Clés de signature Tauri - SECRETS CRITIQUES
+# ⚠️ NE JAMAIS COMMITER CES FICHIERS ⚠️
+*.key
+*.key.pub
+*.key.pem
+*.key.priv
+*private*.key
+*secret*.key
+keys/
+.tauri/
+*.sig
+*.signature
+*.sign
+test-updates/
+mock-updates/
+releases/
