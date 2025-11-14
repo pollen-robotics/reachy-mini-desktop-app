@@ -199,6 +199,21 @@ jobs:
             sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json && rm -f src-tauri/tauri.conf.json.bak
           fi
 
+      - name: Setup App Store Connect API Key (macOS only)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.APPLE_API_KEY_CONTENT }}" ]; then
+            echo "📦 Configuration de la clé API App Store Connect..."
+            mkdir -p ~/.appstoreconnect
+            echo "${{ secrets.APPLE_API_KEY_CONTENT }}" > ~/.appstoreconnect/private_key.p8
+            chmod 600 ~/.appstoreconnect/private_key.p8
+            echo "APPLE_API_KEY_PATH=$HOME/.appstoreconnect/private_key.p8" >> $GITHUB_ENV
+            echo "✅ Clé API configurée"
+          else
+            echo "⚠️  APPLE_API_KEY_CONTENT non configuré - la notarisation sera ignorée"
+          fi
+
       - name: Build and Release with tauri-action
         uses: tauri-apps/tauri-action@v0
         env:
@@ -207,6 +222,10 @@ jobs:
           # tauri-action l'utilisera via APPLE_SIGNING_IDENTITY
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Notarisation avec clé API App Store Connect (méthode recommandée)
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ env.APPLE_API_KEY_PATH }}
         with:
           tagName: v${{ steps.version.outputs.version }}
           releaseName: 'Reachy Mini Control v${{ steps.version.outputs.version }}'
