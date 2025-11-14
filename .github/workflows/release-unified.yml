@@ -65,72 +65,60 @@ jobs:
         if: matrix.os == 'macos-latest'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          if [ -z "$APPLE_CERTIFICATE" ] || [ -z "$APPLE_SIGNING_IDENTITY" ]; then
-            echo "⚠️  Secrets Apple non configurés - le build ne sera pas signé"
-          else
-            echo "✅ Variables Apple configurées"
-            if [ -z "$APPLE_TEAM_ID" ]; then
-              APPLE_TEAM_ID=$(echo "$APPLE_SIGNING_IDENTITY" | sed -n 's/.*(\([A-Z0-9]\{10\}\)).*/\1/p')
-              export APPLE_TEAM_ID
-            fi
-            
-            # Importer le certificat dans le keychain pour que tauri-action puisse l'utiliser
-            echo "📦 Import du certificat dans le keychain..."
-            KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
-            KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
-            
-            # Créer un keychain temporaire
-            security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-            security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-            
-            # Décoder et importer le certificat
-            echo "$APPLE_CERTIFICATE" | base64 --decode > /tmp/certificate.pem
-            
-            # Essayer d'importer comme .p12 (si mot de passe fourni)
-            if [ -n "$APPLE_CERTIFICATE_PASSWORD" ]; then
-              security import /tmp/certificate.pem -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security || {
-                echo "⚠️  Import .p12 échoué, tentative avec .cer..."
-                security import /tmp/certificate.pem -k "$KEYCHAIN_PATH" -T /usr/bin/codesign -T /usr/bin/security || true
-              }
-            else
-              # Pour .cer, essayer d'importer directement
-              security import /tmp/certificate.pem -k "$KEYCHAIN_PATH" -T /usr/bin/codesign -T /usr/bin/security || {
-                echo "⚠️  Import direct échoué, tentative avec format DER..."
-                openssl x509 -inform PEM -in /tmp/certificate.pem -outform DER -out /tmp/certificate.der 2>/dev/null || true
-                security import /tmp/certificate.der -k "$KEYCHAIN_PATH" -T /usr/bin/codesign -T /usr/bin/security || true
-              }
-            fi
-            
-            # Configurer le keychain pour codesign
-            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" || true
-            
-            # Ajouter le keychain temporaire en PREMIER dans la liste de recherche (priorité)
-            EXISTING_KEYCHAINS=$(security list-keychains -d user | sed 's/^[[:space:]]*//' | tr '\n' ' ')
-            security list-keychains -d user -s "$KEYCHAIN_PATH" $EXISTING_KEYCHAINS
-            
-            # Vérifier que l'identité est disponible dans TOUS les keychains
-            echo "🔍 Identités disponibles dans tous les keychains:"
-            security find-identity -v -p codesigning || true
-            
-            # Vérifier spécifiquement dans notre keychain
-            echo "🔍 Identités dans le keychain temporaire:"
-            security find-identity -v -p codesigning "$KEYCHAIN_PATH" || true
-            
-            # Exporter les variables pour les étapes suivantes
-            echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
-            echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
-            
-            # Nettoyer
-            rm -f /tmp/certificate.pem /tmp/certificate.der
-            
-            echo "✅ Certificat importé dans le keychain temporaire"
-            echo "✅ Keychain ajouté à la liste de recherche"
+          if [ -z "$APPLE_CERTIFICATE" ] || [ -z "$APPLE_SIGNING_IDENTITY" ] || [ -z "$APPLE_CERTIFICATE_PASSWORD" ]; then
+            echo "❌ Secrets Apple non configurés - APPLE_CERTIFICATE, APPLE_SIGNING_IDENTITY et APPLE_CERTIFICATE_PASSWORD sont requis"
+            exit 1
           fi
+          
+          echo "✅ Variables Apple configurées"
+          if [ -z "$APPLE_TEAM_ID" ]; then
+            APPLE_TEAM_ID=$(echo "$APPLE_SIGNING_IDENTITY" | sed -n 's/.*(\([A-Z0-9]\{10\}\)).*/\1/p')
+            export APPLE_TEAM_ID
+          fi
+          
+          # Importer le certificat .p12 dans le keychain
+          echo "📦 Import du certificat .p12 dans le keychain..."
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          
+          # Créer un keychain temporaire
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          
+          # Décoder le base64 et sauvegarder comme .p12
+          echo "$APPLE_CERTIFICATE" | base64 --decode > /tmp/certificate.p12
+          security import /tmp/certificate.p12 -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security || {
+            echo "❌ Erreur lors de l'import du .p12"
+            exit 1
+          }
+          rm -f /tmp/certificate.p12
+          
+          # Configurer le keychain pour codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" || true
+          
+          # Ajouter le keychain temporaire en PREMIER dans la liste de recherche (priorité)
+          EXISTING_KEYCHAINS=$(security list-keychains -d user | sed 's/^[[:space:]]*//' | tr '\n' ' ')
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $EXISTING_KEYCHAINS
+          
+          # Vérifier que l'identité est disponible dans TOUS les keychains
+          echo "🔍 Identités disponibles dans tous les keychains:"
+          security find-identity -v -p codesigning || true
+          
+          # Vérifier spécifiquement dans notre keychain
+          echo "🔍 Identités dans le keychain temporaire:"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH" || true
+          
+          # Exporter les variables pour les étapes suivantes
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
+          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
+          
+          echo "✅ Certificat importé dans le keychain temporaire"
+          echo "✅ Keychain ajouté à la liste de recherche"
 
       - name: Setup Tauri Signing Key
         shell: bash
