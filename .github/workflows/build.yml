@@ -53,9 +53,11 @@ jobs:
           else
             echo "✅ Variables Apple configurées depuis GitHub Secrets"
             echo "APPLE_SIGNING_IDENTITY=${APPLE_SIGNING_IDENTITY}"
-            # APPLE_CERTIFICATE_PASSWORD peut être vide pour .cer
+            # APPLE_CERTIFICATE_PASSWORD peut être vide pour .cer (ou contenir juste un espace)
+            # Normaliser : traiter un espace comme vide
+            APPLE_CERTIFICATE_PASSWORD=$(echo "$APPLE_CERTIFICATE_PASSWORD" | tr -d '[:space:]')
             if [ -z "$APPLE_CERTIFICATE_PASSWORD" ]; then
-              echo "APPLE_CERTIFICATE_PASSWORD=(vide - OK pour .cer)"
+              echo "APPLE_CERTIFICATE_PASSWORD=(vide - OK pour .cer ou .p12 sans mot de passe)"
             else
               echo "APPLE_CERTIFICATE_PASSWORD=(défini)"
             fi
@@ -87,8 +89,8 @@ jobs:
             # Décoder et importer le certificat
             echo "$APPLE_CERTIFICATE" | base64 --decode > /tmp/certificate.pem
             
-            # Essayer d'importer comme .p12 d'abord (si mot de passe fourni)
-            if [ -n "$APPLE_CERTIFICATE_PASSWORD" ]; then
+            # Essayer d'importer comme .p12 d'abord (si mot de passe fourni et non vide)
+            if [ -n "$APPLE_CERTIFICATE_PASSWORD" ] && [ "$APPLE_CERTIFICATE_PASSWORD" != " " ]; then
               security import /tmp/certificate.pem -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security || {
                 echo "⚠️  Import .p12 échoué, tentative avec .cer..."
                 security import /tmp/certificate.pem -k "$KEYCHAIN_PATH" -T /usr/bin/codesign -T /usr/bin/security || true
@@ -125,6 +127,8 @@ jobs:
           # Tauri utilisera le certificat depuis le keychain via APPLE_SIGNING_IDENTITY
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # APPLE_CERTIFICATE_PASSWORD normalisé (espace = vide)
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
         run: |
           yarn tauri build
           # Vérifier la signature si APPLE_SIGNING_IDENTITY était défini
