@@ -1,6 +1,6 @@
 [package]
 name = "reachy-mini-control"
-version = "0.1.0"
+version = "0.2.1"
 description = "Reachy Mini Control Application"
 authors = ["Reachy Mini Contributors"]
 edition = "2021"
