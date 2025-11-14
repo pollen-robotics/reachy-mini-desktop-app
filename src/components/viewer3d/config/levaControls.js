@@ -6,17 +6,16 @@ import { useControls } from 'leva';
  */
 export function useLevaControls(showLevaControls) {
   // 1. Cell Shading Ultra-Smooth (mode Normal uniquement - activé automatiquement)
-  const cellShading = useControls('🎨 Cell Shading Ultra-Smooth', {
-    bands: { value: 12, min: 2, max: 30, step: 1, label: 'Résolution (bandes)' },
-    smoothness: { value: 0.4, min: 0, max: 0.7, step: 0.05, label: 'Lissage transitions' },
-    rimIntensity: { value: 0.35, min: 0, max: 2, step: 0.05, label: 'Intensité rim light' },
-    specularIntensity: { value: 0.25, min: 0, max: 1.5, step: 0.05, label: 'Intensité spéculaire' },
-    ambientIntensity: { value: 0.4, min: 0, max: 1, step: 0.05, label: 'Intensité ambiante' },
-    contrastBoost: { value: 0.85, min: 0.5, max: 2.0, step: 0.05, label: 'Boost contraste' },
-    outlineEnabled: { value: true, label: 'Contours silhouette' },
-    outlineThickness: { value: 15.0, min: 0.5, max: 20, step: 0.5, label: 'Épaisseur contours (px)' },
-    internalLinesEnabled: { value: true, label: 'Lignes internes' },
-    internalLinesIntensity: { value: 0.3, min: 0, max: 1, step: 0.05, label: 'Intensité lignes internes' },
+  // ✅ Contrôles simplifiés : seulement l'essentiel pour un rendu élégant et puissant
+  const cellShading = useControls('🎨 Cell Shading', {
+    bands: { value: 100, min: 50, max: 150, step: 5, label: 'Résolution' },
+    smoothness: { value: 0.45, min: 0.2, max: 0.6, step: 0.05, label: 'Lissage' },
+    rimIntensity: { value: 0.4, min: 0, max: 1, step: 0.05, label: 'Rim Light' },
+    specularIntensity: { value: 0.3, min: 0, max: 1, step: 0.05, label: 'Spéculaire' },
+    ambientIntensity: { value: 0.45, min: 0.2, max: 0.8, step: 0.05, label: 'Ambiante' },
+    contrastBoost: { value: 0.9, min: 0.7, max: 1.2, step: 0.05, label: 'Contraste' },
+    outlineEnabled: { value: true, label: 'Contours' },
+    outlineThickness: { value: 12.0, min: 5, max: 20, step: 1, label: 'Épaisseur contours' },
     outlineColor: { value: '#000000', label: 'Couleur contours' },
   }, { collapsed: false, hidden: !showLevaControls });
 
@@ -38,7 +37,7 @@ export function useLevaControls(showLevaControls) {
 
   // 4. Mode X-Ray
   const xraySettings = useControls('👁️ X-Ray', {
-    opacity: { value: 0.15, min: 0.1, max: 0.9, step: 0.05, label: 'Opacité' },
+    opacity: { value: 0.5, min: 0.1, max: 0.9, step: 0.05, label: 'Opacité' },
   }, { collapsed: false, hidden: !showLevaControls });
 
   // 5. Scène

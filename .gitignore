@@ -40,6 +40,9 @@ keys/
 *.sig
 *.signature
 *.sign
+*.cer
+*.p12
+*.pem
 test-updates/
 mock-updates/
 releases/

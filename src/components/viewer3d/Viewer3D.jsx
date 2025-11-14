@@ -51,7 +51,7 @@ export default function RobotViewer3D({
   useHeadFollowCamera = false, // Caméra qui suit la tête du robot
   showCameraToggle = false, // Affiche le toggle pour basculer entre Follow et Free
   errorFocusMesh = null, // Mesh à focus en cas d'erreur
-  backgroundColor = '#fdfcfa', // Couleur de fond du canvas
+  backgroundColor = '#e0e0e0', // Couleur de fond du canvas
   // Props du robot
   antennas = null, // Position des antennes [left, right] (null = position par défaut)
   headPose = null, // Position de la tête (null = position par défaut)

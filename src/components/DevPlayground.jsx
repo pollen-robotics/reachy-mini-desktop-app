@@ -10,7 +10,7 @@ import { getShortComponentName } from '../utils/componentNames';
  * Accès automatique via http://localhost:5173/#dev
  */
 export default function DevPlayground() {
-  const [mode, setMode] = useState('hardware-scan'); // 'normal', 'scan' ou 'hardware-scan'
+  const [mode, setMode] = useState('normal'); // 'normal', 'scan' ou 'hardware-scan'
   const [currentComponent, setCurrentComponent] = useState(null);
   const [scanProgress, setScanProgress] = useState({ current: 0, total: 0 });
   const [scannedComponents, setScannedComponents] = useState([]); // Liste des composants scannés
@@ -116,6 +116,7 @@ export default function DevPlayground() {
           {mode === 'normal' ? (
             <Viewer3D 
               isActive={true}
+              initialMode="normal"
               forceLoad={true}
               enableDebug={true}
               forceLevaOpen={true}

@@ -12,7 +12,7 @@ mkdir -p $DST_DIR
 pushd uv-wrapper
     # Build uv-bundle for host (needed to run during build)
     cargo build --release --bin uv-bundle
-    ./target/release/uv-bundle --install-dir ../$DST_DIR --python-version 3.12 --dependencies reachy-mini
+    ./target/release/uv-bundle --install-dir ../$DST_DIR --python-version 3.12 --dependencies "reachy-mini[placo_kinematics]"
 
     # Build uv-trampoline for target platform
     if [ -n "$TARGET_TRIPLET" ]; then

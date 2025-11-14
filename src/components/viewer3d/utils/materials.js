@@ -67,12 +67,11 @@ export const cellShadingShader = {
     rimIntensity: { value: 0.35 },
     specularPower: { value: 56.0 },
     specularIntensity: { value: 0.25 },
-    bands: { value: 12 },
+    bands: { value: 100 },
     ambientIntensity: { value: 0.4 },
     contrastBoost: { value: 0.85 },
     smoothness: { value: 0.4 },
-    internalLinesEnabled: { value: 1.0 },
-    internalLinesIntensity: { value: 0.3 },
+    opacity: { value: 1.0 },
   },
   
   vertexShader: `
@@ -111,8 +110,7 @@ export const cellShadingShader = {
     uniform float ambientIntensity;
     uniform float contrastBoost;
     uniform float smoothness;
-    uniform float internalLinesEnabled;
-    uniform float internalLinesIntensity;
+    uniform float opacity;
     
     varying vec3 vNormal;
     varying vec3 vViewPosition;
@@ -128,22 +126,6 @@ export const cellShadingShader = {
       t = smoothstep(1.0 - smoothFactor, 1.0, t);
       
       return mix(quantized, nextBand, t);
-    }
-    
-    // ✅ Détection d'arêtes internes basée sur la géométrie (Guilty Gear style)
-    // Utilise le produit scalaire view-normal pour détecter les changements d'angle
-    float detectInternalEdges(vec3 normal, vec3 viewDir, vec3 worldPos) {
-      // Edge detection basé sur le Fresnel et la position world
-      float fresnel = abs(dot(viewDir, normal));
-      
-      // Détection des plis/arêtes : zones où la normale est perpendiculaire à la vue
-      float edgeFromFresnel = 1.0 - smoothstep(0.2, 0.4, fresnel);
-      
-      // Variation subtile basée sur la position pour créer des lignes de forme
-      float posVariation = fract(worldPos.y * 10.0 + worldPos.x * 10.0 + worldPos.z * 10.0);
-      float geometricPattern = smoothstep(0.92, 0.95, posVariation) * 0.5;
-      
-      return max(edgeFromFresnel * 0.3, geometricPattern);
     }
     
     void main() {
@@ -177,50 +159,44 @@ export const cellShadingShader = {
         // Mi-ton vers couleur de base
         shadedColor = mix(midtoneColor * baseColor, baseColor, (diffuse - 0.33) / 0.33);
       } else {
-        // Couleur de base vers highlight (subtil)
-        shadedColor = mix(baseColor, baseColor * mix(vec3(1.0), highlightColor, 0.15), (diffuse - 0.66) / 0.34);
+        // Couleur de base vers highlight (élégant et subtil)
+        shadedColor = mix(baseColor, baseColor * mix(vec3(1.0), highlightColor, 0.2), (diffuse - 0.66) / 0.34);
       }
       
-      // ===== 2. RIM LIGHTING (Fresnel subtil) =====
+      // ===== 2. RIM LIGHTING (Fresnel élégant) =====
       float fresnel = 1.0 - max(dot(viewDir, normal), 0.0);
       fresnel = pow(fresnel, rimPower);
       
-      // Rim light avec transition douce
-      float rimSmooth = smoothstep(0.5, 0.8, fresnel);
+      // Rim light avec transition douce et élégante
+      float rimSmooth = smoothstep(0.4, 0.75, fresnel);
       vec3 rimLight = rimColor * rimSmooth * rimIntensity;
       
-      // ===== 3. SPECULAR HIGHLIGHT (Subtil) =====
+      // ===== 3. SPECULAR HIGHLIGHT (Élégant) =====
       vec3 halfVector = normalize(light + viewDir);
       float NdotH = max(dot(normal, halfVector), 0.0);
       float spec = pow(NdotH, specularPower);
       
-      // Specular doux avec smoothstep
-      float specSmooth = smoothstep(0.7, 0.9, spec);
+      // Specular doux avec smoothstep pour un rendu élégant
+      float specSmooth = smoothstep(0.65, 0.85, spec);
       vec3 specular = highlightColor * specSmooth * specularIntensity;
       
       // ===== 4. AMBIENT =====
-      // AO subtil basé sur la normale Y
-      float ao = smoothstep(-0.5, 0.5, normal.y) * 0.3 + 0.7;
+      // AO élégant basé sur la normale Y pour plus de profondeur
+      float ao = smoothstep(-0.4, 0.6, normal.y) * 0.25 + 0.75;
       vec3 ambient = baseColor * ambientIntensity * ao;
       
       // ===== COMBINAISON FINALE =====
       vec3 finalColor = shadedColor + ambient + rimLight + specular;
       
-      // ===== 5. LIGNES INTERNES (Edge Detection) =====
-      if (internalLinesEnabled > 0.5) {
-        float edgeFactor = detectInternalEdges(normal, viewDir, vWorldPosition);
-        // Assombrir là où il y a une arête
-        finalColor = mix(finalColor, finalColor * (1.0 - internalLinesIntensity), edgeFactor);
-      }
-      
-      // Réduction de la saturation pour éviter le "cramé"
+      // Ajustement subtil de la saturation pour un rendu élégant
       float luminance = dot(finalColor, vec3(0.299, 0.587, 0.114));
-      finalColor = mix(vec3(luminance), finalColor, 1.05);
+      finalColor = mix(vec3(luminance), finalColor, 1.0);
       
       // Clamp pour éviter l'overexposure (le tone mapping est géré par le renderer)
       finalColor = clamp(finalColor, 0.0, 1.0);
       
-      gl_FragColor = vec4(finalColor, 1.0);
+      // ✅ Utiliser l'opacité uniforme pour la transparence
+      gl_FragColor = vec4(finalColor, opacity);
     }
   `
 };
@@ -241,16 +217,15 @@ export function createCellShadingMaterial(baseColorHex = 0xFF9500, options = {})
     midtoneColor: { value: new THREE.Color(0x909090) },
     highlightColor: { value: new THREE.Color(0xffffff) },
     rimColor: { value: new THREE.Color(0xffcc88) },
-    rimPower: { value: 3.5 },
-    rimIntensity: { value: options.rimIntensity ?? 0.35 },
-    specularPower: { value: 56.0 },
-    specularIntensity: { value: options.specularIntensity ?? 0.25 },
-    bands: { value: options.bands ?? 12 },
-    ambientIntensity: { value: options.ambientIntensity ?? 0.4 },
-    contrastBoost: { value: options.contrastBoost ?? 0.85 },
-    smoothness: { value: options.smoothness ?? 0.4 },
-    internalLinesEnabled: { value: options.internalLinesEnabled ? 1.0 : 0.0 },
-    internalLinesIntensity: { value: options.internalLinesIntensity ?? 0.3 },
+    rimPower: { value: 3.5 }, // Optimisé pour un rim light élégant
+    rimIntensity: { value: options.rimIntensity ?? 0.4 }, // Légèrement augmenté pour plus de punch
+    specularPower: { value: 56.0 }, // Optimisé pour des highlights subtils mais visibles
+    specularIntensity: { value: options.specularIntensity ?? 0.3 }, // Légèrement augmenté
+    bands: { value: options.bands ?? 100 }, // Résolution optimale pour qualité/performance
+    ambientIntensity: { value: options.ambientIntensity ?? 0.45 }, // Légèrement augmenté pour plus de luminosité
+    contrastBoost: { value: options.contrastBoost ?? 0.9 }, // Optimisé pour un contraste élégant
+    smoothness: { value: options.smoothness ?? 0.45 }, // Légèrement augmenté pour transitions plus douces
+    opacity: { value: options.opacity ?? 1.0 },
   };
   
   const material = new THREE.ShaderMaterial({
@@ -261,6 +236,10 @@ export function createCellShadingMaterial(baseColorHex = 0xFF9500, options = {})
     side: THREE.FrontSide,
     depthWrite: true,
     depthTest: true,
+    transparent: options.opacity !== undefined && options.opacity < 1.0, // Activer transparent si opacity < 1.0
+    opacity: options.opacity ?? 1.0, // Définir l'opacité du matériau
+    // ✅ Smooth shading est contrôlé par les normales de la géométrie (computeVertexNormals)
+    // Pas de propriété flatShading sur ShaderMaterial
   });
   
   console.log('✨ Cell shading AAA+ material created:', {
@@ -280,18 +259,54 @@ export function createCellShadingMaterial(baseColorHex = 0xFF9500, options = {})
 export function updateCellShadingMaterial(material, params = {}) {
   if (!material.uniforms) return;
   
-  if (params.bands !== undefined) material.uniforms.bands.value = params.bands;
-  if (params.rimIntensity !== undefined) material.uniforms.rimIntensity.value = params.rimIntensity;
-  if (params.specularIntensity !== undefined) material.uniforms.specularIntensity.value = params.specularIntensity;
-  if (params.ambientIntensity !== undefined) material.uniforms.ambientIntensity.value = params.ambientIntensity;
-  if (params.rimPower !== undefined) material.uniforms.rimPower.value = params.rimPower;
-  if (params.specularPower !== undefined) material.uniforms.specularPower.value = params.specularPower;
-  if (params.contrastBoost !== undefined) material.uniforms.contrastBoost.value = params.contrastBoost;
-  if (params.smoothness !== undefined) material.uniforms.smoothness.value = params.smoothness;
-  if (params.internalLinesEnabled !== undefined) material.uniforms.internalLinesEnabled.value = params.internalLinesEnabled ? 1.0 : 0.0;
-  if (params.internalLinesIntensity !== undefined) material.uniforms.internalLinesIntensity.value = params.internalLinesIntensity;
+  // ✅ Mettre à jour tous les paramètres même s'ils sont undefined (utiliser les valeurs actuelles)
+  // Cela permet de forcer la mise à jour même si certaines valeurs ne changent pas
+  let updated = false;
   
-  material.needsUpdate = true;
+  if (params.bands !== undefined) {
+    material.uniforms.bands.value = params.bands;
+    updated = true;
+  }
+  if (params.rimIntensity !== undefined) {
+    material.uniforms.rimIntensity.value = params.rimIntensity;
+    updated = true;
+  }
+  if (params.specularIntensity !== undefined) {
+    material.uniforms.specularIntensity.value = params.specularIntensity;
+    updated = true;
+  }
+  if (params.ambientIntensity !== undefined) {
+    material.uniforms.ambientIntensity.value = params.ambientIntensity;
+    updated = true;
+  }
+  if (params.rimPower !== undefined) {
+    material.uniforms.rimPower.value = params.rimPower;
+    updated = true;
+  }
+  if (params.specularPower !== undefined) {
+    material.uniforms.specularPower.value = params.specularPower;
+    updated = true;
+  }
+  if (params.contrastBoost !== undefined) {
+    material.uniforms.contrastBoost.value = params.contrastBoost;
+    updated = true;
+  }
+  if (params.smoothness !== undefined) {
+    material.uniforms.smoothness.value = params.smoothness;
+    updated = true;
+  }
+  if (params.opacity !== undefined) {
+    material.uniforms.opacity.value = params.opacity;
+    // ✅ Mettre à jour aussi material.opacity et material.transparent
+    material.opacity = params.opacity;
+    material.transparent = params.opacity < 1.0;
+    updated = true;
+  }
+  
+  // ✅ Toujours marquer comme besoin de mise à jour pour forcer le re-render
+  if (updated) {
+    material.needsUpdate = true;
+  }
 }
 
 

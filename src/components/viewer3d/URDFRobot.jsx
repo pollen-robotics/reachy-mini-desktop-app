@@ -1,5 +1,5 @@
 import { useRef, useEffect, useLayoutEffect, useState, useCallback } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { createCellShadingMaterial, updateCellShadingMaterial } from './utils/materials';
 import robotModelCache from '../../utils/robotModelCache';
@@ -15,8 +15,8 @@ export default function URDFRobot({
   antennas, 
   isActive, 
   isTransparent, 
-  cellShading = { enabled: false, bands: 3, smoothShading: true },
-  xrayOpacity = 0.15,
+  cellShading = { enabled: false, bands: 100, smoothShading: true },
+  xrayOpacity = 0.5,
   onMeshesReady,
   onRobotReady, // Callback avec la référence au robot
   forceLoad = false, // ✅ Force le chargement même si isActive=false
@@ -25,6 +25,24 @@ export default function URDFRobot({
   const [isReady, setIsReady] = useState(false);
   const groupRef = useRef();
   const meshesRef = useRef([]);
+  const { camera, gl } = useThree();
+  const raycaster = useRef(new THREE.Raycaster());
+  const mouse = useRef(new THREE.Vector2());
+  const hoveredMesh = useRef(null);
+  
+  // ✅ Gestionnaire de mouvement de la souris pour le raycaster
+  useEffect(() => {
+    const handleMouseMove = (event) => {
+      const rect = gl.domElement.getBoundingClientRect();
+      mouse.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    };
+    
+    gl.domElement.addEventListener('mousemove', handleMouseMove);
+    return () => {
+      gl.domElement.removeEventListener('mousemove', handleMouseMove);
+    };
+  }, [gl]);
   
   // ✅ Cache des matériaux pour chaque mesh (séparation TOTALE entre cell shading et X-ray)
   const materialsCache = useRef({
@@ -39,14 +57,12 @@ export default function URDFRobot({
     if (!cache.has(mesh)) {
       const originalColor = mesh.userData.originalColor || 0xFF9500;
       const material = createCellShadingMaterial(originalColor, {
-        bands: cellShadingConfig?.bands || 12,
-        smoothness: cellShadingConfig?.smoothness ?? 0.4,
-        rimIntensity: cellShadingConfig?.rimIntensity ?? 0.35,
-        specularIntensity: cellShadingConfig?.specularIntensity ?? 0.25,
-        ambientIntensity: cellShadingConfig?.ambientIntensity ?? 0.4,
-        contrastBoost: cellShadingConfig?.contrastBoost ?? 0.85,
-        internalLinesEnabled: cellShadingConfig?.internalLinesEnabled ?? true,
-        internalLinesIntensity: cellShadingConfig?.internalLinesIntensity ?? 0.3,
+        bands: cellShadingConfig?.bands || 100,
+        smoothness: cellShadingConfig?.smoothness ?? 0.45,
+        rimIntensity: cellShadingConfig?.rimIntensity ?? 0.4,
+        specularIntensity: cellShadingConfig?.specularIntensity ?? 0.3,
+        ambientIntensity: cellShadingConfig?.ambientIntensity ?? 0.45,
+        contrastBoost: cellShadingConfig?.contrastBoost ?? 0.9,
       });
       cache.set(mesh, material);
     }
@@ -54,27 +70,70 @@ export default function URDFRobot({
     return cache.get(mesh);
   }, []);
 
-  // ✅ Fonction pour créer ou récupérer un matériau X-ray depuis le cache
-  const getXrayMaterial = useCallback((mesh, opacity) => {
+  // ✅ Fonction pour créer ou récupérer un matériau X-ray depuis le cache avec couleurs stylées
+  const getXrayMaterial = useCallback((mesh, opacity, colorOverride = null) => {
     const cache = materialsCache.current.xray;
+    const cacheKey = `${mesh.uuid}_${colorOverride || 'default'}`;
     
-    if (!cache.has(mesh)) {
-      const originalColor = mesh.userData.originalColor || 0xFF9500;
+    if (!cache.has(cacheKey)) {
+      // ✅ Couleurs stylées et punchy pour le mode X-ray
+      let xrayColor = colorOverride;
+      
+      if (!xrayColor) {
+        // Déterminer la couleur selon le type d'objet
+        const isAntenna = mesh.userData?.isAntenna || false;
+        const isShellPiece = mesh.userData?.isShellPiece || false;
+        const isBigLens = (mesh.userData?.materialName || mesh.material?.name || '').toLowerCase().includes('big_lens') ||
+                         (mesh.userData?.materialName || mesh.material?.name || '').toLowerCase().includes('small_lens') ||
+                         (mesh.userData?.materialName || mesh.material?.name || '').toLowerCase().includes('lens_d40') ||
+                         (mesh.userData?.materialName || mesh.material?.name || '').toLowerCase().includes('lens_d30');
+        
+        if (isAntenna) {
+          xrayColor = 0x00FF00; // Vert vif pour les antennes
+        } else if (isBigLens) {
+          xrayColor = 0x00FFFF; // Cyan vif pour les lentilles
+        } else if (isShellPiece) {
+          xrayColor = 0xFF00FF; // Magenta vif pour les coques
+        } else {
+          // Couleur basée sur la couleur originale mais plus saturée
+          const originalColor = mesh.userData?.originalColor || 0xFF9500;
+          // Convertir en HSV, augmenter la saturation, puis revenir en RGB
+          const r = ((originalColor >> 16) & 0xFF) / 255;
+          const g = ((originalColor >> 8) & 0xFF) / 255;
+          const b = (originalColor & 0xFF) / 255;
+          
+          // Couleurs vives selon la teinte originale
+          if (r > 0.8 && g < 0.5 && b < 0.5) {
+            xrayColor = 0xFF0080; // Rouge/Rose vif
+          } else if (r > 0.7 && g > 0.7 && b < 0.5) {
+            xrayColor = 0xFFFF00; // Jaune vif
+          } else if (r < 0.5 && g > 0.7 && b < 0.5) {
+            xrayColor = 0x00FF00; // Vert vif
+          } else if (r < 0.5 && g < 0.5 && b > 0.7) {
+            xrayColor = 0x0080FF; // Bleu vif
+          } else if (r > 0.6 && g > 0.6 && b > 0.6) {
+            xrayColor = 0xFFFFFF; // Blanc pour les objets gris/blancs
+          } else {
+            xrayColor = 0xFF9500; // Orange vif par défaut
+          }
+        }
+      }
+      
       const material = new THREE.MeshBasicMaterial({
-        color: originalColor,
+        color: xrayColor,
         transparent: true,
         opacity: opacity,
         depthWrite: false,
         side: THREE.DoubleSide,
       });
-      cache.set(mesh, material);
+      cache.set(cacheKey, material);
     } else {
       // Mettre à jour l'opacité si elle change
-      const material = cache.get(mesh);
+      const material = cache.get(cacheKey);
       material.opacity = opacity;
     }
     
-    return cache.get(mesh);
+    return cache.get(cacheKey);
   }, []);
 
   // Fonction pour appliquer les matériaux (utilisée au chargement ET aux changements)
@@ -108,36 +167,238 @@ export default function URDFRobot({
         return;
       }
       
-      // ✅ VERRES DES LUNETTES : Toujours transparents (même en mode cell shading)
-      if (child.userData.isGlass) {
-        console.log('👓 Applying glass material to:', child.name, 'color:', child.userData.originalColor?.toString(16));
-        
-        // Matériau transparent spécial pour les verres - Très visible
-        const glassMaterial = new THREE.MeshPhysicalMaterial({
-          color: 0x1a1a2e, // Bleu-noir foncé
-          transparent: true,
-          opacity: 0.15, // ✅ Très transparent pour bien voir à travers
-          metalness: 0.0,
-          roughness: 0.02, // Très lisse et brillant
-          reflectivity: 1.0,
-          clearcoat: 1.0, // Coating brillant
-          clearcoatRoughness: 0.02,
-          transmission: 0.95, // ✅ Transmission maximale (presque invisible)
-          thickness: 0.3,
-          ior: 1.52, // Indice de réfraction du verre
-          attenuationColor: 0x1a1a2e,
-          attenuationDistance: 0.3,
-          side: THREE.DoubleSide,
+      // ✅ BIG_LENS uniquement : Toujours transparents (même en mode cell shading)
+      // Détection robuste : nom du mesh, nom du fichier STL, nom du parent (récursif), nom du matériau, COULEUR
+      const meshName = child.name || '';
+      const stlFileName = child.userData?.stlFileName || '';
+      const geometryUrl = child.geometry?.userData?.url || '';
+      const fileName = geometryUrl.split('/').pop() || '';
+      // ✅ Utiliser le nom du matériau stocké dans userData (plus fiable que child.material?.name)
+      const materialName = child.userData?.materialName || child.material?.name || '';
+      const lensColor = child.userData?.originalColor || 0;
+      
+      // ✅ Remonter TOUTE la hiérarchie des parents pour trouver "big_lens"
+      let parentName = '';
+      let currentParent = child.parent;
+      let depth = 0;
+      const parentNames = [];
+      while (currentParent && depth < 10) {
+        const pName = currentParent.name || '';
+        if (pName) {
+          parentNames.push(pName);
+          if (pName.toLowerCase().includes('big_lens')) {
+            parentName = pName;
+            break;
+          }
+        }
+        currentParent = currentParent.parent;
+        depth++;
+      }
+      
+      // ✅ Détection par COULEUR EXACTE : big_lens a une couleur grise très spécifique
+      // Dans URDF: rgba(0.439216 0.47451 0.501961 0.301961)
+      // Conversion: r=0.439216*255≈112, g=0.47451*255≈121, b=0.501961*255≈128
+      // Hex approximatif: #707980 ou #707f80
+      const r = (lensColor >> 16) & 0xFF;
+      const g = (lensColor >> 8) & 0xFF;
+      const b = lensColor & 0xFF;
+      
+      // ✅ Couleur EXACTE des big_lens : très proche de #707980
+      // Tolérance de ±10 pour chaque composante
+      const isExactLensColor = r >= 102 && r <= 122 &&  // 112 ± 10
+                               g >= 111 && g <= 131 &&  // 121 ± 10
+                               b >= 118 && b <= 138 &&  // 128 ± 10
+                               Math.abs(r - g) < 15 &&   // Gris uniforme
+                               Math.abs(g - b) < 15;     // Gris uniforme
+      
+      // ✅ EXCLURE explicitement les eye_support et autres pièces similaires
+      const isEyeSupport = meshName.toLowerCase().includes('eye') && 
+                          (meshName.toLowerCase().includes('support') || meshName.toLowerCase().includes('mount'));
+      const isExcluded = isEyeSupport || 
+                        meshName.toLowerCase().includes('support') ||
+                        parentNames.some(p => p.toLowerCase().includes('eye') && p.toLowerCase().includes('support'));
+      
+      // ✅ Détection STRICTE : matériau contenant "big_lens", "lens_d40", "small_lens" ou "lens_d30"
+      // Les matériaux "big_lens_d40_material", "small_lens_d30_material" sont les critères fiables
+      const materialNameLower = materialName.toLowerCase();
+      const isBigLens = materialNameLower.includes('big_lens') || 
+                       materialNameLower.includes('lens_d40') ||
+                       materialNameLower.includes('small_lens') ||
+                       materialNameLower.includes('lens_d30'); // big_lens, small_lens ou leurs variantes
+      
+      // ✅ DEBUG : Log si matériau contient "glasses" pour trouver la seconde lentille
+      if (materialNameLower.includes('glasses') || materialNameLower.includes('dolder')) {
+        console.log('🔍 Glasses/Dolder material found:', {
+          materialName,
+          materialNameLower,
+          isBigLens,
+          hasBigLens: materialNameLower.includes('big_lens'),
+          hasLensD40: materialNameLower.includes('lens_d40'),
+          meshName,
+          stlFileName,
+          parentNames: parentNames.slice(0, 3),
+        });
+      }
+      
+      // Log si on détecte par d'autres moyens pour debug
+      const detectedByName = meshName.toLowerCase().includes('big_lens') || 
+                            stlFileName.toLowerCase().includes('big_lens') ||
+                            fileName.toLowerCase().includes('big_lens') ||
+                            parentName.toLowerCase().includes('big_lens');
+      
+      if (!isBigLens && detectedByName) {
+        console.warn('⚠️ Big lens détecté par nom mais pas par matériau:', {
+          meshName,
+          materialName,
+          stlFileName,
+          fileName,
+          parentName,
+          userDataMaterialName: child.userData?.materialName,
+          directMaterialName: child.material?.name,
+          parentNames: parentNames.slice(0, 3),
+        });
+      }
+      
+      // Log tous les objets avec "big_lens" dans leur nom pour debug complet
+      if (detectedByName || isBigLens) {
+        console.log('🔍 Big lens candidate (by name or material):', {
+          isBigLens,
+          detectedByName,
+          meshName,
+          materialName,
+          stlFileName,
+          fileName,
+          parentName,
+          userDataMaterialName: child.userData?.materialName,
+          directMaterialName: child.material?.name,
+          parentNames: parentNames.slice(0, 3),
+        });
+      }
+      
+      // ✅ LOG TOUS LES MESHES avec matériau contenant "lens" ou "big" pour trouver les big_lens
+      if (materialName.toLowerCase().includes('lens') || materialName.toLowerCase().includes('big')) {
+        console.log('🔍 Lens/Big-related mesh found:', {
+          index: processedCount,
+          meshName,
+          materialName,
+          stlFileName,
+          fileName,
+          parentNames: parentNames.slice(0, 3),
+          isBigLens,
+          materialType: child.material?.type,
+          userDataMaterialName: child.userData?.materialName,
+          directMaterialName: child.material?.name,
+          materialNameLower: materialName.toLowerCase(),
+          hasBigLens: materialName.toLowerCase().includes('big_lens'),
+          hasLensD40: materialName.toLowerCase().includes('lens_d40'),
+        });
+      }
+      
+      // ✅ LOG TOUS LES MESHES pour debug (seulement les premiers pour ne pas spammer)
+      if (processedCount < 10) {
+        console.log('🔍 Mesh debug info:', {
+          index: processedCount,
+          meshName,
+          stlFileName,
+          fileName,
+          parentNames: parentNames.slice(0, 3), // Premiers 3 parents
+          materialName,
+          materialType: child.material?.type,
+          materialConstructor: child.material?.constructor?.name,
+          geometryUrl,
+          originalColor: `#${lensColor.toString(16).padStart(6, '0')}`,
+          rgb: `rgb(${r}, ${g}, ${b})`,
+          isExactLensColor,
+          isExcluded,
+          isAntenna: child.userData.isAntenna,
+          isShellPiece: child.userData.isShellPiece,
+          userDataKeys: Object.keys(child.userData || {}),
+        });
+      }
+      
+      // ✅ LOG si détecté comme big_lens pour voir pourquoi
+      if (isBigLens) {
+        console.log('🔍 BIG_LENS detection reason:', {
+          meshName,
+          stlFileName,
+          fileName,
+          parentName,
+          parentNames: parentNames.slice(0, 3),
+          materialName,
+          materialNameLower: materialName.toLowerCase(),
+          materialHasBigLens: materialName.toLowerCase().includes('big_lens'),
+          materialHasLensD40: materialName.toLowerCase().includes('lens_d40'),
+          isBigLensValue: isBigLens, // La valeur réelle de isBigLens
+          isExactLensColor,
+          isExcluded,
+          rgb: `rgb(${r}, ${g}, ${b})`,
+          isAntenna: child.userData.isAntenna,
+          isShellPiece: child.userData.isShellPiece,
+          userDataMaterialName: child.userData?.materialName,
+          directMaterialName: child.material?.name,
+        });
+      }
+      
+      if (isBigLens) {
+        console.log('👓 ✅ BIG_LENS DETECTED! Applying cell shading with transparency:', {
+          meshName,
+          stlFileName,
+          fileName,
+          parentName,
+          materialName,
+          geometryUrl,
+          position: child.position.clone(),
+          userData: child.userData,
         });
         
-        child.material = glassMaterial;
-        
-        // Pas de contours sur les verres
-        if (child.userData.outlineMesh) {
-          child.remove(child.userData.outlineMesh);
-          child.userData.outlineMesh.geometry.dispose();
-          child.userData.outlineMesh.material.dispose();
-          child.userData.outlineMesh = null;
+        // ✅ BIG_LENS : Cell shading AVEC transparence (pas de matériau glass)
+        // Appliquer le cell shading comme les autres pièces, mais avec transparence
+        if (!transparent) {
+          const lensOpacity = 0.9; // Opacité transparente mais visible
+          
+          // ✅ Créer un matériau cell shading NOIR pour les lentilles
+          // Utiliser directement createCellShadingMaterial avec couleur noire
+          const cellMaterial = createCellShadingMaterial(0x000000, { // Couleur noire
+            bands: cellShadingConfig?.bands || 100,
+            smoothness: cellShadingConfig?.smoothness ?? 0.45,
+            rimIntensity: cellShadingConfig?.rimIntensity ?? 0.4,
+            specularIntensity: cellShadingConfig?.specularIntensity ?? 0.3,
+            ambientIntensity: cellShadingConfig?.ambientIntensity ?? 0.45,
+            contrastBoost: cellShadingConfig?.contrastBoost ?? 0.9,
+            opacity: lensOpacity, // Passer l'opacité lors de la création
+          });
+          
+          // Mettre à jour les paramètres du cell shading (utiliser les valeurs directement depuis cellShadingConfig)
+          updateCellShadingMaterial(cellMaterial, {
+            bands: cellShadingConfig?.bands,
+            smoothness: cellShadingConfig?.smoothness,
+            rimIntensity: cellShadingConfig?.rimIntensity,
+            specularIntensity: cellShadingConfig?.specularIntensity,
+            ambientIntensity: cellShadingConfig?.ambientIntensity,
+            contrastBoost: cellShadingConfig?.contrastBoost,
+            opacity: lensOpacity, // S'assurer que l'opacité est bien définie
+          });
+          
+          console.log('👓 Big lens opacity set:', {
+            lensOpacity,
+            materialTransparent: cellMaterial.transparent,
+            materialOpacity: cellMaterial.opacity,
+            uniformOpacity: cellMaterial.uniforms.opacity.value,
+          });
+          
+          child.material = cellMaterial;
+          
+          // Pas de contours sur les big_lens
+          if (child.userData.outlineMesh) {
+            child.remove(child.userData.outlineMesh);
+            child.userData.outlineMesh.geometry.dispose();
+            child.userData.outlineMesh.material.dispose();
+            child.userData.outlineMesh = null;
+          }
+        } else {
+          // En mode X-ray, utiliser le matériau X-ray avec couleur cyan pour les lentilles
+          const xrayMaterial = getXrayMaterial(child, opacity, 0x00FFFF); // Cyan vif pour les lentilles
+          child.material = xrayMaterial;
         }
         
         processedCount++;
@@ -165,19 +426,26 @@ export default function URDFRobot({
       if (isAntenna) {
         antennaCount++;
         
-        const antennaMaterial = new THREE.MeshBasicMaterial({
-          color: transparent ? 0x404040 : 0x1a1a1a, // Gris foncé en x-ray, noir en normal
-          transparent: transparent, // Seulement transparent en mode x-ray
-          opacity: transparent ? 0.2 : 1.0, // Très discret en mode x-ray, opaque en normal
-          side: THREE.FrontSide,
-          depthWrite: !transparent, // Depth write seulement en mode normal
-        });
-        child.material = antennaMaterial;
+        if (transparent) {
+          // Mode X-ray : Vert vif et punchy pour les antennes
+          const antennaMaterial = getXrayMaterial(child, opacity, 0x00FF00); // Vert vif
+          child.material = antennaMaterial;
+        } else {
+          // Mode normal : Noir opaque
+          const antennaMaterial = new THREE.MeshBasicMaterial({
+            color: 0x1a1a1a, // Noir
+            transparent: false,
+            opacity: 1.0,
+            side: THREE.FrontSide,
+            depthWrite: true,
+          });
+          child.material = antennaMaterial;
+        }
         
         console.log('📡 Antenna material applied:', {
           transparent,
-          color: transparent ? '#404040' : '#1a1a1a',
-          opacity: transparent ? 0.2 : 1.0
+          color: transparent ? '#00FF00' : '#1a1a1a',
+          opacity: transparent ? opacity : 1.0
         });
         
         // Pas de contours sur les antennes
@@ -196,17 +464,17 @@ export default function URDFRobot({
       if (!transparent) {
         const cellMaterial = getCellShadingMaterial(child, cellShadingConfig);
         
-        // Mettre à jour les paramètres si changement
-        updateCellShadingMaterial(cellMaterial, {
-          bands: cellShadingConfig?.bands || 12,
-          smoothness: cellShadingConfig?.smoothness ?? 0.4,
-          rimIntensity: cellShadingConfig?.rimIntensity ?? 0.35,
-          specularIntensity: cellShadingConfig?.specularIntensity ?? 0.25,
-          ambientIntensity: cellShadingConfig?.ambientIntensity ?? 0.4,
-          contrastBoost: cellShadingConfig?.contrastBoost ?? 0.85,
-          internalLinesEnabled: cellShadingConfig?.internalLinesEnabled ?? true,
-          internalLinesIntensity: cellShadingConfig?.internalLinesIntensity ?? 0.3,
-        });
+        // Mettre à jour les paramètres si changement (utiliser les valeurs directement depuis cellShadingConfig)
+        // ✅ Toujours passer toutes les valeurs pour forcer la mise à jour
+        const updateParams = {};
+        if (cellShadingConfig?.bands !== undefined) updateParams.bands = cellShadingConfig.bands;
+        if (cellShadingConfig?.smoothness !== undefined) updateParams.smoothness = cellShadingConfig.smoothness;
+        if (cellShadingConfig?.rimIntensity !== undefined) updateParams.rimIntensity = cellShadingConfig.rimIntensity;
+        if (cellShadingConfig?.specularIntensity !== undefined) updateParams.specularIntensity = cellShadingConfig.specularIntensity;
+        if (cellShadingConfig?.ambientIntensity !== undefined) updateParams.ambientIntensity = cellShadingConfig.ambientIntensity;
+        if (cellShadingConfig?.contrastBoost !== undefined) updateParams.contrastBoost = cellShadingConfig.contrastBoost;
+        
+        updateCellShadingMaterial(cellMaterial, updateParams);
         
         child.material = cellMaterial;
         
@@ -268,8 +536,8 @@ export default function URDFRobot({
       mode: transparent ? 'X-RAY' : 'CELL SHADING ULTRA-SMOOTH',
       transparent,
       ...(transparent ? { opacity } : { 
-        bands: cellShadingConfig?.bands || 12, 
-        smoothness: cellShadingConfig?.smoothness ?? 0.4,
+        bands: cellShadingConfig?.bands || 100, 
+        smoothness: cellShadingConfig?.smoothness ?? 0.45,
         outlines: cellShadingConfig?.outlineEnabled ? 'enabled' : 'disabled'
       }),
     });
@@ -315,6 +583,33 @@ export default function URDFRobot({
       // Cloner le modèle pour cette instance
       const robotModel = cachedModel.clone(true); // true = recursive clone
       console.log('✅ URDF loaded from cache: %d meshes', robotModel.children.length);
+      
+      // ✅ Recalculer les normales smooth après clonage pour garantir un rendu lisse
+      // Le clonage peut parfois perdre les normales, donc on les recalcule systématiquement
+      let normalsRecalculated = 0;
+      const sceneStlFiles = [];
+      
+      robotModel.traverse((child) => {
+        if (child.isMesh && child.geometry) {
+          // Logger le nom du fichier STL pour chaque mesh de la scène
+          const geometryUrl = child.geometry?.userData?.url || '';
+          const meshFileName = geometryUrl.split('/').pop() || child.name || 'unnamed';
+          const stlFileName = meshFileName.toLowerCase().endsWith('.stl') ? meshFileName : `${meshFileName}.stl`;
+          
+          if (!sceneStlFiles.includes(stlFileName)) {
+            sceneStlFiles.push(stlFileName);
+          }
+          
+          // Recalculer les normales avec un angle de seuil large pour un smooth shading optimal
+          // Angle de 90° permet de smooth même les angles assez prononcés
+          child.geometry.computeVertexNormals(Math.PI / 2);
+          normalsRecalculated++;
+        }
+      });
+      
+      console.log(`✨ Smooth shading: ${normalsRecalculated} meshes avec normales recalculées (angle seuil: 90°)`);
+      console.log(`📋 [Scene] STL files in scene: ${sceneStlFiles.length} unique files`);
+      console.log(`📋 [Scene] STL files list:`, sceneStlFiles.sort());
       
       // ✅ Détecter les coques par BOUNDING BOX (les coques sont grosses)
       let shellPieceCount = 0;
@@ -463,6 +758,55 @@ export default function URDFRobot({
         robot.setJointValue('right_antenna', antennas[1]);
       }
     }
+    
+    // ✅ Détection du survol avec raycaster pour debug
+    raycaster.current.setFromCamera(mouse.current, camera);
+    const intersects = raycaster.current.intersectObject(robot, true);
+    
+    if (intersects.length > 0) {
+      const mesh = intersects[0].object;
+      if (mesh.isMesh && mesh !== hoveredMesh.current) {
+        hoveredMesh.current = mesh;
+        const geometryUrl = mesh.geometry?.userData?.url || '';
+        const fileName = geometryUrl.split('/').pop() || '';
+        
+        console.log('🖱️ HOVER on mesh:', {
+          meshName: mesh.name || '',
+          stlFileName: mesh.userData?.stlFileName || '',
+          fileName: fileName || '',
+          materialName: mesh.userData?.materialName || mesh.material?.name || '',
+          directMaterialName: mesh.material?.name || '',
+          materialType: mesh.material?.type || '',
+          originalColor: mesh.userData?.originalColor ? `#${mesh.userData.originalColor.toString(16).padStart(6, '0')}` : 'N/A',
+          isAntenna: mesh.userData?.isAntenna || false,
+          isShellPiece: mesh.userData?.isShellPiece || false,
+          isBigLens: (() => {
+            const matName = (mesh.userData?.materialName || mesh.material?.name || '').toLowerCase();
+            return matName.includes('big_lens') || 
+                   matName.includes('lens_d40') ||
+                   matName.includes('small_lens') ||
+                   matName.includes('lens_d30');
+          })(),
+          parentName: mesh.parent?.name || '',
+          parentNames: (() => {
+            const names = [];
+            let p = mesh.parent;
+            let depth = 0;
+            while (p && depth < 5) {
+              if (p.name) names.push(p.name);
+              p = p.parent;
+              depth++;
+            }
+            return names;
+          })(),
+          position: mesh.position.clone(),
+          userDataKeys: Object.keys(mesh.userData || {}),
+          geometryUserDataKeys: Object.keys(mesh.geometry?.userData || {}),
+        });
+      }
+    } else {
+      hoveredMesh.current = null;
+    }
   });
 
   // ÉTAPE 2 : Appliquer les matériaux (au chargement initial ET aux changements)
@@ -471,7 +815,11 @@ export default function URDFRobot({
     if (!robot) return;
     
     const isInitialSetup = !isReady;
-    console.log(isInitialSetup ? '🎨 Initial material setup (before first render)' : '🔄 Material update (mode/params changed)');
+    console.log(isInitialSetup ? '🎨 Initial material setup (before first render)' : '🔄 Material update (mode/params changed)', {
+      cellShading,
+      isTransparent,
+      xrayOpacity,
+    });
     
     applyMaterials(robot, isTransparent, cellShading, xrayOpacity);
     
@@ -479,10 +827,22 @@ export default function URDFRobot({
     if (isInitialSetup) {
       setIsReady(true);
     }
-    
-    // ✅ Pas de cleanup : les gradient maps sont maintenant dans un cache
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [robot, isTransparent, cellShading, xrayOpacity, applyMaterials]); // isReady volontairement exclus pour éviter loop
+  }, [
+    robot, 
+    isTransparent, 
+    cellShading?.bands,
+    cellShading?.smoothness,
+    cellShading?.rimIntensity,
+    cellShading?.specularIntensity,
+    cellShading?.ambientIntensity,
+    cellShading?.contrastBoost,
+    cellShading?.outlineEnabled,
+    cellShading?.outlineThickness,
+    cellShading?.outlineColor,
+    xrayOpacity, 
+    applyMaterials
+  ]); // Utiliser les valeurs individuelles pour détecter les changements
 
   // Ne rendre le robot que quand TOUT est prêt (chargé + matériaux appliqués)
   return robot && isReady ? (

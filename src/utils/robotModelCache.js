@@ -16,7 +16,7 @@ class RobotModelCache {
     this.isLoaded = false;
     this.loadPromise = null;
     this.listeners = new Set();
-    this.version = 'v5-antenna-all-sizes'; // Changez cette version pour forcer le rechargement
+    this.version = 'v7-smooth-shading-non-indexed'; // Changez cette version pour forcer le rechargement
   }
 
   /**
@@ -52,11 +52,27 @@ class RobotModelCache {
     this.loadPromise = (async () => {
       try {
         const loader = new URDFLoader();
+        
+        // ✅ Map pour stocker les noms de fichiers STL par URL (originale et locale)
+        const stlFileMap = new Map();
 
         // Configure loader to load meshes from local assets
         loader.manager.setURLModifier((url) => {
           const filename = url.split('/').pop();
-          return new URL(`../assets/robot-3d/meshes/${filename}`, import.meta.url).href;
+          const localUrl = new URL(`../assets/robot-3d/meshes/${filename}`, import.meta.url).href;
+          // ✅ Stocker le nom du fichier pour les deux URLs (originale et locale)
+          stlFileMap.set(url, filename);
+          stlFileMap.set(localUrl, filename);
+          return localUrl;
+        });
+        
+        // ✅ Intercepter les événements de chargement pour capturer les noms de fichiers STL
+        loader.manager.addHandler(/\.stl$/i, {
+          load: (url) => {
+            const filename = url.split('/').pop();
+            stlFileMap.set(url, filename);
+            console.log(`📥 Loading STL: ${filename} from ${url}`);
+          }
         });
 
         // Parse URDF from imported file
@@ -101,34 +117,179 @@ class RobotModelCache {
         let meshCount = 0;
         let shellCount = 0;
         
+        // ✅ Liste de tous les fichiers STL chargés
+        const stlFilesList = [];
+        
         robotModel.traverse((child) => {
           if (child.isMesh) {
             meshCount++;
+            
+            // ✅ Logger le nom du fichier STL pour chaque mesh
+            // Chercher le nom du fichier STL dans différentes propriétés
+            let meshFileName = '';
+            
+            // Méthode 1: Chercher dans toutes les URLs possibles de la géométrie (avec map)
+            if (child.geometry) {
+              // Essayer différentes propriétés userData
+              const possibleUrls = [
+                child.geometry.userData?.url,
+                child.geometry.userData?.sourceFile,
+                child.geometry.userData?.filename,
+                child.geometry.userData?.sourceURL,
+              ].filter(Boolean);
+              
+              for (const url of possibleUrls) {
+                // D'abord essayer de trouver dans la map
+                const mappedName = stlFileMap.get(url);
+                if (mappedName) {
+                  meshFileName = mappedName;
+                  break;
+                }
+                // Sinon extraire depuis l'URL
+                const filename = url.split('/').pop();
+                if (filename && filename.toLowerCase().endsWith('.stl')) {
+                  meshFileName = filename;
+                  break;
+                }
+              }
+            }
+            
+            // Méthode 2: Chercher dans le mesh lui-même
+            if (!meshFileName && child.userData) {
+              const meshUrls = [
+                child.userData.url,
+                child.userData.sourceFile,
+                child.userData.filename,
+                child.userData.sourceURL,
+              ].filter(Boolean);
+              
+              for (const url of meshUrls) {
+                const mappedName = stlFileMap.get(url);
+                if (mappedName) {
+                  meshFileName = mappedName;
+                  break;
+                }
+                const filename = url.split('/').pop();
+                if (filename && filename.toLowerCase().endsWith('.stl')) {
+                  meshFileName = filename;
+                  break;
+                }
+              }
+            }
+            
+            // Méthode 3: Remonter dans la hiérarchie pour trouver le nom du fichier
+            if (!meshFileName) {
+              let parent = child.parent;
+              let depth = 0;
+              while (parent && depth < 5) {
+                // Chercher dans userData du parent
+                if (parent.userData?.filename) {
+                  meshFileName = parent.userData.filename;
+                  break;
+                }
+                // Chercher dans le nom du parent
+                if (parent.name && parent.name.toLowerCase().endsWith('.stl')) {
+                  meshFileName = parent.name;
+                  break;
+                }
+                parent = parent.parent;
+                depth++;
+              }
+            }
+            
+            // Méthode 4: Utiliser le nom du mesh si disponible
+            if (!meshFileName && child.name) {
+              meshFileName = child.name;
+            }
+            
+            // Fallback: unnamed
+            if (!meshFileName) {
+              meshFileName = 'unnamed';
+            }
+            
+            const stlFileName = meshFileName.toLowerCase().endsWith('.stl') ? meshFileName : `${meshFileName}.stl`;
+            
+            // ✅ STOCKER le nom du fichier STL dans userData pour pouvoir l'utiliser plus tard
+            child.userData.stlFileName = stlFileName;
+            
+            if (!stlFilesList.includes(stlFileName)) {
+              stlFilesList.push(stlFileName);
+            }
+            
+            const geometryUrl = child.geometry?.userData?.url || 'not found';
+            console.log(`📦 STL file [${meshCount}]: ${stlFileName}`, {
+              meshName: child.name || 'unnamed',
+              geometryUrl: geometryUrl,
+              vertices: child.geometry?.attributes?.position?.count || 0,
+              hasNormals: !!child.geometry?.attributes?.normal,
+              parentName: child.parent?.name || 'no parent',
+              userDataKeys: Object.keys(child.geometry?.userData || {}),
+              meshUserDataKeys: Object.keys(child.userData || {}),
+            });
 
             // ✅ Smooth shading de qualité (comme Blender)
             if (child.geometry) {
-              // Fusionner les vertices dupliqués pour un vrai smooth shading
+              // CRUCIAL : Les fichiers STL peuvent avoir des normales "hard edges" intégrées
+              // Il faut SUPPRIMER ces normales avant de merger et recalculer pour un vrai smooth shading
+              
+              // 1. Supprimer les normales existantes du fichier STL (si présentes)
+              // Les fichiers STL peuvent avoir des normales "hard edges" qui empêchent le smooth shading
+              if (child.geometry.attributes.normal) {
+                child.geometry.deleteAttribute('normal');
+              }
+              
+              // 2. Fusionner les vertices dupliqués pour un vrai smooth shading
+              // Les fichiers STL ont souvent des vertices dupliqués aux frontières des faces
+              // Sans merge, computeVertexNormals ne peut pas créer de smooth shading correct
               const positionAttribute = child.geometry.attributes.position;
               if (positionAttribute) {
-                // Utiliser mergeVertices pour les coques (grandes pièces)
                 const vertexCount = positionAttribute.count;
-                if (vertexCount > 500) {
-                  try {
-                    // Convertir en non-indexed si nécessaire puis merger
-                    if (child.geometry.index) {
-                      child.geometry = child.geometry.toNonIndexed();
-                    }
-                    const mergedGeometry = mergeVertices(child.geometry, 0.0001);
-                    child.geometry = mergedGeometry;
-                    console.log(`🔧 Smooth shading: ${vertexCount} → ${child.geometry.attributes.position.count} vertices`);
-                  } catch (e) {
-                    console.warn('⚠️ Could not merge vertices:', e.message);
+                try {
+                  // Convertir en non-indexed si nécessaire puis merger
+                  // Merge pour TOUTES les pièces pour un smooth shading optimal
+                  if (child.geometry.index) {
+                    child.geometry = child.geometry.toNonIndexed();
                   }
+                  // Seuil de merge : 0.0001 pour fusionner les vertices très proches
+                  // Les fichiers STL imprimés en 3D peuvent avoir des vertices légèrement décalés
+                  // Un seuil trop petit ne fusionnera pas assez, trop grand fusionnera des vertices différents
+                  const mergedGeometry = mergeVertices(child.geometry, 0.0001);
+                  child.geometry = mergedGeometry;
+                  const mergedCount = child.geometry.attributes.position.count;
+                  if (vertexCount !== mergedCount) {
+                    console.log(`🔧 Smooth shading: ${vertexCount} → ${mergedCount} vertices (${((1 - mergedCount/vertexCount) * 100).toFixed(1)}% reduction)`);
+                  }
+                } catch (e) {
+                  console.warn('⚠️ Could not merge vertices:', e.message);
                 }
               }
               
-              // Recalculer les normales pour un rendu lisse
-              child.geometry.computeVertexNormals();
+              // 3. ✅ Recalculer les normales SMOOTH après le merge pour un rendu lisse
+              // Après avoir mergé les vertices, on recalcule les normales avec un angle de seuil large
+              // pour avoir un smooth shading optimal (les surfaces courbes seront lisses)
+              
+              // IMPORTANT : S'assurer que la géométrie n'a pas d'index avant de calculer les normales
+              // Les normales doivent être calculées sur la géométrie non-indexée pour un smooth shading correct
+              if (child.geometry.index) {
+                // Si la géométrie est indexée, la convertir en non-indexée pour un meilleur smooth shading
+                child.geometry = child.geometry.toNonIndexed();
+              }
+              
+              // Calculer les normales avec un angle de seuil large pour smooth même les angles prononcés
+              child.geometry.computeVertexNormals(Math.PI / 2); // Angle de 90° pour smooth même les angles prononcés
+              
+              // Vérifier que les normales sont bien présentes
+              if (!child.geometry.attributes.normal) {
+                console.warn(`⚠️ No normal attribute found for mesh: ${child.name || 'unnamed'}, recomputing...`);
+                child.geometry.computeVertexNormals(Math.PI / 2);
+              } else {
+                // Log pour vérifier que les normales sont bien présentes
+                const normalCount = child.geometry.attributes.normal.count;
+                const positionCount = child.geometry.attributes.position.count;
+                if (normalCount !== positionCount) {
+                  console.warn(`⚠️ Normal count (${normalCount}) != position count (${positionCount}) for mesh: ${child.name || 'unnamed'}`);
+                }
+              }
             }
 
             // Sauvegarder la couleur d'origine
@@ -137,6 +298,12 @@ class RobotModelCache {
               originalColor = child.material.color.getHex();
             }
             child.userData.originalColor = originalColor;
+            
+            // ✅ STOCKER le nom du matériau dans userData pour pouvoir l'utiliser plus tard
+            // Le matériau peut avoir un nom comme "big_lens_d40_material" qui est très fiable
+            if (child.material && child.material.name) {
+              child.userData.materialName = child.material.name;
+            }
             
             // ✅ Détecter les verres des lunettes par COULEUR GRISE
             // Dans URDF: rgba(0.439216 0.47451 0.501961) = #707f80 ou similaire
@@ -154,8 +321,7 @@ class RobotModelCache {
             }
             
             // ✅ Détecter les antennes (toujours sombres) 
-            const geometryUrl = child.geometry?.userData?.url || '';
-            const meshFileName = geometryUrl.split('/').pop() || '';
+            // Réutiliser geometryUrl et meshFileName déjà déclarés plus haut
             const isAntennaByName = meshFileName.toLowerCase().includes('antenna') || 
                                      (child.name && child.name.toLowerCase().includes('antenna'));
             
@@ -202,6 +368,8 @@ class RobotModelCache {
             }
 
             // Créer un matériau de base (sera configuré plus tard)
+            // ✅ Smooth shading est contrôlé par les normales de la géométrie (computeVertexNormals)
+            // MeshToonMaterial utilise automatiquement les normales smooth si elles sont présentes
             child.material = new THREE.MeshToonMaterial({
               color: originalColor,
               side: THREE.FrontSide,
@@ -212,6 +380,8 @@ class RobotModelCache {
         });
         
         console.log(`✅ [Cache] Materials initialized: ${meshCount} meshes (${shellCount} large shells excluded, ${meshCount - shellCount} components to scan)`);
+        console.log(`📋 [Cache] Total STL files loaded: ${stlFilesList.length} unique files`);
+        console.log(`📋 [Cache] STL files list:`, stlFilesList.sort());
 
         this.robotModel = robotModel;
         this.isLoaded = true;
