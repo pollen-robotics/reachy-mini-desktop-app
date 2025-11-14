@@ -127,8 +127,8 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           yarn tauri build
-          # Vérifier la signature si les secrets étaient définis
-          if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+          # Vérifier la signature si APPLE_SIGNING_IDENTITY était défini
+          if [ -n "$APPLE_SIGNING_IDENTITY" ]; then
             echo "🔍 Vérification de la signature..."
             codesign -dv --verbose=4 src-tauri/target/release/bundle/macos/*.app 2>&1 | head -5 || echo "⚠️  Impossible de vérifier la signature"
           fi
