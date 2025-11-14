@@ -124,9 +124,9 @@ Un workflow GitHub Actions est disponible dans `.github/workflows/build.yml` qui
      ```
    - Collez le résultat complet dans le secret GitHub
 
-   #### `APPLE_CERTIFICATE_PASSWORD`
+   #### `APPLE_CERTIFICATE_PASSWORD` (optionnel)
    - Le mot de passe du certificat (peut être vide pour `.cer`)
-   - Si vide, créez quand même le secret avec une valeur vide
+   - **Note** : GitHub ne permet pas les secrets vides. Si votre certificat n'a pas de mot de passe, **ne créez pas ce secret**. Le workflow fonctionnera sans.
 
    #### `APPLE_SIGNING_IDENTITY`
    - Valeur : `Developer ID Application: Pollen Robotics (4KLHP7L6KP)`
