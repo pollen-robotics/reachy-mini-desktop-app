@@ -178,8 +178,8 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
-          tagName: v__VERSION__
-          releaseName: 'Reachy Mini Control v__VERSION__'
+          tagName: v${{ steps.version.outputs.version }}
+          releaseName: 'Reachy Mini Control v${{ steps.version.outputs.version }}'
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: false
           prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'alpha') }}
