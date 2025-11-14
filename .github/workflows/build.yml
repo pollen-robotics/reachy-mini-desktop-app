@@ -30,12 +30,10 @@ jobs:
       
       - name: Install dependencies
         run: |
-          cd tauri-app
           yarn install
       
       - name: Build sidecar
         run: |
-          cd tauri-app
           yarn build:sidecar-macos
       
       - name: Setup Apple Code Signing
@@ -86,7 +84,6 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          cd tauri-app
           yarn tauri build
           # Vérifier la signature si les secrets étaient définis
           if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_SIGNING_IDENTITY" ]; then
@@ -99,7 +96,7 @@ jobs:
         with:
           name: macos-app
           path: |
-            tauri-app/src-tauri/target/release/bundle/macos/*.app
-            tauri-app/src-tauri/target/release/bundle/macos/*.dmg
+            src-tauri/target/release/bundle/macos/*.app
+            src-tauri/target/release/bundle/macos/*.dmg
           retention-days: 30
 
