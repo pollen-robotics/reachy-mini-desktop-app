@@ -203,36 +203,143 @@ jobs:
         if: matrix.os == 'macos-latest'
         shell: bash
         run: |
-          if [ -n "${{ secrets.APPLE_API_KEY_CONTENT }}" ]; then
-            echo "📦 Configuration de la clé API App Store Connect..."
-            mkdir -p ~/.appstoreconnect
-            echo "${{ secrets.APPLE_API_KEY_CONTENT }}" > ~/.appstoreconnect/private_key.p8
-            chmod 600 ~/.appstoreconnect/private_key.p8
-            echo "APPLE_API_KEY_PATH=$HOME/.appstoreconnect/private_key.p8" >> $GITHUB_ENV
-            echo "✅ Clé API configurée"
-          else
-            echo "⚠️  APPLE_API_KEY_CONTENT non configuré - la notarisation sera ignorée"
+          # Vérifier que toutes les variables de notarisation sont définies et valides
+          if [ -z "${{ secrets.APPLE_API_KEY_CONTENT }}" ]; then
+            echo "❌ APPLE_API_KEY_CONTENT n'est pas défini"
+            exit 1
           fi
+          if [ -z "${{ secrets.APPLE_API_ISSUER }}" ]; then
+            echo "❌ APPLE_API_ISSUER n'est pas défini"
+            exit 1
+          fi
+          if [ -z "${{ secrets.APPLE_API_KEY }}" ]; then
+            echo "❌ APPLE_API_KEY n'est pas défini"
+            exit 1
+          fi
+          
+          # Nettoyer APPLE_API_ISSUER (supprimer espaces, retours à la ligne, etc.)
+          CLEANED_ISSUER=$(echo -n "${{ secrets.APPLE_API_ISSUER }}" | tr -d ' \n\r\t')
+          
+          # Vérifier que APPLE_API_ISSUER est un UUID valide
+          if ! echo "$CLEANED_ISSUER" | grep -qE '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'; then
+            echo "❌ APPLE_API_ISSUER n'est pas un UUID valide"
+            echo "   Valeur reçue (longueur: ${#CLEANED_ISSUER}): '${CLEANED_ISSUER}'"
+            echo "   Format attendu: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+            exit 1
+          fi
+          
+          echo "📦 Configuration de la clé API App Store Connect pour notarisation manuelle..."
+          mkdir -p ~/.appstoreconnect
+          
+          # Nettoyer aussi APPLE_API_KEY_CONTENT
+          CLEANED_KEY_CONTENT=$(echo -n "${{ secrets.APPLE_API_KEY_CONTENT }}" | tr -d '\n\r')
+          echo "$CLEANED_KEY_CONTENT" > ~/.appstoreconnect/private_key.p8
+          chmod 600 ~/.appstoreconnect/private_key.p8
+          
+          # Nettoyer APPLE_API_KEY aussi
+          CLEANED_API_KEY=$(echo -n "${{ secrets.APPLE_API_KEY }}" | tr -d ' \n\r\t')
+          
+          # Stocker dans GITHUB_ENV pour utilisation dans les étapes suivantes
+          echo "APPLE_API_KEY_PATH=$HOME/.appstoreconnect/private_key.p8" >> $GITHUB_ENV
+          echo "APPLE_API_ISSUER=$CLEANED_ISSUER" >> $GITHUB_ENV
+          echo "APPLE_API_KEY=$CLEANED_API_KEY" >> $GITHUB_ENV
+          echo "✅ Clé API configurée pour notarisation manuelle"
+          echo "   APPLE_API_ISSUER: ${CLEANED_ISSUER:0:8}... (UUID valide)"
 
-      - name: Build and Release with tauri-action
-        uses: tauri-apps/tauri-action@v0
+      - name: Build Tauri app (macOS)
+        if: matrix.os == 'macos-latest'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Le certificat est déjà dans le keychain temporaire (macOS uniquement)
-          # tauri-action l'utilisera via APPLE_SIGNING_IDENTITY
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # Notarisation avec clé API App Store Connect (méthode recommandée)
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          # Ne pas passer les variables de notarisation pour éviter la notarisation automatique
+          # On la fera manuellement après avoir signé tous les binaires
+        shell: bash
+        working-directory: src-tauri
+        run: |
+          # Builder sans notarisation automatique
+          yarn tauri build --target ${{ matrix.target }}
+
+      - name: Build Tauri app (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        working-directory: src-tauri
+        run: |
+          yarn tauri build --target ${{ matrix.target }}
+
+      - name: Sign all binaries (macOS only)
+        if: matrix.os == 'macos-latest'
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        shell: bash
+        run: |
+          APP_BUNDLE="src-tauri/target/${{ matrix.target }}/release/bundle/macos/Reachy Mini Control.app"
+          if [ ! -d "$APP_BUNDLE" ]; then
+            echo "❌ App bundle not found: $APP_BUNDLE"
+            exit 1
+          fi
+          chmod +x scripts/sign-all-binaries.sh
+          bash scripts/sign-all-binaries.sh "$APP_BUNDLE" "$APPLE_SIGNING_IDENTITY"
+          
+          # Vérifier que tous les binaires sont signés
+          echo "🔍 Verifying all binaries are signed..."
+          codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE" || {
+            echo "❌ Some binaries are not properly signed"
+            exit 1
+          }
+
+      - name: Notarize app (macOS only)
+        if: matrix.os == 'macos-latest'
+        env:
+          APPLE_API_ISSUER: ${{ env.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ env.APPLE_API_KEY }}
           APPLE_API_KEY_PATH: ${{ env.APPLE_API_KEY_PATH }}
+        shell: bash
+        run: |
+          APP_BUNDLE="src-tauri/target/${{ matrix.target }}/release/bundle/macos/Reachy Mini Control.app"
+          
+          # Créer un ZIP pour la notarisation
+          ZIP_PATH="src-tauri/target/${{ matrix.target }}/release/bundle/macos/Reachy Mini Control.zip"
+          cd "$(dirname "$APP_BUNDLE")"
+          ditto -c -k --keepParent "$(basename "$APP_BUNDLE")" "$(basename "$ZIP_PATH")"
+          
+          echo "📦 Submitting app for notarization..."
+          xcrun notarytool submit "$ZIP_PATH" \
+            --key "$APPLE_API_KEY_PATH" \
+            --key-id "$APPLE_API_KEY" \
+            --issuer "$APPLE_API_ISSUER" \
+            --wait \
+            --timeout 30m
+          
+          echo "✅ Notarization successful!"
+          
+          # Staple the notarization ticket
+          echo "📎 Stapling notarization ticket..."
+          xcrun stapler staple "$APP_BUNDLE"
+          xcrun stapler validate "$APP_BUNDLE"
+
+      - name: Create GitHub Release
+        if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
+        uses: softprops/action-gh-release@v1
         with:
-          tagName: v${{ steps.version.outputs.version }}
-          releaseName: 'Reachy Mini Control v${{ steps.version.outputs.version }}'
-          releaseBody: 'See the assets to download this version and install.'
-          releaseDraft: false
+          tag_name: v${{ steps.version.outputs.version }}
+          name: 'Reachy Mini Control v${{ steps.version.outputs.version }}'
+          body: 'See the assets to download this version and install.'
+          draft: false
           prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'alpha') }}
-          args: --target ${{ matrix.target }}
+          files: |
+            src-tauri/target/*/release/bundle/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts to existing release
+        if: matrix.os != 'macos-latest' || matrix.target != 'aarch64-apple-darwin'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          files: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build update files
         env:
