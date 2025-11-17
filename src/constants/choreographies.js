@@ -35,7 +35,7 @@ export const DANCES = [
   'sharp_side_tilt',
 ];
 
-// Liste complète de toutes les émotions disponibles dans la bibliothèque
+// Complete list of all available emotions in the library
 export const EMOTIONS = [
   'fear1',
   'exhausted1',
@@ -120,7 +120,7 @@ export const EMOTIONS = [
   'no_sad1',
 ];
 
-// Sélection de 15 émotions principales avec emojis caractéristiques
+// Selection of 15 main emotions with characteristic emojis
 export const QUICK_EMOTIONS = [
   { name: 'loving1', emoji: '🥰', label: 'Love' },
   { name: 'sad1', emoji: '😢', label: 'Sad' },

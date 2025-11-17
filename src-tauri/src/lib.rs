@@ -22,14 +22,6 @@ const DAEMON_ARGS: &[&str] = &[
     "reachy_mini.daemon.app.main",
 ];
 
-const DAEMON_ARGS_SIM: &[&str] = &[
-    "run",
-    "python",
-    "-m",
-    "reachy_mini.daemon.app.main",
-    "--sim",
-];
-
 const MAX_LOGS: usize = 50;
 
 // ============================================================================
@@ -122,7 +114,7 @@ fn kill_daemon(state: &State<DaemonState>) {
 // ============================================================================
 
 /// Spawn and monitor the embedded daemon sidecar
-fn spawn_and_monitor_sidecar(app_handle: tauri::AppHandle, state: &State<DaemonState>, simulation_mode: bool) -> Result<(), String> {
+fn spawn_and_monitor_sidecar(app_handle: tauri::AppHandle, state: &State<DaemonState>) -> Result<(), String> {
     // Check if a sidecar process already exists
     let process_lock = state.process.lock().unwrap();
     if process_lock.is_some() {
@@ -131,20 +123,12 @@ fn spawn_and_monitor_sidecar(app_handle: tauri::AppHandle, state: &State<DaemonS
     }
     drop(process_lock);
     
-    // Choose args based on simulation mode
-    let args = if simulation_mode {
-        println!("[tauri] Starting daemon in SIMULATION mode");
-        DAEMON_ARGS_SIM
-    } else {
-        DAEMON_ARGS
-    };
-    
     // Spawn sidecar
     let sidecar_command = app_handle
         .shell()
         .sidecar("uv-trampoline")
         .map_err(|e| e.to_string())?
-        .args(args);
+        .args(DAEMON_ARGS);
     
     let (mut rx, child) = sidecar_command.spawn().map_err(|e| e.to_string())?;
 
@@ -184,32 +168,16 @@ fn spawn_and_monitor_sidecar(app_handle: tauri::AppHandle, state: &State<DaemonS
 // ============================================================================
 
 #[tauri::command]
-fn start_daemon(app_handle: tauri::AppHandle, state: State<DaemonState>, simulation_mode: Option<bool>) -> Result<String, String> {
-    // Determine simulation mode: check env var or use provided parameter
-    let sim_mode = simulation_mode.unwrap_or_else(|| {
-        std::env::var("REACHY_SIMULATION_MODE")
-            .map(|v| v == "true" || v == "1")
-            .unwrap_or(false)
-    });
-    
-    if sim_mode {
-        add_log(&state, "🎮 Starting daemon in SIMULATION mode...".to_string());
-    } else {
-        add_log(&state, "🧹 Cleaning up existing daemons...".to_string());
-    }
-    
+fn start_daemon(app_handle: tauri::AppHandle, state: State<DaemonState>) -> Result<String, String> {
     // 1. ⚡ Aggressive cleanup of all existing daemons (including zombies)
+    add_log(&state, "🧹 Cleaning up existing daemons...".to_string());
     kill_daemon(&state);
     
-    // 2. Spawn embedded daemon sidecar (with simulation mode flag)
-    spawn_and_monitor_sidecar(app_handle, &state, sim_mode)?;
+    // 2. Spawn embedded daemon sidecar
+    spawn_and_monitor_sidecar(app_handle, &state)?;
     
     // 3. Log success
-    if sim_mode {
-        add_log(&state, "✓ Daemon started in SIMULATION mode".to_string());
-    } else {
     add_log(&state, "✓ Daemon started via embedded sidecar".to_string());
-    }
     
     Ok("Daemon started successfully".to_string())
 }
@@ -233,16 +201,6 @@ fn get_logs(state: State<DaemonState>) -> Vec<String> {
 
 #[tauri::command]
 fn check_usb_robot() -> Result<Option<String>, String> {
-    // Check if simulation mode is enabled via env var
-    let simulation_mode = std::env::var("REACHY_SIMULATION_MODE")
-        .map(|v| v == "true" || v == "1")
-        .unwrap_or(false);
-    
-    // In simulation mode, return a simulated port name
-    if simulation_mode {
-        return Ok(Some("sim://mujoco".to_string()));
-    }
-    
     match serialport::available_ports() {
         Ok(ports) => {
             // Look for USB device with VID:PID = 1a86:55d3 (Reachy Mini CH340)
@@ -257,13 +215,6 @@ fn check_usb_robot() -> Result<Option<String>, String> {
         }
         Err(e) => Err(format!("USB detection error: {}", e)),
     }
-}
-
-#[tauri::command]
-fn get_simulation_mode() -> bool {
-    std::env::var("REACHY_SIMULATION_MODE")
-        .map(|v| v == "true" || v == "1")
-        .unwrap_or(false)
 }
 
 // ============================================================================
@@ -318,7 +269,7 @@ pub fn run() {
             
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![start_daemon, stop_daemon, get_logs, check_usb_robot, get_simulation_mode])
+        .invoke_handler(tauri::generate_handler![start_daemon, stop_daemon, get_logs, check_usb_robot])
         .on_window_event(|window, event| {
             match event {
                 tauri::WindowEvent::CloseRequested { .. } => {

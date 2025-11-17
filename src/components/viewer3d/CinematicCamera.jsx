@@ -5,41 +5,41 @@ import * as THREE from 'three';
 import { DAEMON_CONFIG } from '../../config/daemon';
 
 /**
- * Caméra cinématique avec animation smooth
- * Alternative à OrbitControls pour un rendu plus filmique
+ * Cinematic camera with smooth animation
+ * Alternative to OrbitControls for more filmic rendering
  */
 export default function CinematicCamera({ 
   initialPosition = [0, 0.15, 0.35],
   target = [0, 0.12, 0],
   fov = 55,
   enabled = true,
-  errorFocusMesh = null, // Mesh à focus en cas d'erreur
+  errorFocusMesh = null, // Mesh to focus on in case of error
 }) {
   const cameraRef = useRef();
-  const startTimeRef = useRef(null); // ⚡ null au départ, sera initialisé au premier frame
+  const startTimeRef = useRef(null); // ⚡ null initially, will be initialized on first frame
   const errorStartTimeRef = useRef(null);
-  const errorStartPositionRef = useRef(null); // Position de départ pour l'erreur
-  const errorStartLookAtRef = useRef(null); // LookAt de départ pour l'erreur
+  const errorStartPositionRef = useRef(null); // Starting position for error
+  const errorStartLookAtRef = useRef(null); // Starting lookAt for error
   const errorTargetPositionRef = useRef(null);
   const errorTargetLookAtRef = useRef(null);
   const { set } = useThree();
   
-  // ⚡ Durée de l'animation lue depuis la config centrale
+  // ⚡ Animation duration read from central config
   const animationDuration = DAEMON_CONFIG.ANIMATIONS.SCAN_DURATION / 1000;
 
-  // Définir cette caméra comme caméra active
+  // Set this camera as active camera
   useEffect(() => {
     if (cameraRef.current) {
       set({ camera: cameraRef.current });
     }
   }, [set]);
 
-  // Détecter quand une erreur est levée et calculer la position cible
+  // Detect when an error is raised and calculate target position
   useEffect(() => {
     if (errorFocusMesh && cameraRef.current) {
       console.log('🎥 Error detected, focusing on mesh:', errorFocusMesh);
       
-      // Calculer la bounding box du mesh en erreur
+      // Calculate bounding box of error mesh
       if (!errorFocusMesh.geometry.boundingBox) {
         errorFocusMesh.geometry.computeBoundingBox();
       }
@@ -48,25 +48,25 @@ export default function CinematicCamera({
       const center = new THREE.Vector3();
       bbox.getCenter(center);
       
-      // Convertir en position world
+      // Convert to world position
       const worldCenter = center.clone();
       errorFocusMesh.localToWorld(worldCenter);
       
-      // Position de la caméra : un peu plus loin, vue d'ensemble
+      // Camera position: a bit further, overview
       const meshSize = new THREE.Vector3();
       bbox.getSize(meshSize);
-      const baseDistance = 0.15; // Distance fixe raisonnable
+      const baseDistance = 0.15; // Reasonable fixed distance
       
       const errorCameraPosition = new THREE.Vector3(
-        worldCenter.x + baseDistance * 0.3, // Légèrement sur le côté
-        worldCenter.y + baseDistance * 0.4, // Légèrement au-dessus
-        worldCenter.z + baseDistance * 0.8  // En avant
+        worldCenter.x + baseDistance * 0.3, // Slightly to the side
+        worldCenter.y + baseDistance * 0.4, // Slightly above
+        worldCenter.z + baseDistance * 0.8  // Forward
       );
       
       errorTargetPositionRef.current = errorCameraPosition;
       errorTargetLookAtRef.current = worldCenter;
-      errorStartTimeRef.current = null; // Sera initialisé au prochain frame
-      errorStartPositionRef.current = null; // Sera capturé au prochain frame
+      errorStartTimeRef.current = null; // Will be initialized on next frame
+      errorStartPositionRef.current = null; // Will be captured on next frame
       
       console.log('🎥 Error focus transition prepared:', {
         to: errorCameraPosition.toArray(),
@@ -75,18 +75,18 @@ export default function CinematicCamera({
     }
   }, [errorFocusMesh]);
 
-  // Animation de la caméra - Arc circulaire cinématique OU focus sur erreur
+  // Camera animation - Cinematic circular arc OR focus on error
   useFrame(() => {
     if (!enabled || !cameraRef.current) return;
 
     // ⚠️ MODE ERREUR : Focus sur le mesh en erreur
     if (errorFocusMesh && errorTargetPositionRef.current) {
-      // Capturer la position et lookAt de départ au premier frame (évite le flicker)
+      // Capture starting position and lookAt on first frame (avoids flicker)
       if (errorStartTimeRef.current === null) {
         errorStartTimeRef.current = Date.now();
         errorStartPositionRef.current = cameraRef.current.position.clone();
         
-        // Calculer le lookAt actuel à partir de la rotation de la caméra
+        // Calculate current lookAt from camera rotation
         const direction = new THREE.Vector3(0, 0, -1);
         direction.applyQuaternion(cameraRef.current.quaternion);
         errorStartLookAtRef.current = cameraRef.current.position.clone().add(direction);
@@ -98,15 +98,15 @@ export default function CinematicCamera({
       }
       
       const errorElapsed = (Date.now() - errorStartTimeRef.current) / 1000;
-      const errorDuration = 1.5; // 1.5s pour une transition rapide et smooth
+      const errorDuration = 1.5; // 1.5s for fast and smooth transition
       const errorProgress = Math.min(errorElapsed / errorDuration, 1.0);
       
-      // Easing très smooth (ease-in-out)
+      // Very smooth easing (ease-in-out)
       const eased = errorProgress < 0.5
         ? 2 * errorProgress * errorProgress
         : 1 - Math.pow(-2 * errorProgress + 2, 2) / 2;
       
-      // Interpolation position
+      // Position interpolation
       const startPos = errorStartPositionRef.current;
       const newPos = new THREE.Vector3(
         startPos.x + (errorTargetPositionRef.current.x - startPos.x) * eased,
@@ -116,7 +116,7 @@ export default function CinematicCamera({
       
       cameraRef.current.position.copy(newPos);
       
-      // Interpolation lookAt pour rotation smooth
+      // LookAt interpolation for smooth rotation
       const startLookAt = errorStartLookAtRef.current;
       const targetLookAt = errorTargetLookAtRef.current;
       const interpolatedLookAt = new THREE.Vector3(
@@ -130,8 +130,8 @@ export default function CinematicCamera({
       return;
     }
 
-    // 🎬 MODE NORMAL : Rotation lente en plan large
-    // ⚡ Initialiser le timer au premier frame (quand le scan démarre vraiment)
+    // 🎬 NORMAL MODE: Slow rotation in wide shot
+    // ⚡ Initialize timer on first frame (when scan really starts)
     if (startTimeRef.current === null) {
       startTimeRef.current = Date.now();
       console.log('🎥 Camera animation started - slow rotation');
@@ -139,16 +139,16 @@ export default function CinematicCamera({
     
     const elapsed = (Date.now() - startTimeRef.current) / 1000;
 
-    // ✅ PLAN LARGE : Position fixe à bonne distance pour voir le robot entier
-    const radius = 0.35; // Distance fixe, zoom sur le robot
-    const height = 0.15;  // Hauteur fixe, centré sur le robot avec antennes repliées
+    // ✅ WIDE SHOT: Fixed position at good distance to see entire robot
+    const radius = 0.35; // Fixed distance, zoom on robot
+    const height = 0.15;  // Fixed height, centered on robot with antennas folded
     
-    // ✅ ROTATION LENTE : Tour complet sur la durée du scan
-    // De 0° à 360° sur la durée totale
-    const rotationSpeed = (2 * Math.PI) / animationDuration; // Radians par seconde
+    // ✅ SLOW ROTATION: Full turn over scan duration
+    // From 0° to 360° over total duration
+    const rotationSpeed = (2 * Math.PI) / animationDuration; // Radians per second
     const angle = elapsed * rotationSpeed;
     
-    // Position circulaire (X et Z) - tourne dans le sens horaire
+    // Circular position (X and Z) - rotates clockwise
     const x = Math.sin(angle) * radius;
     const z = Math.cos(angle) * radius;
 

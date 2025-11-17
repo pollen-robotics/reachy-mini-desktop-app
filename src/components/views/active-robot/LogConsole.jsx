@@ -47,7 +47,7 @@ export default function LogConsole({ logs, darkMode = false }) {
         py: .5,
         fontFamily: 'SF Mono, Monaco, Menlo, monospace',
         fontSize: 10,
-        // ✅ Pas de transition sur bgcolor/border pour éviter l'animation lors du changement de dark mode
+        // ✅ No transition on bgcolor/border to avoid animation when changing dark mode
         transition: 'box-shadow 0.3s ease',
         '&::-webkit-scrollbar': {
           width: '4px',

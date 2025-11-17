@@ -3,29 +3,29 @@ import { createPortal } from 'react-dom';
 import { Box, IconButton } from '@mui/material';
 
 /**
- * Composant ViewportSwapper
- * Gère l'affichage de deux vues (3D et Caméra) avec possibilité de swap
- * Utilise des Portals React pour éviter la duplication des composants
+ * ViewportSwapper Component
+ * Manages the display of two views (3D and Camera) with swap capability
+ * Uses React Portals to avoid component duplication
  * 
  * Architecture:
- * - Deux conteneurs DOM : mainViewport et smallViewport
- * - Les composants sont rendus une seule fois
- * - Les Portals les "téléportent" vers le bon conteneur selon l'état swapped
+ * - Two DOM containers: mainViewport and smallViewport
+ * - Components are rendered only once
+ * - Portals "teleport" them to the correct container based on swapped state
  */
 export default function ViewportSwapper({
-  view3D,           // ReactNode : le composant 3D (Viewer3D)
-  viewCamera,       // ReactNode : le composant caméra (CameraFeed)
-  onSwap,           // Callback optionnel quand le swap se produit
-  initialSwapped = false, // État initial du swap
+  view3D,           // ReactNode: the 3D component (Viewer3D)
+  viewCamera,       // ReactNode: the camera component (CameraFeed)
+  onSwap,           // Optional callback when swap occurs
+  initialSwapped = false, // Initial swap state
 }) {
   const [isSwapped, setIsSwapped] = useState(initialSwapped);
   const mainViewportRef = useRef(null);
   const smallViewportRef = useRef(null);
   
-  // Aspect ratio pour la caméra (640x480 = 4:3)
+  // Camera aspect ratio (640x480 = 4:3)
   const cameraAspectRatio = 640 / 480; // 1.333...
   
-  // Gérer le swap
+  // Handle swap
   const handleSwap = useCallback(() => {
     setIsSwapped(prev => !prev);
     if (onSwap) {
@@ -33,12 +33,12 @@ export default function ViewportSwapper({
     }
   }, [isSwapped, onSwap]);
   
-  // Props pour les vues selon leur taille
+  // Props for views based on their size
   const view3DSmallProps = {
     hideControls: true,
     showStatusTag: false,
     hideEffects: true,
-    // On garde la même caméra que la vue principale
+    // Keep the same camera as the main view
   };
   
   const viewCameraSmallProps = {
@@ -47,13 +47,13 @@ export default function ViewportSwapper({
     height: 90,
   };
   
-  // Cloner les composants avec les props appropriées
+  // Clone components with appropriate props
   const view3DMain = view3D;
   const view3DSmall = cloneElement(view3D, view3DSmallProps);
   const viewCameraMain = viewCamera;
   const viewCameraSmall = cloneElement(viewCamera, viewCameraSmallProps);
   
-  // Les deux vues à afficher (décidées selon l'état swapped)
+  // The two views to display (decided based on swapped state)
   const mainView = isSwapped ? viewCameraMain : view3DMain;
   const smallView = isSwapped ? view3DSmall : viewCameraSmall;
   
@@ -62,17 +62,17 @@ export default function ViewportSwapper({
       sx={{
         position: 'relative',
         width: '100%',
-        // Si c'est la caméra qui est affichée, utiliser l'aspect ratio 4:3
-        // Sinon, laisser la hauteur s'adapter avec un minHeight pour le 3D viewer
+        // If camera is displayed, use 4:3 aspect ratio
+        // Otherwise, let height adapt with minHeight for 3D viewer
         ...(isSwapped ? {
           aspectRatio: `${cameraAspectRatio}`,
         } : {
           height: '100%',
-          minHeight: 280, // Hauteur minimale pour le 3D viewer
+          minHeight: 280, // Minimum height for 3D viewer
         }),
       }}
     >
-      {/* Viewport principal (grand) */}
+      {/* Main viewport (large) */}
       <Box
         ref={mainViewportRef}
         sx={{
@@ -84,7 +84,7 @@ export default function ViewportSwapper({
         }}
       />
       
-      {/* Viewport petit (en bas à droite, à cheval sur le visualiseur) */}
+      {/* Small viewport (bottom right, overlapping the viewer) */}
       <Box
         sx={{
           position: 'absolute',
@@ -107,7 +107,7 @@ export default function ViewportSwapper({
           }}
         />
         
-        {/* Bouton swap sur le petit viewport */}
+        {/* Swap button on small viewport */}
         <IconButton
           onClick={handleSwap}
           sx={{
@@ -135,7 +135,7 @@ export default function ViewportSwapper({
         </IconButton>
       </Box>
       
-      {/* Portals : téléportent les vues vers les conteneurs */}
+      {/* Portals: teleport views to containers */}
       {mainViewportRef.current && createPortal(
         <Box sx={{ width: '100%', height: '100%' }}>
           {mainView}

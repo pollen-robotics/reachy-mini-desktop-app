@@ -11,7 +11,7 @@ export const useRobotCommands = () => {
       return;
     }
     
-    // ✅ Vérifier le verrouillage global (quick action OU app en cours)
+    // ✅ Check global lock (quick action OR app running)
     if (useAppStore.getState().isBusy()) {
       const currentAppName = useAppStore.getState().currentAppName;
       if (currentAppName) {
@@ -32,7 +32,7 @@ export const useRobotCommands = () => {
       buildApiUrl(endpoint),
       { method: 'POST' },
       DAEMON_CONFIG.TIMEOUTS.COMMAND,
-      { label } // ⚡ Le label sera utilisé dans le log automatique
+      { label } // ⚡ Label will be used in automatic log
     )
       .catch(e => {
         console.error(`❌ ${label} ERROR:`, e.message);
@@ -48,7 +48,7 @@ export const useRobotCommands = () => {
 
   const playRecordedMove = useCallback(async (dataset, move) => {
     if (!isActive) return;
-    // Chorégraphies et émotions sont plus longues, on lock pour 5 secondes
+    // Choreographies and emotions are longer, lock for 5 seconds
     await sendCommand(`/api/move/play/recorded-move-dataset/${dataset}/${move}`, move, 5000);
   }, [isActive, sendCommand]);
 

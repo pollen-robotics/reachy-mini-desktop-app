@@ -1,89 +1,89 @@
 # 🤖 Viewer 3D - Reachy Mini
 
-Module de visualisation 3D pour le robot Reachy Mini.
+3D visualization module for Reachy Mini robot.
 
 ## 📁 Structure
 
 ```
 viewer3d/
 ├── components/
-│   ├── RobotViewer3D.jsx    # Composant principal avec Canvas et UI
-│   ├── Scene.jsx             # Scène 3D (lumières, environnement, post-processing)
-│   └── URDFRobot.jsx         # Chargement et animation du modèle URDF
+│   ├── RobotViewer3D.jsx    # Main component with Canvas and UI
+│   ├── Scene.jsx             # 3D scene (lights, environment, post-processing)
+│   └── URDFRobot.jsx         # URDF model loading and animation
 │
 ├── hooks/
-│   └── useRobotWebSocket.js  # Hook WebSocket pour connexion au daemon
+│   └── useRobotWebSocket.js  # WebSocket hook for daemon connection
 │
 ├── config/
-│   └── levaControls.js       # Configuration centralisée des contrôles Leva
+│   └── levaControls.js       # Centralized Leva controls configuration
 │
 ├── utils/
-│   └── materials.js          # Utilitaires pour création/gestion des matériaux
+│   └── materials.js          # Utilities for material creation/management
 │
-└── index.js                  # Exports publics du module
+└── index.js                  # Public module exports
 ```
 
-## 🎯 Composants Principaux
+## 🎯 Main Components
 
 ### `RobotViewer3D`
-- Point d'entrée du visualiseur 3D
-- Gère l'UI (boutons mode Normal/X-Ray, Settings)
-- Intègre le CameraFeed
+- Entry point of 3D viewer
+- Manages UI (Normal/X-Ray mode buttons, Settings)
+- Integrates CameraFeed
 - Props : `isActive`, `enableDebug`, `forceLevaOpen`
 
 ### `Scene`
-- Configuration de la scène 3D
-- Éclairage 3-points
+- 3D scene configuration
+- 3-point lighting
 - Post-processing (SSAO)
-- Gestion des contrôles Leva
+- Leva controls management
 
 ### `URDFRobot`
-- Chargement du modèle URDF depuis les assets locaux
-- Système dual de matériaux (Normal/X-Ray)
-- Animation en temps réel (tête, antennes, corps)
+- URDF model loading from local assets
+- Dual material system (Normal/X-Ray)
+- Real-time animation (head, antennas, body)
 
-## 🔧 Hooks Custom
+## 🔧 Custom Hooks
 
 ### `useRobotWebSocket(isActive)`
-Hook pour gérer la connexion WebSocket au daemon Reachy.
+Hook to manage WebSocket connection to Reachy daemon.
 
-**Retourne :**
+**Returns :**
 ```javascript
 {
-  headPose: Float32Array(16),  // Matrice 4x4 de pose de la tête
-  yawBody: number,             // Rotation du corps
-  antennas: [left, right]      // Positions des antennes
+  headPose: Float32Array(16),  // 4x4 head pose matrix
+  yawBody: number,             // Body rotation
+  antennas: [left, right]      // Antenna positions
 }
 ```
 
-## 🎨 Système de Matériaux
+## 🎨 Material System
 
-Le module `utils/materials.js` fournit :
-- `createCellShadingGradient(bands)` - Gradient pour cell shading (4 bandes par défaut)
-- `createNormalMaterial(color, gradient)` - Matériau normal (gradient null par défaut = rendu standard)
-- `createXRayMaterial(color, gradient, opacity)` - Matériau transparent
-- `applyNormalMaterialSettings(material, settings, gradient, color)` - Application des paramètres
-- `applyXRayMaterialSettings(material, opacity, color)` - Application X-Ray
+The `utils/materials.js` module provides :
+- `createCellShadingGradient(bands)` - Gradient for cell shading (4 bands by default)
+- `createNormalMaterial(color, gradient)` - Normal material (null gradient by default = standard rendering)
+- `createXRayMaterial(color, gradient, opacity)` - Transparent material
+- `applyNormalMaterialSettings(material, settings, gradient, color)` - Parameter application
+- `applyXRayMaterialSettings(material, opacity, color)` - X-Ray application
 
 ## 📡 WebSocket
 
-Connexion : `ws://localhost:8000/api/state/ws/full`
+Connection : `ws://localhost:8000/api/state/ws/full`
 
-**Paramètres :**
+**Parameters :**
 - `frequency=10` - 10 Hz
-- `with_head_pose=true` - Matrice 4x4
-- `use_pose_matrix=true` - Format matriciel
-- `with_head_joints=true` - Joints Stewart + yaw_body
-- `with_antenna_positions=true` - Positions des antennes
+- `with_head_pose=true` - 4x4 matrix
+- `use_pose_matrix=true` - Matrix format
+- `with_head_joints=true` - Stewart joints + yaw_body
+- `with_antenna_positions=true` - Antenna positions
 
-## 🎮 Contrôles Leva (Debug)
+## 🎮 Leva Controls (Debug)
 
-5 groupes de contrôles :
-1. **🎨 Cell Shading** - Activer, bandes, lissage
-2. **💡 Éclairage** - Ambient, Key, Fill, Rim lights
+5 control groups :
+1. **🎨 Cell Shading** - Enable, bands, smoothing
+2. **💡 Lighting** - Ambient, Key, Fill, Rim lights
 3. **🌫️ SSAO** - Ambient occlusion
-4. **👁️ X-Ray** - Opacité du mode transparent
-5. **🌍 Scène** - Grille, distance fog
+4. **👁️ X-Ray** - Transparent mode opacity
+5. **🌍 Scene** - Grid, distance fog
 
 ## 🚀 Usage
 

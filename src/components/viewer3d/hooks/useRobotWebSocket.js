@@ -37,7 +37,7 @@ export default function useRobotWebSocket(isActive) {
           try {
             const data = JSON.parse(event.data);
             
-            // Log périodique des données reçues pour debug des animations
+            // Periodic log of received data for animation debugging
             if (!ws.messageCount) ws.messageCount = 0;
             ws.messageCount++;
             if (ws.messageCount % 200 === 1) {
@@ -62,7 +62,7 @@ export default function useRobotWebSocket(isActive) {
               }
             }
             
-            // Extraire yaw_body (première valeur de head_joints)
+            // Extract yaw_body (first value of head_joints)
             if (data.head_joints && Array.isArray(data.head_joints) && data.head_joints.length === 7) {
               newState.yawBody = data.head_joints[0];
             }
@@ -72,7 +72,7 @@ export default function useRobotWebSocket(isActive) {
               newState.antennas = data.antennas_position;
             }
             
-            // Mettre à jour le state uniquement avec les nouvelles données
+            // Update state only with new data
             if (Object.keys(newState).length > 0) {
               setRobotState(prev => ({ ...prev, ...newState }));
             }

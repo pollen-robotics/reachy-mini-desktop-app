@@ -4,22 +4,22 @@ import { DAEMON_CONFIG } from '../../../config/daemon';
 import { createXrayMaterial, updateXrayMaterial } from '../utils/materials';
 
 /**
- * Effet de scan AAA progressif des meshes du robot
- * Utilise les techniques X-ray améliorées avec rim lighting, bloom et transitions fluides
+ * AAA progressive scan effect for robot meshes
+ * Uses improved X-ray techniques with rim lighting, bloom and smooth transitions
  */
 export default function ScanEffect({ 
-  meshes = [], // Liste des meshes à scanner
-  scanColor = '#22c55e', // Couleur pendant le scan (vert success)
+  meshes = [], // List of meshes to scan
+  scanColor = '#22c55e', // Color during scan (success green)
   enabled = true,
   onComplete = null,
-  onScanMesh = null, // Callback appelé pour chaque mesh scanné (mesh, index, total)
+  onScanMesh = null, // Callback called for each scanned mesh (mesh, index, total)
 }) {
   const isScanningRef = useRef(false);
   const timeoutsRef = useRef([]);
   const onScanMeshRef = useRef(onScanMesh);
   const onCompleteRef = useRef(onComplete);
 
-  // Mettre à jour les refs quand les callbacks changent
+  // Update refs when callbacks change
   useEffect(() => {
     onScanMeshRef.current = onScanMesh;
     onCompleteRef.current = onComplete;
@@ -31,7 +31,7 @@ export default function ScanEffect({
       return;
     }
 
-    // ✅ Éviter les scans multiples simultanés
+    // ✅ Avoid multiple simultaneous scans
     if (isScanningRef.current) {
       console.log('⚠️ Scan already in progress, skipping...');
       return;
@@ -39,16 +39,16 @@ export default function ScanEffect({
 
     isScanningRef.current = true;
 
-    // ⚡ Durée du scan lue depuis la config centrale
+    // ⚡ Scan duration read from central config
     const duration = DAEMON_CONFIG.ANIMATIONS.SCAN_DURATION / 1000;
 
     console.log(`🔍 Starting progressive scan of ${meshes.length} meshes (duration: ${duration}s)`);
     
-    // ✅ Sauvegarder l'état X-ray complet de chaque mesh (incluant les matériaux shader)
+    // ✅ Save complete X-ray state of each mesh (including shader materials)
     const originalStates = new Map();
     meshes.forEach((mesh) => {
       if (mesh.material) {
-        // Sauvegarder le matériau complet pour restauration
+        // Save complete material for restoration
         originalStates.set(mesh, {
           material: mesh.material.clone ? mesh.material.clone() : mesh.material,
           transparent: mesh.material.transparent,
@@ -57,38 +57,38 @@ export default function ScanEffect({
           side: mesh.material.side,
           color: mesh.material.color ? mesh.material.color.clone() : null,
           emissive: mesh.material.emissive ? mesh.material.emissive.clone() : null,
-          // Sauvegarder les uniforms si c'est un shader material
+          // Save uniforms if it's a shader material
           uniforms: mesh.material.uniforms ? JSON.parse(JSON.stringify(mesh.material.uniforms)) : null,
         });
         mesh.userData.scanned = false;
       }
     });
 
-    // ✅ Filtrer les coques ET les outline meshes
+    // ✅ Filter shells AND outline meshes
     const scannableMeshes = meshes.filter(mesh => !mesh.userData.isShellPiece && !mesh.userData.isOutline);
     
     const shellCount = meshes.length - scannableMeshes.length;
     console.log(`🔍 Scanning ${scannableMeshes.length}/${meshes.length} meshes (${shellCount} shell pieces excluded)`);
     
     const sortedMeshes = [...scannableMeshes].sort((a, b) => {
-      // Calculer la position Y globale de chaque mesh
+      // Calculate global Y position of each mesh
       const posA = new THREE.Vector3();
       const posB = new THREE.Vector3();
       a.getWorldPosition(posA);
       b.getWorldPosition(posB);
       
-      // Trier de bas en haut
+      // Sort from bottom to top
       return posA.y - posB.y;
     });
     
-    // ⚡ Calculer le délai pour que le DERNIER mesh démarre exactement à la fin de duration
-    // On divise par (n-1) pour que index_max × delay = duration
+    // ⚡ Calculate delay so LAST mesh starts exactly at end of duration
+    // We divide by (n-1) so that index_max × delay = duration
     const delayBetweenMeshes = scannableMeshes.length > 1
       ? (duration * 1000) / (scannableMeshes.length - 1) 
       : 0;
     let scannedCount = 0;
     
-    // ✅ Nettoyer les timeouts précédents
+    // ✅ Clean up previous timeouts
     timeoutsRef.current.forEach(timeout => {
       if (typeof timeout === 'function') {
         timeout();
@@ -98,22 +98,22 @@ export default function ScanEffect({
     });
     timeoutsRef.current = [];
 
-    // Scanner chaque mesh un par un (de bas en haut)
+    // Scan each mesh one by one (from bottom to top)
     sortedMeshes.forEach((mesh, index) => {
-      // ⚡ Délai fixe et déterministe (pas de random)
+      // ⚡ Fixed and deterministic delay (no random)
       const delay = delayBetweenMeshes * index;
       
       const scanTimeout = setTimeout(() => {
         if (!mesh.material) return;
         
-        // ✅ Notifier qu'on commence à scanner ce mesh
+        // ✅ Notify that we're starting to scan this mesh
         if (onScanMeshRef.current) {
           onScanMeshRef.current(mesh, index + 1, scannableMeshes.length);
         }
         
         const originalState = originalStates.get(mesh);
         
-        // ✅ Déterminer le type de matériau pour utiliser les bonnes couleurs X-ray
+        // ✅ Determine material type to use correct X-ray colors
         const isAntenna = mesh.userData?.isAntenna || false;
         const isShellPiece = mesh.userData?.isShellPiece || false;
         const isBigLens = (mesh.userData?.materialName || mesh.material?.name || '').toLowerCase().includes('big_lens') ||
@@ -121,14 +121,14 @@ export default function ScanEffect({
                          (mesh.userData?.materialName || mesh.material?.name || '').toLowerCase().includes('lens_d40') ||
                          (mesh.userData?.materialName || mesh.material?.name || '').toLowerCase().includes('lens_d30');
         
-        // ✅ Couleur X-ray finale selon le type de matériau (même logique que getXrayMaterial)
+        // ✅ Final X-ray color based on material type (same logic as getXrayMaterial)
         let targetXrayColor;
         if (isAntenna) {
-          targetXrayColor = 0x5A6B7C; // Gris moyen-bleuté
+          targetXrayColor = 0x5A6B7C; // Medium-blue gray
         } else if (isBigLens) {
-          targetXrayColor = 0x6B7B7A; // Gris clair-verdâtre
+          targetXrayColor = 0x6B7B7A; // Light-green gray
         } else if (isShellPiece) {
-          targetXrayColor = 0x5A6570; // Gris moyen
+          targetXrayColor = 0x5A6570; // Medium gray
         } else {
           const originalColor = mesh.userData?.originalColor || 0xFF9500;
           const r = (originalColor >> 16) & 0xFF;
@@ -143,58 +143,58 @@ export default function ScanEffect({
           else targetXrayColor = 0x2A3540;
         }
         
-        // ✅ Opacité finale avec transparence accrue pour les pièces 3D imprimées
+        // ✅ Final opacity with increased transparency for 3D printed parts
         const baseOpacity = originalState.opacity || 0.5;
         const finalOpacity = isShellPiece ? baseOpacity * 0.3 : baseOpacity;
         
-        // ✨ ANIMATION AAA avec rim lighting et bloom
-        const highlightDuration = 500; // Durée totale du highlight en ms (légèrement augmentée)
+        // ✨ AAA ANIMATION with rim lighting and bloom
+        const highlightDuration = 500; // Total highlight duration in ms (slightly increased)
         const startTime = Date.now();
         
-        // Animation frame pour un effet fluide AAA
+        // Animation frame for smooth AAA effect
         const animate = () => {
           if (!mesh.material) return;
           
           const elapsed = Date.now() - startTime;
           const progress = Math.min(elapsed / highlightDuration, 1.0);
           
-          // ✨ Phase 1: Scan intense (0-40% du temps)
+          // ✨ Phase 1: Intense scan (0-40% of time)
           if (progress < 0.4) {
             const scanProgress = progress / 0.4;
-            const pulse = Math.sin(scanProgress * Math.PI * 2); // Pulse rapide
+            const pulse = Math.sin(scanProgress * Math.PI * 2); // Fast pulse
             
-            // Créer/appliquer le matériau de scan avec rim lighting intense (un par mesh)
-            // ✅ Utiliser un vert plus foncé pour éviter le flash blanc
+            // Create/apply scan material with intense rim lighting (one per mesh)
+            // ✅ Use darker green to avoid white flash
             if (!mesh.userData.scanMaterial) {
               const scanColorHex = new THREE.Color(scanColor).getHex();
-              // Vert success plus foncé pour la phase de scan
+              // Darker success green for scan phase
               const darkGreenHex = new THREE.Color(scanColor).multiplyScalar(0.7).getHex();
               mesh.userData.scanMaterial = createXrayMaterial(darkGreenHex, {
-                rimColor: scanColorHex, // Rim avec le vert success original
-                rimPower: 1.5, // Rim plus prononcé pendant le scan
-                rimIntensity: 0.6, // Rim moins intense pour éviter le flash
-                opacity: 0.8, // Opacité réduite pour transition plus douce
-                edgeIntensity: 0.4, // Bords visibles mais moins agressifs
+                rimColor: scanColorHex, // Rim with original success green
+                rimPower: 1.5, // More pronounced rim during scan
+                rimIntensity: 0.6, // Less intense rim to avoid flash
+                opacity: 0.8, // Reduced opacity for smoother transition
+                edgeIntensity: 0.4, // Visible edges but less aggressive
                 subsurfaceColor: darkGreenHex,
                 subsurfaceIntensity: 0.25,
               });
             }
             mesh.material = mesh.userData.scanMaterial;
             
-            // Pulse d'intensité du rim lighting (plus subtil)
+            // Rim lighting intensity pulse (more subtle)
             if (mesh.material.uniforms) {
               mesh.material.uniforms.rimIntensity.value = 0.6 + (pulse * 0.2); // 0.6 -> 0.8 -> 0.6
-              mesh.material.uniforms.opacity.value = 0.75 + (pulse * 0.1); // Légère variation d'opacité
+              mesh.material.uniforms.opacity.value = 0.75 + (pulse * 0.1); // Slight opacity variation
             }
             
             mesh.material.needsUpdate = true;
           }
-          // ✨ Phase 2: Transition fluide vers X-ray (40-100% du temps)
+          // ✨ Phase 2: Smooth transition to X-ray (40-100% of time)
           else {
             const transitionProgress = (progress - 0.4) / 0.6;
-            const easeOut = 1 - Math.pow(1 - transitionProgress, 3); // Easing cubique
+            const easeOut = 1 - Math.pow(1 - transitionProgress, 3); // Cubic easing
             
-            // Créer le matériau X-ray final
+            // Create final X-ray material
             const rimColor = isAntenna ? 0x8A9AAC :
                            isBigLens ? 0x7A8A8A :
                            isShellPiece ? 0x7A8590 :
@@ -212,28 +212,28 @@ export default function ScanEffect({
               subsurfaceIntensity: 0.15,
             });
             
-            // Interpolation entre scan vert foncé et X-ray (transition vert -> gris)
+            // Interpolation between dark green scan and X-ray (green -> gray transition)
             if (mesh.material.uniforms) {
-              // ✅ Interpoler depuis un vert foncé (pas blanc) vers la couleur X-ray
-              const darkGreenColor = new THREE.Color(scanColor).multiplyScalar(0.7); // Vert foncé
+              // ✅ Interpolate from dark green (not white) to X-ray color
+              const darkGreenColor = new THREE.Color(scanColor).multiplyScalar(0.7); // Dark green
               const xrayColorVec = new THREE.Color(targetXrayColor);
               const lerpedColor = darkGreenColor.clone().lerp(xrayColorVec, easeOut);
               mesh.material.uniforms.baseColor.value.copy(lerpedColor);
               
-              // Interpoler le rim color
+              // Interpolate rim color
               const scanRimColor = new THREE.Color(scanColor);
               const xrayRimColor = new THREE.Color(rimColor);
               const lerpedRimColor = scanRimColor.clone().lerp(xrayRimColor, easeOut);
               mesh.material.uniforms.rimColor.value.copy(lerpedRimColor);
               
-              // Interpoler l'opacité
+              // Interpolate opacity
               mesh.material.uniforms.opacity.value = THREE.MathUtils.lerp(1.0, finalOpacity, easeOut);
               
-              // Interpoler l'intensité du rim
+              // Interpolate rim intensity
               mesh.material.uniforms.rimIntensity.value = THREE.MathUtils.lerp(0.8, 0.25, easeOut);
               mesh.material.uniforms.edgeIntensity.value = THREE.MathUtils.lerp(0.5, 0.2, easeOut);
               
-              // Interpoler subsurface color
+              // Interpolate subsurface color
               const scanSubsurfaceColor = new THREE.Color(scanColor).multiplyScalar(0.6);
               const xraySubsurfaceColor = new THREE.Color(
                 isAntenna ? 0x4A5A6C :
@@ -247,18 +247,18 @@ export default function ScanEffect({
           
           mesh.material.needsUpdate = true;
             
-            // À la fin de la transition, remplacer par le matériau X-ray final
+            // At end of transition, replace with final X-ray material
             if (transitionProgress >= 0.95) {
               mesh.material = finalMaterial;
             }
           }
           
-          // Continuer l'animation ou terminer
+          // Continue animation or finish
           if (progress < 1.0) {
             const frameId = requestAnimationFrame(animate);
             timeoutsRef.current.push(() => cancelAnimationFrame(frameId));
           } else {
-            // ✅ Animation terminée - s'assurer que le matériau X-ray final est appliqué
+            // ✅ Animation finished - ensure final X-ray material is applied
             const rimColor = isAntenna ? 0x8A9AAC :
                            isBigLens ? 0x7A8A8A :
                            isShellPiece ? 0x7A8590 :
@@ -280,11 +280,11 @@ export default function ScanEffect({
             mesh.material.needsUpdate = true;
             mesh.userData.scanned = true;
             
-            // Vérifier si tous les meshes scannables sont scannés
+            // Check if all scannable meshes are scanned
             scannedCount++;
             if (scannedCount === scannableMeshes.length) {
               console.log('✅ All meshes scanned with AAA effect');
-              isScanningRef.current = false; // ✅ Réinitialiser le flag
+              isScanningRef.current = false; // ✅ Reset flag
               
               if (onCompleteRef.current) {
                 onCompleteRef.current();
@@ -293,19 +293,19 @@ export default function ScanEffect({
           }
         };
         
-        // Démarrer l'animation
+        // Start animation
         animate();
-      }, delay); // ⚡ Délai fixe
+      }, delay); // ⚡ Fixed delay
       
       timeoutsRef.current.push(scanTimeout);
     });
 
-    // Cleanup au démontage
+    // Cleanup on unmount
     return () => {
-      // Annuler tous les timeouts et animations en cours
+      // Cancel all timeouts and animations in progress
       timeoutsRef.current.forEach(timeout => {
         if (typeof timeout === 'function') {
-          timeout(); // Annuler les animations requestAnimationFrame
+          timeout(); // Cancel requestAnimationFrame animations
         } else {
           clearTimeout(timeout);
           clearInterval(timeout);
@@ -314,11 +314,11 @@ export default function ScanEffect({
       timeoutsRef.current = [];
       isScanningRef.current = false;
       
-      // Note: On ne restaure pas les matériaux car ils doivent rester en mode X-ray après le scan
-      // Les matériaux X-ray finaux sont déjà appliqués à la fin de chaque animation
+      // Note: We don't restore materials as they should remain in X-ray mode after scan
+      // Final X-ray materials are already applied at end of each animation
     };
-  }, [enabled, meshes.length, scanColor]); // ✅ Utiliser meshes.length au lieu de meshes pour éviter les relances
+  }, [enabled, meshes.length, scanColor]); // ✅ Use meshes.length instead of meshes to avoid relaunches
 
-  return null; // Pas de rendu visuel, juste la logique
+  return null; // No visual rendering, just logic
 }
 

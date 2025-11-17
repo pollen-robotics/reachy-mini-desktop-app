@@ -165,7 +165,7 @@ function StartingView({ startupError }) {
           gap: 1.5,
         }}
       >
-        {/* Robot Viewer 3D - Clean design, plus grand */}
+        {/* Robot Viewer 3D - Clean design, larger */}
         <Box
           sx={{
             width: '100%',
@@ -200,7 +200,7 @@ function StartingView({ startupError }) {
           </Box>
         </Box>
 
-        {/* Status - Minimalist design, plus discret */}
+        {/* Status - Minimalist design, more discrete */}
         <Box
           sx={{
             display: 'flex',
@@ -209,7 +209,7 @@ function StartingView({ startupError }) {
             width: '100%',
             maxWidth: '450px',
             minHeight: '60px',
-            mt: -2, // Réduire l'espace au-dessus
+            mt: -2, // Reduce space above
           }}
         >
           {(startupError || scanError) ? (
@@ -241,38 +241,6 @@ function StartingView({ startupError }) {
               
               {/* Main instruction - Larger with bold words */}
               <Box sx={{ textAlign: 'center' }}>
-                {startupError && startupError.includes('MuJoCo') ? (
-                  // 🎮 Erreur MuJoCo spécifique avec instructions
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    <Typography
-                      component="span"
-                      sx={{
-                        fontSize: 14,
-                        fontWeight: 500,
-                        color: darkMode ? '#f5f5f5' : '#333',
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      <Box component="span" sx={{ fontWeight: 700 }}>MuJoCo</Box> is not installed
-                    </Typography>
-                    <Typography
-                      sx={{
-                        fontSize: 11,
-                        fontWeight: 400,
-                        color: darkMode ? '#999' : '#666',
-                        fontFamily: 'monospace',
-                        bgcolor: darkMode ? 'rgba(255, 149, 0, 0.08)' : 'rgba(255, 149, 0, 0.05)',
-                        px: 1.5,
-                        py: 0.75,
-                        borderRadius: '6px',
-                        border: '1px solid rgba(255, 149, 0, 0.2)',
-                        whiteSpace: 'pre-wrap',
-                      }}
-                    >
-                      pip install reachy_mini[mujoco]
-                    </Typography>
-                  </Box>
-                ) : scanError?.action ? (
                 <Typography
                   component="span"
                   sx={{
@@ -282,24 +250,16 @@ function StartingView({ startupError }) {
                     lineHeight: 1.5,
                   }}
                 >
+                  {scanError?.action ? (
+                    <>
                       <Box component="span" sx={{ fontWeight: 700 }}>Check</Box> the{' '}
                       <Box component="span" sx={{ fontWeight: 700 }}>camera cable</Box> connection and{' '}
                       <Box component="span" sx={{ fontWeight: 700 }}>restart</Box>
-                  </Typography>
+                    </>
                   ) : (
-                  <Typography
-                    component="span"
-                    sx={{
-                      fontSize: 14,
-                      fontWeight: 500,
-                      color: darkMode ? '#f5f5f5' : '#333',
-                      lineHeight: 1.5,
-                      whiteSpace: 'pre-wrap',
-                    }}
-                  >
-                    {startupError}
+                    startupError
+                  )}
                 </Typography>
-                )}
               </Box>
               
               {/* Technical error code - Smaller, secondary */}
@@ -350,7 +310,7 @@ function StartingView({ startupError }) {
               </Button>
             </Box>
           ) : (
-            // 🔄 Scanning in progress - Clean design, plus discret et compact
+            // 🔄 Scanning in progress - Clean design, more discrete and compact
             <Box
               sx={{
                 display: 'flex',
@@ -360,7 +320,7 @@ function StartingView({ startupError }) {
                 width: '100%',
               }}
             >
-              {/* Title + spinner/checkmark + discrete counter - Plus discret et compact */}
+              {/* Title + spinner/checkmark + discrete counter - More discrete and compact */}
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 {scanComplete ? (
                   // ✅ Success checkmark (outlined)

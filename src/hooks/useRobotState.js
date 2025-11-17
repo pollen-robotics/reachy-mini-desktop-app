@@ -24,7 +24,7 @@ export function useRobotState(isActive) {
       return;
     }
 
-    // ✅ Ne pas poller pendant l'installation (le daemon peut être lent/non disponible)
+    // ✅ Don't poll during installation (daemon may be slow/unavailable)
     if (isInstalling) {
       console.log('⏭️ Skipping robot state polling (installation in progress)');
       return;
@@ -32,7 +32,7 @@ export function useRobotState(isActive) {
 
     const fetchState = async () => {
       try {
-        // ✅ Fetch state avec timeout standardisé (silencieux car polling)
+        // ✅ Fetch state with standardized timeout (silent because polling)
         const stateResponse = await fetchWithTimeout(
           buildApiUrl('/api/state/full?with_control_mode=true&with_head_joints=true&with_body_yaw=true&with_antenna_positions=true'),
           {},
@@ -46,7 +46,7 @@ export function useRobotState(isActive) {
           // ✅ Utiliser control_mode du daemon (enabled/disabled)
           const motorsOn = data.control_mode === 'enabled';
           
-          // ✅ Détection de mouvement basée sur les changements de position
+          // ✅ Movement detection based on position changes
           let isMoving = false;
           
           if (data.body_yaw !== undefined && data.antennas_position) {
@@ -99,7 +99,7 @@ export function useRobotState(isActive) {
             isMoving: isMoving,
           });
           
-          // ✅ Pas de resetTimeouts() ici, géré par useDaemonHealthCheck
+          // ✅ No resetTimeouts() here, handled by useDaemonHealthCheck
         }
       } catch (error) {
         // ✅ No incrementTimeouts() here, handled by useDaemonHealthCheck

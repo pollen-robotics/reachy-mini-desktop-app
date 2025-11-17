@@ -34,8 +34,8 @@ const COMPONENT_NAMES = [
  * @returns {string} Nom lisible du composant
  */
 export function getComponentName(mesh, index, total) {
-  // Utiliser un nom de la liste basé sur l'index
-  // Avec modulo pour éviter de dépasser
+  // Use a name from the list based on index
+  // With modulo to avoid exceeding
   const nameIndex = index % COMPONENT_NAMES.length;
   return COMPONENT_NAMES[nameIndex];
 }
@@ -50,12 +50,12 @@ function getComponentGroup(mesh) {
   const meshName = (mesh.name || '').toLowerCase();
   const materialName = (mesh.userData?.materialName || mesh.material?.name || '').toLowerCase();
   
-  // Vérifier les userData d'abord (plus fiable)
+  // Check userData first (more reliable)
   if (mesh.userData?.isAntenna) {
     return 'ANTENNA';
   }
   
-  // Vérifier les lentilles par matériau
+  // Check lenses by material
   if (materialName.includes('big_lens') || materialName.includes('lens_d40')) {
     return 'OPTICAL LENS';
   }
@@ -63,13 +63,13 @@ function getComponentGroup(mesh) {
     return 'CAMERA LENS';
   }
   
-  // Remonter la hiérarchie pour trouver le groupe parent
+  // Traverse hierarchy to find parent group
   let currentParent = mesh.parent;
   let depth = 0;
   while (currentParent && depth < 5) {
     const pName = (currentParent.name || '').toLowerCase();
     
-    // Groupes principaux basés sur les noms de liens URDF
+    // Main groups based on URDF link names
     if (pName.includes('xl_330') || pName.includes('camera') || meshName.includes('xl_330') || meshName.includes('camera')) {
       return 'CAMERA MODULE';
     }
@@ -100,27 +100,27 @@ export function getShortComponentName(mesh, index, total) {
     return getGenericName(index);
   }
   
-  // ✅ Utiliser la même logique de regroupement que ScanAnnotations
+  // ✅ Use the same grouping logic as ScanAnnotations
   const componentGroup = getComponentGroup(mesh);
   if (componentGroup) {
     return componentGroup;
   }
   
-  // Fallback: chercher le nom dans la hiérarchie parent (URDF link)
+  // Fallback: search for name in parent hierarchy (URDF link)
   let name = mesh.name;
   let currentParent = mesh.parent;
   let depth = 0;
   
-  // Remonter jusqu'à 3 niveaux dans la hiérarchie pour trouver un nom
+  // Traverse up to 3 levels in hierarchy to find a name
   while ((!name || name === '') && currentParent && depth < 3) {
     name = currentParent.name;
     currentParent = currentParent.parent;
     depth++;
   }
   
-  // Si toujours pas de nom, utiliser un nom générique basé sur l'index
+  // If still no name, use a generic name based on index
   if (!name || name === '' || name.match(/^[0-9a-f]{8}-/i)) {
-    // Si c'est un UUID, utiliser nom générique
+    // If it's a UUID, use generic name
     return getGenericName(index);
   }
   

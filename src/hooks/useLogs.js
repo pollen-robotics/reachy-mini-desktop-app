@@ -14,15 +14,15 @@ export const useLogs = () => {
     }
   }, [setLogs]);
   
-  // Fonction pour ajouter un log frontend
+  // Function to add a frontend log
   const logCommand = useCallback((message, type = 'info') => {
-    // Le timestamp est maintenant ajouté automatiquement par addFrontendLog
+    // Timestamp is now automatically added by addFrontendLog
     addFrontendLog(message);
   }, [addFrontendLog]);
   
-  // Log une action API (requête vers le daemon)
+  // Log an API action (request to daemon)
   const logApiAction = useCallback((action, details = '', success = true) => {
-    // Le timestamp est maintenant ajouté automatiquement par addFrontendLog
+    // Timestamp is now automatically added by addFrontendLog
     const icon = success ? '✓' : '❌';
     const message = details ? `${icon} ${action}: ${details}` : `${icon} ${action}`;
     addFrontendLog(message);

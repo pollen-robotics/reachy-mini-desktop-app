@@ -56,14 +56,14 @@ function ActiveRobotView({
   const [toast, setToast] = useState({ open: false, message: '', severity: 'info' });
   const [toastProgress, setToastProgress] = useState(100);
   
-  // Volume control - Connecté à l'API
+  // Volume control - Connected to API
   const [volume, setVolume] = useState(50);
   const [microphoneVolume, setMicrophoneVolume] = useState(50);
   
   // Logs collapse state
   const [logsExpanded, setLogsExpanded] = useState(false);
   
-  // Charger le volume depuis l'API
+  // Load volume from API
   useEffect(() => {
     if (!isActive) return;
 
@@ -99,7 +99,7 @@ function ActiveRobotView({
     fetchMicrophoneVolume();
   }, [isActive]);
 
-  // Mettre à jour le volume via l'API
+  // Update volume via API
   const handleVolumeChange = async (newVolume) => {
     setVolume(newVolume);
     try {
@@ -113,7 +113,7 @@ function ActiveRobotView({
     }
   };
 
-  // Mettre à jour le microphone via l'API
+  // Update microphone via API
   const handleMicrophoneChange = async (enabled) => {
     setMicrophoneVolume(enabled ? 50 : 0);
     try {
@@ -398,7 +398,7 @@ function ActiveRobotView({
         {/* Empty titlebar */}
       </Box>
 
-      {/* Dark Mode Toggle - Fixé en haut à droite de la fenêtre, un peu plus bas */}
+      {/* Dark Mode Toggle - Fixed at top right of window, slightly lower */}
       <IconButton
         size="small"
         onClick={() => useAppStore.getState().toggleDarkMode()}
@@ -422,7 +422,7 @@ function ActiveRobotView({
         )}
       </IconButton>
 
-      {/* Drop shadow au milieu pour effet d'élévation - Positionné sur toute la hauteur */}
+      {/* Drop shadow in middle for elevation effect - Positioned full height */}
       <Box
         sx={{
           position: 'absolute',
@@ -815,7 +815,7 @@ function ActiveRobotView({
         </Box>
         </Box>
 
-                {/* Right column (450px) - Application Store avec effet d'élévation */}
+                {/* Right column (450px) - Application Store with elevation effect */}
                 <Box
                   sx={{
                     width: '450px',
@@ -825,7 +825,7 @@ function ActiveRobotView({
                     borderLeft: darkMode
                       ? '1px solid rgba(255, 255, 255, 0.08)'
                       : '1px solid rgba(0, 0, 0, 0.06)',
-                    // ✅ Effet d'élévation simple avec transform
+                    // ✅ Simple elevation effect with transform
                     position: 'relative',
                     zIndex: 2,
                     transform: 'translateY(-8px)',

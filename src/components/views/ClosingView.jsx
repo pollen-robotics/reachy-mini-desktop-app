@@ -3,7 +3,7 @@ import { Box, Typography, CircularProgress } from '@mui/material';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import useAppStore from '../../store/useAppStore';
 
-// 💤 Messages aléatoires pour la fermeture
+// 💤 Random messages for closing
 const CLOSING_MESSAGES = [
   'Reachy is going to sleep...',
   'Powering down...',
@@ -18,14 +18,14 @@ const CLOSING_MESSAGES = [
 ];
 
 /**
- * Vue affichée pendant la fermeture du daemon
- * Affiche un message aléatoire parmi une liste
+ * View displayed during daemon shutdown
+ * Displays a random message from a list
  */
 export default function ClosingView() {
   const appWindow = window.mockGetCurrentWindow ? window.mockGetCurrentWindow() : getCurrentWindow();
   const { darkMode } = useAppStore();
   
-  // Choisir un message aléatoire (mémorisé pour ne pas changer pendant l'affichage)
+  // Choose a random message (memoized to not change during display)
   const randomMessage = useMemo(() => {
     return CLOSING_MESSAGES[Math.floor(Math.random() * CLOSING_MESSAGES.length)];
   }, []);
@@ -62,7 +62,7 @@ export default function ClosingView() {
         }}
       >
         <Box sx={{ width: 12, height: 12 }} />
-        <Box sx={{ height: 20 }} /> {/* Espace pour le drag */}
+        <Box sx={{ height: 20 }} /> {/* Space for drag */}
         <Box sx={{ width: 20, height: 20 }} />
       </Box>
 

@@ -15,20 +15,20 @@ import useRobotWebSocket from './hooks/useRobotWebSocket';
 import useAppStore from '../../store/useAppStore';
 
 /**
- * Composant principal du visualiseur 3D
- * Gère l'UI et orchestre la scène 3D
+ * Main 3D viewer component
+ * Manages UI and orchestrates 3D scene
  */
-// ✅ Presets de caméra
+// ✅ Camera presets
 const CAMERA_PRESETS = {
   normal: {
-    position: [0, 0.25, 0.32 + .20], // Dézoomé : Z augmenté de 0.25 à 0.32
+    position: [0, 0.25, 0.32 + .20], // Zoomed out: Z increased from 0.25 to 0.32
     fov: 50,
     target: [0, 0.2, 0],
     minDistance: 0.2,
     maxDistance: 0.6,
   },
   scan: {
-    position: [0, 0.22, 0.42 + .20], // Dézoomé : Z augmenté de 0.35 à 0.42
+    position: [0, 0.22, 0.42 + .20], // Zoomed out: Z increased from 0.35 to 0.42
     fov: 55,
     target: [0, 0.12, 0],
     minDistance: 0.15,
@@ -40,43 +40,43 @@ export default function RobotViewer3D({
   isActive, 
   enableDebug = false, 
   forceLevaOpen = false,
-  initialMode = 'normal', // 'normal' ou 'xray'
-  hideControls = false, // Cache les boutons de contrôle
-  forceLoad = false, // Force le chargement du robot même si isActive=false
-  hideGrid = false, // Cache la grille au sol
-  hideBorder = false, // Cache la bordure du canvas
-  showScanEffect = false, // Affiche l'effet de scan
-  onScanComplete = null, // Callback quand le scan est terminé
-  onScanMesh = null, // Callback pour chaque mesh scanné
-  cameraPreset = 'normal', // Preset de caméra ('normal' | 'scan') ou objet custom
-  useCinematicCamera = false, // Utilise une caméra animée au lieu d'OrbitControls
-  useHeadFollowCamera = false, // Caméra qui suit la tête du robot
-  showCameraToggle = false, // Affiche le toggle pour basculer entre Follow et Free
-  errorFocusMesh = null, // Mesh à focus en cas d'erreur
-  backgroundColor = '#e0e0e0', // Couleur de fond du canvas
-  // Props du robot
-  antennas = null, // Position des antennes [left, right] (null = position par défaut)
-  headPose = null, // Position de la tête (null = position par défaut)
-  yawBody = null, // Rotation du corps (null = position par défaut)
-  // Props pour le status tag
-  showStatusTag = false, // Affiche le tag de statut en bas à droite
-  isOn = null, // État des moteurs
-  isMoving = false, // Robot en mouvement
-  robotStatus = null, // ✨ État principal de la state machine
-  busyReason = null, // ✨ Raison si busy
-  // Props pour les effets
-  hideEffects = false, // Cache les effets de particules (pour le petit viewer)
+  initialMode = 'normal', // 'normal' or 'xray'
+  hideControls = false, // Hide control buttons
+  forceLoad = false, // Force robot loading even if isActive=false
+  hideGrid = false, // Hide floor grid
+  hideBorder = false, // Hide canvas border
+  showScanEffect = false, // Show scan effect
+  onScanComplete = null, // Callback when scan is complete
+  onScanMesh = null, // Callback for each scanned mesh
+  cameraPreset = 'normal', // Camera preset ('normal' | 'scan') or custom object
+  useCinematicCamera = false, // Use animated camera instead of OrbitControls
+  useHeadFollowCamera = false, // Camera that follows robot head
+  showCameraToggle = false, // Show toggle to switch between Follow and Free
+  errorFocusMesh = null, // Mesh to focus on in case of error
+  backgroundColor = '#e0e0e0', // Canvas background color
+  // Robot props
+  antennas = null, // Antenna positions [left, right] (null = default position)
+  headPose = null, // Head position (null = default position)
+  yawBody = null, // Body rotation (null = default position)
+  // Status tag props
+  showStatusTag = false, // Show status tag at bottom right
+  isOn = null, // Motor state
+  isMoving = false, // Robot moving
+  robotStatus = null, // ✨ Main state machine state
+  busyReason = null, // ✨ Reason if busy
+  // Effect props
+  hideEffects = false, // Hide particle effects (for small viewer)
 }) {
-  // ✅ Récupérer la config de caméra
+  // ✅ Get camera config
   const cameraConfig = typeof cameraPreset === 'string' 
     ? CAMERA_PRESETS[cameraPreset] 
     : { ...CAMERA_PRESETS.normal, ...cameraPreset };
-  // Hook custom pour la connexion WebSocket au daemon
-  // ✅ Permettre la connexion WebSocket si isActive OU forceLoad (pour que le robot bouge même si isActive est temporairement false)
+  // Custom hook for WebSocket connection to daemon
+  // ✅ Allow WebSocket connection if isActive OR forceLoad (so robot moves even if isActive is temporarily false)
   const robotState = useRobotWebSocket(isActive || forceLoad);
   
-  // ✅ Utiliser les props fournies ou celles du robotState WebSocket
-  // Si antennas n'est pas fourni et robotState.antennas est null, utiliser [0, 0] (replié)
+  // ✅ Use provided props or those from WebSocket robotState
+  // If antennas is not provided and robotState.antennas is null, use [0, 0] (folded)
   const finalAntennas = antennas !== null ? antennas : (robotState.antennas || [0, 0]);
   const finalHeadPose = headPose !== null ? headPose : robotState.headPose;
   const finalYawBody = yawBody !== null ? yawBody : robotState.yawBody;
@@ -84,17 +84,17 @@ export default function RobotViewer3D({
   const [isTransparent, setIsTransparent] = useState(initialMode === 'xray');
   const [showLevaControls, setShowLevaControls] = useState(forceLevaOpen);
   
-  // ✅ Récupérer le darkMode depuis le store
+  // ✅ Get darkMode from store
   const darkMode = useAppStore(state => state.darkMode);
   
-  // ✅ Adapter backgroundColor selon darkMode si non fourni explicitement
+  // ✅ Adapt backgroundColor based on darkMode if not explicitly provided
   const effectiveBackgroundColor = backgroundColor === '#e0e0e0' 
     ? (darkMode ? '#1a1a1a' : '#e0e0e0')
     : backgroundColor;
   
   // 🎥 Camera modes: 'free' | 'locked'
-  // - free: Caméra libre avec OrbitControls
-  // - locked: Suit la position ET l'orientation de la tête (FPV)
+  // - free: Free camera with OrbitControls
+  // - locked: Follows head position AND orientation (FPV)
   const [cameraMode, setCameraMode] = useState('free');
   
   // Toggle entre les 2 modes
@@ -106,9 +106,9 @@ export default function RobotViewer3D({
   const useHeadFollow = cameraMode === 'locked';
   const lockToOrientation = cameraMode === 'locked';
   
-  // ✨ Déterminer le statut du robot pour le tag (avec state machine)
+  // ✨ Determine robot status for tag (with state machine)
   const getStatusTag = () => {
-    // Si robotStatus fourni, utiliser la state machine (NOUVEAU)
+    // If robotStatus provided, use state machine (NEW)
     if (robotStatus) {
       switch (robotStatus) {
         case 'disconnected':
@@ -121,7 +121,7 @@ export default function RobotViewer3D({
           return { label: 'Starting', color: '#3b82f6', animated: true };
         
         case 'ready':
-          // Si motors on → Ready, si off → Standby
+          // If motors on → Ready, if off → Standby
           if (isOn === true) {
             return { label: 'Ready', color: '#22c55e' };
           } else if (isOn === false) {
@@ -130,7 +130,7 @@ export default function RobotViewer3D({
           return { label: 'Connected', color: '#3b82f6' };
         
         case 'busy':
-          // Labels spécifiques selon la raison
+          // Specific labels based on reason
           const busyLabels = {
             'moving': { label: 'Moving', color: '#a855f7' },
             'command': { label: 'Executing', color: '#a855f7' },
@@ -151,7 +151,7 @@ export default function RobotViewer3D({
       }
     }
     
-    // Fallback legacy (si robotStatus pas fourni)
+    // Legacy fallback (if robotStatus not provided)
     if (!isActive) {
       return { label: 'Offline', color: '#999' };
     }
@@ -182,12 +182,12 @@ export default function RobotViewer3D({
       position: 'relative',
       overflow: 'visible',
     }}>
-      {/* Composant Leva - EN DEHORS du Canvas (composant React UI) */}
+      {/* Leva component - OUTSIDE Canvas (React UI component) */}
       <Leva hidden={!(enableDebug && showLevaControls)} />
       
       <Canvas
         camera={{ position: cameraConfig.position, fov: cameraConfig.fov }}
-        dpr={[1, 2]} // Support retina displays (pixel ratio 1x à 2x)
+        dpr={[1, 2]} // Support retina displays (pixel ratio 1x to 2x)
         gl={{ 
           antialias: true,
           alpha: true,
@@ -197,7 +197,7 @@ export default function RobotViewer3D({
           toneMappingExposure: 1.0,
         }}
         onCreated={({ gl }) => {
-          // ✅ Désactiver le tri automatique des objets transparents pour éviter le flickering
+          // ✅ Disable automatic sorting of transparent objects to avoid flickering
           gl.sortObjects = false;
         }}
         style={{ 

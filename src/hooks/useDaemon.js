@@ -81,15 +81,7 @@ export const useDaemon = () => {
     setStartupError(null);
     setHardwareError(null);
     
-    // 🎮 Check if simulation mode is enabled
-    const { isSimulationModeEnabled } = await import('../config/simulation');
-    const simulationMode = isSimulationModeEnabled();
-    
-    if (simulationMode) {
-      console.log('🎮 Starting daemon in SIMULATION mode');
-    } else {
     console.log('🚀 Starting daemon (transition will be triggered by scan completion)');
-    }
     
     // Wait a moment for React to render the spinner
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -115,10 +107,8 @@ export const useDaemon = () => {
       }
 
       // Launch new daemon (non-blocking - we don't wait for it)
-      // 🎮 Pass simulation mode flag to Rust (only if enabled, otherwise let Rust check env var)
-      const invokeArgs = simulationMode ? { simulationMode: true } : {};
-      invoke('start_daemon', invokeArgs).then(() => {
-        console.log(simulationMode ? '✅ Daemon started in SIMULATION mode' : '✅ Daemon started, scan will trigger transition');
+      invoke('start_daemon').then(() => {
+        console.log('✅ Daemon started, scan will trigger transition');
       }).catch((e) => {
         console.error('❌ Daemon startup error:', e);
         setStartupError(e.message || 'Error starting the daemon');

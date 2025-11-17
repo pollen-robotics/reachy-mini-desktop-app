@@ -12,13 +12,13 @@ export default function DevPlayground() {
   const [mode, setMode] = useState('normal'); // 'normal', 'scan' ou 'hardware-scan'
   const [currentComponent, setCurrentComponent] = useState(null);
   const [scanProgress, setScanProgress] = useState({ current: 0, total: 0 });
-  const [scanComplete, setScanComplete] = useState(false); // Scan terminé avec succès
+  const [scanComplete, setScanComplete] = useState(false); // Scan completed successfully
 
   const handleScanComplete = useCallback(() => {
     console.log('✅ Scan completed in DevPlayground');
     setScanProgress(prev => ({ ...prev, current: prev.total }));
     setCurrentComponent(null);
-    setScanComplete(true); // ✅ Afficher le succès
+    setScanComplete(true); // ✅ Display success
   }, []);
 
   const handleScanMesh = useCallback((mesh, index, total) => {
@@ -155,7 +155,7 @@ export default function DevPlayground() {
             {/* Titre + spinner/checkmark + compteur discret */}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
               {scanComplete ? (
-                // ✅ Checkmark de succès
+                // ✅ Success checkmark
                 <CheckCircleIcon
                   sx={{
                     fontSize: 18,

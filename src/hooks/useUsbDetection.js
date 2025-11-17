@@ -1,24 +1,11 @@
 import { useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import useAppStore from '../store/useAppStore';
-import { useSimulationMode } from './useSimulationMode';
-import { SIMULATION_CONFIG } from '../config/simulation';
 
 export const useUsbDetection = () => {
   const { isUsbConnected, usbPortName, isFirstCheck, setIsUsbConnected, setUsbPortName, setIsFirstCheck } = useAppStore();
-  const { isEnabled: isSimulationMode } = useSimulationMode();
 
   const checkUsbRobot = useCallback(async () => {
-    // 🎮 En mode simulation, bypasser complètement la détection USB
-    if (isSimulationMode) {
-      setIsUsbConnected(true);
-      setUsbPortName(SIMULATION_CONFIG.SIMULATED_USB_PORT);
-      if (isFirstCheck) {
-        setIsFirstCheck(false);
-      }
-      return;
-    }
-
     const startTime = Date.now();
     
     try {
@@ -57,7 +44,7 @@ export const useUsbDetection = () => {
       setIsUsbConnected(false);
       setUsbPortName(null);
     }
-  }, [isFirstCheck, setIsUsbConnected, setUsbPortName, setIsFirstCheck, isSimulationMode]);
+  }, [isFirstCheck, setIsUsbConnected, setUsbPortName, setIsFirstCheck]);
 
   return {
     isUsbConnected,

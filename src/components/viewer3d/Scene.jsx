@@ -34,14 +34,14 @@ export default function Scene({
   lockCameraToHead = false, // Lock camera to head orientation
   errorFocusMesh = null, // Mesh to focus on in case of error
   hideEffects = false, // Hide particle effects
-  darkMode = false, // Dark mode pour adapter la grille
+  darkMode = false, // Dark mode to adapt grid
 }) {
   // State to store meshes to outline
   const [outlineMeshes, setOutlineMeshes] = useState([]);
   const [robotRef, setRobotRef] = useState(null); // Reference to robot for HeadFollowCamera
-  const [currentScannedMesh, setCurrentScannedMesh] = useState(null); // Mesh actuellement en cours de scan
+  const [currentScannedMesh, setCurrentScannedMesh] = useState(null); // Mesh currently being scanned
   
-  // ✅ Réinitialiser currentScannedMesh quand showScanEffect devient false
+  // ✅ Reset currentScannedMesh when showScanEffect becomes false
   useEffect(() => {
     if (!showScanEffect) {
       setCurrentScannedMesh(null);
@@ -83,9 +83,9 @@ export default function Scene({
     return [0, 0.18, 0.02]; // Fallback if no link found
   }, [robotRef, activeEffect]); // ✅ Recalculate only when a new effect starts
 
-  // Create grid only once with useMemo - Adapté au dark mode
+  // Create grid only once with useMemo - Adapted to dark mode
   const gridHelper = useMemo(() => {
-    // Couleurs adaptées au dark mode
+    // Colors adapted to dark mode
     const majorLineColor = darkMode ? '#444444' : '#999999';
     const minorLineColor = darkMode ? '#2a2a2a' : '#cccccc';
     
@@ -213,7 +213,7 @@ export default function Scene({
       return cameraMeshes.length > 0 ? cameraMeshes : [errorFocusMesh];
     }
 
-    // Sinon, retourner juste le mesh en erreur
+      // Otherwise, return just the error mesh
     console.log('⚠️ Error mesh is not part of camera, highlighting only the error mesh');
     return [errorFocusMesh];
   }, [errorFocusMesh, robotRef, outlineMeshes]);
@@ -272,23 +272,23 @@ export default function Scene({
             scanColor="#22c55e"
           enabled={true}
             onScanMesh={(mesh, index, total) => {
-              // Mettre à jour le mesh actuellement scanné pour les annotations
+              // Update currently scanned mesh for annotations
               console.log('📡 Scene: onScanMesh called', mesh.uuid, mesh.name, index, total);
               setCurrentScannedMesh(mesh);
-              // Appeler le callback parent si fourni
+              // Call parent callback if provided
               if (onScanMesh) {
                 onScanMesh(mesh, index, total);
               }
             }}
             onComplete={() => {
-              // Réinitialiser le mesh scanné à la fin pour cacher les annotations
+              // Reset scanned mesh at end to hide annotations
               setCurrentScannedMesh(null);
               if (onScanComplete) {
                 onScanComplete();
               }
             }}
           />
-          {/* Annotations SF pour les composants scannés */}
+          {/* SF annotations for scanned components */}
           <ScanAnnotations 
             enabled={showScanEffect}
             currentScannedMesh={currentScannedMesh}
@@ -325,12 +325,12 @@ export default function Scene({
             <OrbitControls 
               enablePan={false}
               enableRotate={true}
-              enableZoom={true} // ✅ Permettre le zoom
+              enableZoom={true} // ✅ Allow zoom
               enableDamping={true}
               dampingFactor={0.05}
               target={cameraConfig.target || [0, 0.2, 0]}
-              minDistance={cameraConfig.minDistance || 0.2} // ✅ Distance minimale (empêche le dézoom)
-              maxDistance={cameraConfig.maxDistance || 10} // ✅ Distance maximale très grande (permet le zoom)
+              minDistance={cameraConfig.minDistance || 0.2} // ✅ Minimum distance (prevents zoom out)
+              maxDistance={cameraConfig.maxDistance || 10} // ✅ Very large maximum distance (allows zoom)
               // ✅ No angle constraints = free 360° rotation
             />
           )}
@@ -345,16 +345,16 @@ export default function Scene({
           errorFocusMesh={errorFocusMesh}
         />
       ) : (
-        // Mode 3: Manual OrbitControls (default) - Free rotation with zoom but no dezoom
+        // Mode 3: Manual OrbitControls (default) - Free rotation with zoom but no zoom out
         <OrbitControls 
           enablePan={false}
           enableRotate={true}
-          enableZoom={true} // ✅ Permettre le zoom
+          enableZoom={true} // ✅ Allow zoom
           enableDamping={true}
           dampingFactor={0.05}
           target={cameraConfig.target || [0, 0.2, 0]}
-          minDistance={cameraConfig.minDistance || 0.2} // ✅ Distance minimale (empêche le dézoom)
-          maxDistance={cameraConfig.maxDistance || 10} // ✅ Distance maximale très grande (permet le zoom)
+          minDistance={cameraConfig.minDistance || 0.2} // ✅ Minimum distance (prevents zoom out)
+          maxDistance={cameraConfig.maxDistance || 10} // ✅ Very large maximum distance (allows zoom)
           // ✅ No angle constraints = free 360° rotation
         />
       )}
@@ -370,14 +370,14 @@ export default function Scene({
         />
       )}
       
-      {/* ✅ Post-processing AAA : Bloom pour le mode X-ray */}
+      {/* ✅ AAA Post-processing: Bloom for X-ray mode */}
       {isTransparent && (
         <EffectComposer>
           <Bloom
-            intensity={1.2} // Intensité du bloom
-            luminanceThreshold={0.6} // Seuil de luminance (les pixels plus brillants que ça blooment)
-            luminanceSmoothing={0.9} // Lissage du bloom
-            height={300} // Résolution du bloom (plus bas = plus performant)
+            intensity={1.2} // Bloom intensity
+            luminanceThreshold={0.6} // Luminance threshold (pixels brighter than this bloom)
+            luminanceSmoothing={0.9} // Bloom smoothing
+            height={300} // Bloom resolution (lower = more performant)
           />
         </EffectComposer>
       )}

@@ -38,7 +38,6 @@ export default function ReadyToStartView({
   startDaemon, 
   isStarting, 
   usbPortName,
-  isSimulationMode = false,
   updateAvailable,
   isChecking,
   isDownloading,
@@ -56,7 +55,7 @@ export default function ReadyToStartView({
 
   useEffect(() => {
     getVersion().then(setCurrentVersion).catch(() => {
-      // Si l'API n'est pas disponible, on ne définit pas de version (affichera "unknown")
+      // If API is not available, don't set version (will display "unknown")
       setCurrentVersion(null);
     });
   }, []);
@@ -126,7 +125,7 @@ export default function ReadyToStartView({
           WebkitAppRegion: 'drag',
         }}
       >
-        {/* Espace pour les boutons macOS (rouge, jaune, vert) - environ 78px */}
+            {/* Space for macOS buttons (red, yellow, green) - approximately 78px */}
         <Box sx={{ width: 78, height: 12, WebkitAppRegion: 'no-drag' }} />
         <Box sx={{ height: 20 }} /> {/* Space for drag */}
         {/* Version number - always visible when available */}
@@ -501,7 +500,7 @@ export default function ReadyToStartView({
                 color: darkMode ? '#666' : '#bbb',
               }}
             >
-              {isSimulationMode ? '🎮 Reachy (Simulation Mode)' : 'Reachy connected via USB'}
+              Reachy connected via USB
             </Typography>
             {usbPortName && (
               <Typography
@@ -512,14 +511,7 @@ export default function ReadyToStartView({
                   mt: 0.5,
                 }}
               >
-                {isSimulationMode ? (
-                  <>
-                    <span style={{ color: darkMode ? '#4CAF50' : '#2E7D32' }}>🎮 </span>
-                    {usbPortName} (Simulation)
-                  </>
-                ) : (
-                  usbPortName
-                )}
+                {usbPortName}
               </Typography>
             )}
           </Box>

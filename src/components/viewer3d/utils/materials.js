@@ -1,35 +1,35 @@
 import * as THREE from 'three';
 
 /**
- * Utilitaires pour la création et la gestion des matériaux du robot
+ * Utilities for creating and managing robot materials
  */
 
 /**
- * Crée un gradient map pour le cell shading avec un meilleur contraste
- * @param {number} bands - Nombre de bandes de couleur (2-10)
+ * Creates a gradient map for cell shading with better contrast
+ * @param {number} bands - Number of color bands (2-10)
  * @returns {THREE.DataTexture}
  */
 export function createCellShadingGradient(bands = 3) {
   const colors = new Uint8Array(bands * 3);
   
-  // ✅ Gradient EXTRÊME pour cell shading très visible
-  // Utiliser des valeurs fixes pour maximiser le contraste
+  // ✅ EXTREME gradient for highly visible cell shading
+  // Use fixed values to maximize contrast
   if (bands === 3) {
-    // 3 bands : Ombre / Mi-ton / Lumière
-    colors[0] = 40;   colors[1] = 40;   colors[2] = 40;   // Ombre profonde
-    colors[3] = 140;  colors[4] = 140;  colors[5] = 140;  // Mi-ton
-    colors[6] = 255;  colors[7] = 255;  colors[8] = 255;  // Lumière pleine
+    // 3 bands: Shadow / Mid-tone / Light
+    colors[0] = 40;   colors[1] = 40;   colors[2] = 40;   // Deep shadow
+    colors[3] = 140;  colors[4] = 140;  colors[5] = 140;  // Mid-tone
+    colors[6] = 255;  colors[7] = 255;  colors[8] = 255;  // Full light
   } else if (bands === 4) {
-    // 4 bands pour plus de nuance
-    colors[0] = 30;   colors[1] = 30;   colors[2] = 30;   // Ombre très sombre
-    colors[3] = 100;  colors[4] = 100;  colors[5] = 100;  // Ombre moyenne
-    colors[6] = 180;  colors[7] = 180;  colors[8] = 180;  // Lumière moyenne
-    colors[9] = 255;  colors[10] = 255; colors[11] = 255; // Lumière pleine
+    // 4 bands for more nuance
+    colors[0] = 30;   colors[1] = 30;   colors[2] = 30;   // Very dark shadow
+    colors[3] = 100;  colors[4] = 100;  colors[5] = 100;  // Medium shadow
+    colors[6] = 180;  colors[7] = 180;  colors[8] = 180;  // Medium light
+    colors[9] = 255;  colors[10] = 255; colors[11] = 255; // Full light
   } else {
-    // Pour les autres nombres de bands, gradient progressif avec plus de contraste
+    // For other numbers of bands, progressive gradient with more contrast
     for (let i = 0; i < bands; i++) {
       const t = i / (bands - 1);
-      // Courbe exponentielle pour plus de contraste
+      // Exponential curve for more contrast
       const brightness = Math.pow(t, 0.7) * 255;
       
       colors[i * 3] = brightness;
@@ -52,7 +52,7 @@ export function createCellShadingGradient(bands = 3) {
 }
 
 /**
- * Shader custom pour cell shading AAA avec rim lighting et highlights spéculaires
+ * Custom shader for AAA cell shading with rim lighting and specular highlights
  */
 export const cellShadingShader = {
   uniforms: {
@@ -80,14 +80,14 @@ export const cellShadingShader = {
     varying vec3 vWorldPosition;
     
     void main() {
-      // Normale en world space
+      // Normal in world space
       vNormal = normalize(normalMatrix * normal);
       
-      // Position de la caméra
+      // Camera position
       vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
       vViewPosition = -mvPosition.xyz;
       
-      // Position world
+      // World position
       vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
       
       gl_Position = projectionMatrix * mvPosition;
@@ -116,13 +116,13 @@ export const cellShadingShader = {
     varying vec3 vViewPosition;
     varying vec3 vWorldPosition;
     
-    // Fonction de quantification smooth avec anti-aliasing
+    // Smooth quantization function with anti-aliasing
     float quantizeSmooth(float value, float steps, float smoothFactor) {
       float quantized = floor(value * steps) / steps;
       float nextBand = floor(value * steps + 1.0) / steps;
       float t = fract(value * steps);
       
-      // Smoothstep pour des transitions douces entre les bandes
+      // Smoothstep for smooth transitions between bands
       t = smoothstep(1.0 - smoothFactor, 1.0, t);
       
       return mix(quantized, nextBand, t);
@@ -135,67 +135,67 @@ export const cellShadingShader = {
       vec3 light2 = normalize(lightDirection2);
       
       // ===== 1. DIFFUSE CELL SHADING (Multi-light avec smooth) =====
-      // Lumière principale
+      // Main light
       float NdotL = max(dot(normal, light), 0.0);
-      // Lumière secondaire (fill light)
+      // Secondary light (fill light)
       float NdotL2 = max(dot(normal, light2), 0.0) * 0.35;
-      // Combiner les deux lumières
+      // Combine both lights
       float combinedLight = NdotL + NdotL2;
       
-      // Quantification smooth en bandes
+      // Smooth quantization into bands
       float diffuse = quantizeSmooth(combinedLight, bands, smoothness);
       
-      // Boost du contraste (optionnel, désactivé par défaut)
+      // Contrast boost (optional, disabled by default)
       if (contrastBoost != 1.0) {
         diffuse = pow(diffuse, 1.0 / contrastBoost);
       }
       
-      // Mapper les bandes sur les couleurs avec transitions douces
+      // Map bands to colors with smooth transitions
       vec3 shadedColor;
       if (diffuse < 0.33) {
-        // Zone d'ombre
+        // Shadow zone
         shadedColor = mix(shadowColor, midtoneColor, diffuse / 0.33) * baseColor;
       } else if (diffuse < 0.66) {
-        // Mi-ton vers couleur de base
+        // Mid-tone to base color
         shadedColor = mix(midtoneColor * baseColor, baseColor, (diffuse - 0.33) / 0.33);
       } else {
-        // Couleur de base vers highlight (élégant et subtil)
+        // Base color to highlight (elegant and subtle)
         shadedColor = mix(baseColor, baseColor * mix(vec3(1.0), highlightColor, 0.2), (diffuse - 0.66) / 0.34);
       }
       
-      // ===== 2. RIM LIGHTING (Fresnel élégant) =====
+      // ===== 2. RIM LIGHTING (Elegant Fresnel) =====
       float fresnel = 1.0 - max(dot(viewDir, normal), 0.0);
       fresnel = pow(fresnel, rimPower);
       
-      // Rim light avec transition douce et élégante
+      // Rim light with smooth and elegant transition
       float rimSmooth = smoothstep(0.4, 0.75, fresnel);
       vec3 rimLight = rimColor * rimSmooth * rimIntensity;
       
-      // ===== 3. SPECULAR HIGHLIGHT (Élégant) =====
+      // ===== 3. SPECULAR HIGHLIGHT (Elegant) =====
       vec3 halfVector = normalize(light + viewDir);
       float NdotH = max(dot(normal, halfVector), 0.0);
       float spec = pow(NdotH, specularPower);
       
-      // Specular doux avec smoothstep pour un rendu élégant
+      // Soft specular with smoothstep for elegant rendering
       float specSmooth = smoothstep(0.65, 0.85, spec);
       vec3 specular = highlightColor * specSmooth * specularIntensity;
       
       // ===== 4. AMBIENT =====
-      // AO élégant basé sur la normale Y pour plus de profondeur
+      // Elegant AO based on Y normal for more depth
       float ao = smoothstep(-0.4, 0.6, normal.y) * 0.25 + 0.75;
       vec3 ambient = baseColor * ambientIntensity * ao;
       
-      // ===== COMBINAISON FINALE =====
+      // ===== FINAL COMBINATION =====
       vec3 finalColor = shadedColor + ambient + rimLight + specular;
       
-      // Ajustement subtil de la saturation pour un rendu élégant
+      // Subtle saturation adjustment for elegant rendering
       float luminance = dot(finalColor, vec3(0.299, 0.587, 0.114));
       finalColor = mix(vec3(luminance), finalColor, 1.0);
       
-      // Clamp pour éviter l'overexposure (le tone mapping est géré par le renderer)
+      // Clamp to avoid overexposure (tone mapping is handled by the renderer)
       finalColor = clamp(finalColor, 0.0, 1.0);
       
-      // ✅ Utiliser l'opacité uniforme pour la transparence
+      // ✅ Use uniform opacity for transparency
       gl_FragColor = vec4(finalColor, opacity);
     }
   `
@@ -208,7 +208,7 @@ export const cellShadingShader = {
  * @returns {THREE.ShaderMaterial}
  */
 export function createCellShadingMaterial(baseColorHex = 0xFF9500, options = {}) {
-  // ✅ Créer manuellement les uniforms pour éviter les problèmes de clonage
+  // ✅ Manually create uniforms to avoid cloning issues
   const uniforms = {
     baseColor: { value: new THREE.Color(baseColorHex) },
     lightDirection: { value: new THREE.Vector3(0.5, 0.7, 0.5).normalize() },
@@ -217,14 +217,14 @@ export function createCellShadingMaterial(baseColorHex = 0xFF9500, options = {})
     midtoneColor: { value: new THREE.Color(0x909090) },
     highlightColor: { value: new THREE.Color(0xffffff) },
     rimColor: { value: new THREE.Color(0xffcc88) },
-    rimPower: { value: 3.5 }, // Optimisé pour un rim light élégant
-    rimIntensity: { value: options.rimIntensity ?? 0.4 }, // Légèrement augmenté pour plus de punch
-    specularPower: { value: 56.0 }, // Optimisé pour des highlights subtils mais visibles
-    specularIntensity: { value: options.specularIntensity ?? 0.3 }, // Légèrement augmenté
-    bands: { value: options.bands ?? 100 }, // Résolution optimale pour qualité/performance
-    ambientIntensity: { value: options.ambientIntensity ?? 0.45 }, // Légèrement augmenté pour plus de luminosité
-    contrastBoost: { value: options.contrastBoost ?? 0.9 }, // Optimisé pour un contraste élégant
-    smoothness: { value: options.smoothness ?? 0.45 }, // Légèrement augmenté pour transitions plus douces
+    rimPower: { value: 3.5 }, // Optimized for elegant rim light
+    rimIntensity: { value: options.rimIntensity ?? 0.4 }, // Slightly increased for more punch
+    specularPower: { value: 56.0 }, // Optimized for subtle but visible highlights
+    specularIntensity: { value: options.specularIntensity ?? 0.3 }, // Slightly increased
+    bands: { value: options.bands ?? 100 }, // Optimal resolution for quality/performance
+    ambientIntensity: { value: options.ambientIntensity ?? 0.45 }, // Slightly increased for more brightness
+    contrastBoost: { value: options.contrastBoost ?? 0.9 }, // Optimized for elegant contrast
+    smoothness: { value: options.smoothness ?? 0.45 }, // Slightly increased for smoother transitions
     opacity: { value: options.opacity ?? 1.0 },
   };
   
@@ -232,14 +232,14 @@ export function createCellShadingMaterial(baseColorHex = 0xFF9500, options = {})
     uniforms: uniforms,
     vertexShader: cellShadingShader.vertexShader,
     fragmentShader: cellShadingShader.fragmentShader,
-    lights: false, // On gère nous-mêmes l'éclairage dans le shader
+    lights: false, // We manage lighting ourselves in the shader
     side: THREE.FrontSide,
     depthWrite: true,
     depthTest: true,
-    transparent: options.opacity !== undefined && options.opacity < 1.0, // Activer transparent si opacity < 1.0
-    opacity: options.opacity ?? 1.0, // Définir l'opacité du matériau
-    // ✅ Smooth shading est contrôlé par les normales de la géométrie (computeVertexNormals)
-    // Pas de propriété flatShading sur ShaderMaterial
+    transparent: options.opacity !== undefined && options.opacity < 1.0, // Enable transparent if opacity < 1.0
+    opacity: options.opacity ?? 1.0, // Set material opacity
+    // ✅ Smooth shading is controlled by geometry normals (computeVertexNormals)
+    // No flatShading property on ShaderMaterial
   });
   
   console.log('✨ Cell shading AAA+ material created:', {
@@ -252,15 +252,15 @@ export function createCellShadingMaterial(baseColorHex = 0xFF9500, options = {})
 }
 
 /**
- * Met à jour les paramètres du shader cell shading
- * @param {THREE.ShaderMaterial} material - Le matériau à mettre à jour
- * @param {object} params - Paramètres à modifier
+ * Updates cell shading shader parameters
+ * @param {THREE.ShaderMaterial} material - Material to update
+ * @param {object} params - Parameters to modify
  */
 export function updateCellShadingMaterial(material, params = {}) {
   if (!material.uniforms) return;
   
-  // ✅ Mettre à jour tous les paramètres même s'ils sont undefined (utiliser les valeurs actuelles)
-  // Cela permet de forcer la mise à jour même si certaines valeurs ne changent pas
+  // ✅ Update all parameters even if they are undefined (use current values)
+  // This allows forcing update even if some values don't change
   let updated = false;
   
   if (params.bands !== undefined) {
@@ -297,13 +297,13 @@ export function updateCellShadingMaterial(material, params = {}) {
   }
   if (params.opacity !== undefined) {
     material.uniforms.opacity.value = params.opacity;
-    // ✅ Mettre à jour aussi material.opacity et material.transparent
+    // ✅ Also update material.opacity and material.transparent
     material.opacity = params.opacity;
     material.transparent = params.opacity < 1.0;
     updated = true;
   }
   
-  // ✅ Toujours marquer comme besoin de mise à jour pour forcer le re-render
+  // ✅ Always mark as needing update to force re-render
   if (updated) {
     material.needsUpdate = true;
   }
@@ -320,16 +320,16 @@ export const xrayShader = {
     rimIntensity: { value: 0.4 },
     opacity: { value: 0.5 },
     edgeIntensity: { value: 0.3 },
-    depthIntensity: { value: 0.3 }, // ✅ Nouveau : intensité de l'effet depth-based
-    subsurfaceColor: { value: new THREE.Color(0xB0C4DE) }, // ✅ Nouveau : couleur subsurface scattering
-    subsurfaceIntensity: { value: 0.2 }, // ✅ Nouveau : intensité subsurface
+    depthIntensity: { value: 0.3 }, // ✅ New: depth-based effect intensity
+    subsurfaceColor: { value: new THREE.Color(0xB0C4DE) }, // ✅ New: subsurface scattering color
+    subsurfaceIntensity: { value: 0.2 }, // ✅ New: subsurface intensity
   },
   
   vertexShader: `
     varying vec3 vNormal;
     varying vec3 vViewPosition;
     varying vec3 vWorldPosition;
-    varying float vDepth; // ✅ Nouveau : profondeur pour depth-based opacity
+    varying float vDepth; // ✅ New: depth for depth-based opacity
     
     void main() {
       vNormal = normalize(normalMatrix * normal);
@@ -337,7 +337,7 @@ export const xrayShader = {
       vViewPosition = -mvPosition.xyz;
       vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
       
-      // ✅ Calculer la profondeur (distance à la caméra)
+      // ✅ Calculate depth (distance to camera)
       vDepth = length(vViewPosition);
       
       gl_Position = projectionMatrix * mvPosition;
@@ -351,48 +351,48 @@ export const xrayShader = {
     uniform float rimIntensity;
     uniform float opacity;
     uniform float edgeIntensity;
-    uniform float depthIntensity; // ✅ Nouveau
-    uniform vec3 subsurfaceColor; // ✅ Nouveau
-    uniform float subsurfaceIntensity; // ✅ Nouveau
+    uniform float depthIntensity; // ✅ New
+    uniform vec3 subsurfaceColor; // ✅ New
+    uniform float subsurfaceIntensity; // ✅ New
     
     varying vec3 vNormal;
     varying vec3 vViewPosition;
-    varying float vDepth; // ✅ Nouveau
+    varying float vDepth; // ✅ New
     
     void main() {
       vec3 normal = normalize(vNormal);
       vec3 viewDir = normalize(vViewPosition);
       
-      // ===== RIM LIGHTING AVANCÉ (Fresnel effect avec variation de couleur) =====
+      // ===== ADVANCED RIM LIGHTING (Fresnel effect with color variation) =====
       float fresnel = 1.0 - max(dot(viewDir, normal), 0.0);
       fresnel = pow(fresnel, rimPower);
       
-      // ✅ Rim light avec transition douce et variation de couleur selon l'angle
+      // ✅ Rim light with smooth transition and color variation based on angle
       float rimSmooth = smoothstep(0.2, 0.9, fresnel);
-      vec3 rimColorVaried = mix(rimColor, vec3(0.9, 0.95, 1.0), fresnel * 0.5); // Légèrement bleuté aux bords
+      vec3 rimColorVaried = mix(rimColor, vec3(0.9, 0.95, 1.0), fresnel * 0.5); // Slightly bluish at edges
       vec3 rimLight = rimColorVaried * rimSmooth * rimIntensity;
       
-      // ===== EDGE DETECTION AMÉLIORÉ =====
+      // ===== IMPROVED EDGE DETECTION =====
       float edge = 1.0 - abs(dot(viewDir, normal));
-      edge = pow(edge, 2.5); // Légèrement moins agressif
+      edge = pow(edge, 2.5); // Slightly less aggressive
       vec3 edgeHighlight = rimColor * edge * edgeIntensity;
       
-      // ===== SUBSURFACE SCATTERING (simulation de lumière qui traverse) =====
-      // Plus la surface est perpendiculaire à la vue, plus la lumière traverse
+      // ===== SUBSURFACE SCATTERING (simulation of light passing through) =====
+      // The more perpendicular the surface is to the view, the more light passes through
       float subsurfaceFactor = max(dot(viewDir, normal), 0.0);
       subsurfaceFactor = pow(subsurfaceFactor, 1.5);
       vec3 subsurface = subsurfaceColor * subsurfaceFactor * subsurfaceIntensity;
       
-      // ===== DEPTH-BASED OPACITY (les parties plus épaisses sont plus opaques) =====
-      // Normaliser la profondeur (ajuster selon votre scène)
+      // ===== DEPTH-BASED OPACITY (thicker parts are more opaque) =====
+      // Normalize depth (adjust according to your scene)
       float normalizedDepth = clamp((vDepth - 0.1) / 0.5, 0.0, 1.0);
       float depthOpacity = 1.0 + normalizedDepth * depthIntensity;
       float finalOpacity = opacity * depthOpacity;
       
-      // ===== COULEUR FINALE =====
+      // ===== FINAL COLOR =====
       vec3 finalColor = baseColor + rimLight + edgeHighlight + subsurface;
       
-      // ✅ Clamp avec un peu plus de headroom pour le bloom
+      // ✅ Clamp with a bit more headroom for bloom
       finalColor = clamp(finalColor, 0.0, 1.2);
       
       gl_FragColor = vec4(finalColor, clamp(finalOpacity, 0.0, 1.0));
@@ -401,9 +401,9 @@ export const xrayShader = {
 };
 
 /**
- * Crée un matériau X-ray amélioré avec rim lighting
- * @param {number} baseColorHex - Couleur de base en hexa
- * @param {object} options - Options du shader
+ * Creates an improved X-ray material with rim lighting
+ * @param {number} baseColorHex - Base color in hex
+ * @param {object} options - Shader options
  * @returns {THREE.ShaderMaterial}
  */
 export function createXrayMaterial(baseColorHex = 0x7A8590, options = {}) {
@@ -414,9 +414,9 @@ export function createXrayMaterial(baseColorHex = 0x7A8590, options = {}) {
     rimIntensity: { value: options.rimIntensity ?? 0.4 },
     opacity: { value: options.opacity ?? 0.5 },
     edgeIntensity: { value: options.edgeIntensity ?? 0.3 },
-    depthIntensity: { value: options.depthIntensity ?? 0.3 }, // ✅ Nouveau
-    subsurfaceColor: { value: new THREE.Color(options.subsurfaceColor || 0xB0C4DE) }, // ✅ Nouveau
-    subsurfaceIntensity: { value: options.subsurfaceIntensity ?? 0.2 }, // ✅ Nouveau
+    depthIntensity: { value: options.depthIntensity ?? 0.3 }, // ✅ New
+    subsurfaceColor: { value: new THREE.Color(options.subsurfaceColor || 0xB0C4DE) }, // ✅ New
+    subsurfaceIntensity: { value: options.subsurfaceIntensity ?? 0.2 }, // ✅ New
   };
   
   const material = new THREE.ShaderMaterial({
@@ -424,20 +424,20 @@ export function createXrayMaterial(baseColorHex = 0x7A8590, options = {}) {
     vertexShader: xrayShader.vertexShader,
     fragmentShader: xrayShader.fragmentShader,
     transparent: true,
-    depthWrite: false, // ✅ Standard pour transparents : ne pas écrire dans le depth buffer
+    depthWrite: false, // ✅ Standard for transparents: don't write to depth buffer
     depthTest: true,
     side: THREE.DoubleSide,
     opacity: options.opacity ?? 0.5,
-    alphaTest: 0.001, // ✅ Rejeter les pixels presque transparents (très faible pour éviter les artefacts)
+    alphaTest: 0.001, // ✅ Reject almost transparent pixels (very low to avoid artifacts)
   });
   
   return material;
 }
 
 /**
- * Met à jour les paramètres du shader X-ray
- * @param {THREE.ShaderMaterial} material - Le matériau à mettre à jour
- * @param {object} params - Paramètres à modifier
+ * Updates X-ray shader parameters
+ * @param {THREE.ShaderMaterial} material - Material to update
+ * @param {object} params - Parameters to modify
  */
 export function updateXrayMaterial(material, params = {}) {
   if (!material.uniforms) return;

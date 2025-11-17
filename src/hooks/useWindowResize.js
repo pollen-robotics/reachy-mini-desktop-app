@@ -25,16 +25,16 @@ async function resizeWindowInstantly(targetWidth, targetHeight) {
 
     console.log(`🔄 Resizing: ${startWidth}x${startHeight} → ${targetWidth}x${targetHeight}`);
 
-    // Si déjà à la bonne taille, ne rien faire
+    // If already at correct size, do nothing
     if (startWidth === targetWidth && startHeight === targetHeight) {
       console.log('✅ Already at target size');
       return;
     }
 
-    // Appliquer le resize
+    // Apply resize
     await appWindow.setSize(new LogicalSize(targetWidth, targetHeight));
     
-    // Centrer la fenêtre sur l'écran
+    // Center window on screen
     await moveWindow(Position.Center);
     
     console.log(`✅ Window resized to ${targetWidth}x${targetHeight} and centered`);
@@ -44,8 +44,8 @@ async function resizeWindowInstantly(targetWidth, targetHeight) {
 }
 
 /**
- * Hook pour gérer automatiquement le resize de fenêtre selon la vue
- * @param {string} view - Nom de la vue actuelle ('compact' ou 'expanded')
+ * Hook to automatically manage window resize according to view
+ * @param {string} view - Current view name ('compact' or 'expanded')
  */
 export function useWindowResize(view) {
   const previousView = useRef(null);
@@ -54,11 +54,11 @@ export function useWindowResize(view) {
   useEffect(() => {
     console.log(`🔍 useWindowResize - Current view: ${view}, Previous view: ${previousView.current}, Initialized: ${isInitialized.current}`);
 
-    // Définir les tailles selon la vue (hauteur fixe 670px, seule la largeur change)
+    // Set sizes according to view (fixed height 670px, only width changes)
     const FIXED_HEIGHT = 670;
     const sizes = {
-      compact: { width: 450, height: FIXED_HEIGHT },    // Vues : RobotNotDetected, ReadyToStart, Starting, Closing
-      expanded: { width: 900, height: FIXED_HEIGHT },   // Vue : ActiveRobotView (2x plus large)
+      compact: { width: 450, height: FIXED_HEIGHT },    // Views: RobotNotDetected, ReadyToStart, Starting, Closing
+      expanded: { width: 900, height: FIXED_HEIGHT },   // View: ActiveRobotView (2x wider)
     };
 
     const targetSize = sizes[view];
@@ -73,7 +73,7 @@ export function useWindowResize(view) {
       isInitialized.current = true;
       previousView.current = view;
       
-      // Setter la taille immédiatement
+      // Set size immediately
       if (window.__TAURI__) {
         const appWindow = getCurrentWindow();
         appWindow.setSize(new LogicalSize(targetSize.width, targetSize.height))
@@ -83,7 +83,7 @@ export function useWindowResize(view) {
       return;
     }
 
-    // Ne redimensionner que si la vue change réellement
+    // Only resize if view actually changes
     if (previousView.current === view) {
       console.log('⏭️ Same view, skipping resize');
       return;

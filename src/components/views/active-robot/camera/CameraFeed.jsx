@@ -1,8 +1,8 @@
 import React, { useRef, useEffect } from 'react';
 
 /**
- * Composant CameraFeed - Affiche un flux caméra
- * Pour l'instant, affiche un placeholder
+ * CameraFeed Component - Displays camera feed
+ * For now, displays a placeholder
  */
 export default function CameraFeed({ width = 240, height = 180, isLarge = false }) {
   const canvasRef = useRef(null);
@@ -15,36 +15,36 @@ export default function CameraFeed({ width = 240, height = 180, isLarge = false 
 
     const ctx = canvas.getContext('2d');
     
-    // Obtenir les dimensions réelles du canvas
+    // Get actual canvas dimensions
     const canvasWidth = canvas.width;
     const canvasHeight = canvas.height;
     
-    // Générer du bruit animé (simule le flux vidéo)
+    // Generate animated noise (simulates video feed)
     const imageData = ctx.createImageData(canvasWidth, canvasHeight);
 
-    // Fonction pour générer du bruit aléatoire (simule le flux vidéo)
+    // Function to generate random noise (simulates video feed)
     const drawNoise = () => {
       const data = imageData.data;
       
       for (let i = 0; i < data.length; i += 4) {
-        // Générer une valeur de gris aléatoire
+        // Generate random gray value
         const gray = Math.random() * 255;
         data[i] = gray;     // R
         data[i + 1] = gray; // G
         data[i + 2] = gray; // B
-        data[i + 3] = 255;  // A (opacité complète)
+        data[i + 3] = 255;  // A (full opacity)
       }
       
       ctx.putImageData(imageData, 0, 0);
       
-      // Continuer l'animation
+      // Continue animation
       animationRef.current = requestAnimationFrame(drawNoise);
     };
 
-    // Démarrer l'animation
+    // Start animation
     drawNoise();
 
-    // Nettoyer l'animation au démontage
+    // Cleanup animation on unmount
     return () => {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
@@ -52,7 +52,7 @@ export default function CameraFeed({ width = 240, height = 180, isLarge = false 
     };
   }, [width, height, isLarge]);
 
-  // Dimensions du canvas en pixels (pour le dessin)
+  // Canvas dimensions in pixels (for drawing)
   const canvasWidth = typeof width === 'number' ? width : 640;
   const canvasHeight = typeof height === 'number' ? height : 480;
 
