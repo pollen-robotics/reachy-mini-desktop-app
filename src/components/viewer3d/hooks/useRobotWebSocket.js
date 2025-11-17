@@ -7,7 +7,8 @@ import { useRef, useEffect, useState } from 'react';
 export default function useRobotWebSocket(isActive) {
   const [robotState, setRobotState] = useState({
     headPose: null, // 4x4 matrix from daemon (already computed forward kinematics)
-    yawBody: 0, // yaw rotation of the body
+    headJoints: null, // Array of 7 values [yaw_body, stewart_1, ..., stewart_6]
+    yawBody: 0, // yaw rotation of the body (extracted from headJoints[0])
     antennas: [0, 0], // [left, right]
   });
   const wsRef = useRef(null);
@@ -37,10 +38,10 @@ export default function useRobotWebSocket(isActive) {
           try {
             const data = JSON.parse(event.data);
             
-            // Periodic log of received data for animation debugging
+            // Reduced logging - only log every 1000 messages (~every 100 seconds at 10Hz)
             if (!ws.messageCount) ws.messageCount = 0;
             ws.messageCount++;
-            if (ws.messageCount % 200 === 1) {
+            if (ws.messageCount % 1000 === 1) {
               console.log('📡 Animation data:', {
                 yaw_body: data.head_joints?.[0]?.toFixed(3),
                 antennas: data.antennas_position?.map(v => v.toFixed(3)),
@@ -62,9 +63,10 @@ export default function useRobotWebSocket(isActive) {
               }
             }
             
-            // Extract yaw_body (first value of head_joints)
+            // Extract head_joints (7 values: yaw_body + stewart_1 to stewart_6)
             if (data.head_joints && Array.isArray(data.head_joints) && data.head_joints.length === 7) {
-              newState.yawBody = data.head_joints[0];
+              newState.headJoints = data.head_joints;
+              newState.yawBody = data.head_joints[0]; // Also extract yaw_body for backward compatibility
             }
             
             // Positions des antennes [left, right]

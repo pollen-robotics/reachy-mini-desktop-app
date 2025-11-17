@@ -41,11 +41,28 @@ yarn tauri:dev
 ### Building
 
 ```bash
-# Build for production
+# Build for production (uses PyPI release by default)
 yarn tauri:build
+
+# Build with develop branch from GitHub
+REACHY_MINI_SOURCE=develop yarn build:sidecar-macos
+# or for Linux
+REACHY_MINI_SOURCE=develop yarn build:sidecar-linux
 
 # Build for specific platform
 yarn tauri build --target aarch64-apple-darwin
+```
+
+#### Installation du daemon depuis différentes sources
+
+Par défaut, le package `reachy-mini` est installé depuis PyPI (dernière release stable). Vous pouvez également installer depuis la branche `develop` de GitHub en utilisant la variable d'environnement `REACHY_MINI_SOURCE` :
+
+- **PyPI (par défaut)** : `REACHY_MINI_SOURCE=pypi` ou omettre la variable
+- **GitHub develop** : `REACHY_MINI_SOURCE=develop`
+
+Exemple pour construire le sidecar avec la version develop :
+```bash
+REACHY_MINI_SOURCE=develop bash ./build_sidecar_unix.sh
 ```
 
 ## 📖 Documentation

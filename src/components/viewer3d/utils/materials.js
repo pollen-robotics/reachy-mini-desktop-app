@@ -242,11 +242,11 @@ export function createCellShadingMaterial(baseColorHex = 0xFF9500, options = {})
     // No flatShading property on ShaderMaterial
   });
   
-  console.log('✨ Cell shading AAA+ material created:', {
-    baseColor: `#${baseColorHex.toString(16).padStart(6, '0')}`,
-    bands: material.uniforms.bands.value,
-    quality: 'Ultra',
-  });
+  // Reduced logging - only log in development mode and only occasionally
+  if (process.env.NODE_ENV === 'development' && Math.random() < 0.01) {
+    // Log only 1% of materials created
+    console.log('✨ Cell shading material created');
+  }
   
   return material;
 }

@@ -79,6 +79,7 @@ export default function RobotViewer3D({
   // If antennas is not provided and robotState.antennas is null, use [0, 0] (folded)
   const finalAntennas = antennas !== null ? antennas : (robotState.antennas || [0, 0]);
   const finalHeadPose = headPose !== null ? headPose : robotState.headPose;
+  const finalHeadJoints = robotState.headJoints; // ✅ Utiliser headJoints depuis WebSocket
   const finalYawBody = yawBody !== null ? yawBody : robotState.yawBody;
   
   const [isTransparent, setIsTransparent] = useState(initialMode === 'xray');
@@ -214,6 +215,7 @@ export default function RobotViewer3D({
                  <color attach="background" args={[effectiveBackgroundColor]} />
                <Scene 
                 headPose={finalHeadPose}
+                headJoints={finalHeadJoints} // ✅ Utiliser les joints directement
                 yawBody={finalYawBody}
                 antennas={finalAntennas} 
                 isActive={isActive} 

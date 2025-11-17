@@ -2,6 +2,7 @@ import { useRef, useEffect, useLayoutEffect, useState, useCallback } from 'react
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { createCellShadingMaterial, updateCellShadingMaterial, createXrayMaterial, updateXrayMaterial } from './utils/materials';
+import { matrix4FromRowMajor } from './utils/matrixUtils';
 import robotModelCache from '../../utils/robotModelCache';
 
 /**
@@ -10,7 +11,9 @@ import robotModelCache from '../../utils/robotModelCache';
  * Manages 3D model loading, head and antenna animations
  */
 export default function URDFRobot({ 
-  headPose, 
+  headPose, // ✅ Matrice de pose (pour debug/comparaison, mais on utilise les joints)
+  headJoints, // ✅ Array de 7 valeurs [yaw_body, stewart_1, ..., stewart_6]
+  passiveJoints, // ✅ Array de 21 valeurs [passive_1_x, passive_1_y, passive_1_z, ..., passive_7_z] (optionnel, seulement si Placo actif)
   yawBody, 
   antennas, 
   isActive, 
@@ -38,6 +41,8 @@ export default function URDFRobot({
   
   // ✅ Cache to avoid unnecessary updates
   const lastHeadPoseRef = useRef(null);
+  const lastHeadJointsRef = useRef(null);
+  const lastPassiveJointsRef = useRef(null);
   const lastYawBodyRef = useRef(undefined);
   const lastAntennasRef = useRef(null);
   
@@ -194,8 +199,6 @@ export default function URDFRobot({
       }
     });
     
-    console.log(`🔍 Processing ${mainMeshes.length} meshes...`);
-    
     // Traverse only main meshes
     mainMeshes.forEach((child) => {
       if (!child.material) {
@@ -269,21 +272,7 @@ export default function URDFRobot({
                        materialNameLower.includes('small_lens') ||
                        materialNameLower.includes('lens_d30'); // big_lens, small_lens or their variants
       
-      // ✅ DEBUG: Log if material contains "glasses" to find second lens
-      if (materialNameLower.includes('glasses') || materialNameLower.includes('dolder')) {
-        console.log('🔍 Glasses/Dolder material found:', {
-          materialName,
-          materialNameLower,
-          isBigLens,
-          hasBigLens: materialNameLower.includes('big_lens'),
-          hasLensD40: materialNameLower.includes('lens_d40'),
-          meshName,
-          stlFileName,
-          parentNames: parentNames.slice(0, 3),
-        });
-      }
-      
-      // Log if detected by other means for debug
+      // Log if detected by other means for debug (only warnings)
       const detectedByName = meshName.toLowerCase().includes('big_lens') || 
                             stlFileName.toLowerCase().includes('big_lens') ||
                             fileName.toLowerCase().includes('big_lens') ||
@@ -293,106 +282,10 @@ export default function URDFRobot({
         console.warn('⚠️ Big lens detected by name but not by material:', {
           meshName,
           materialName,
-          stlFileName,
-          fileName,
-          parentName,
-          userDataMaterialName: child.userData?.materialName,
-          directMaterialName: child.material?.name,
-          parentNames: parentNames.slice(0, 3),
-        });
-      }
-      
-      // Log all objects with "big_lens" in their name for complete debug
-      if (detectedByName || isBigLens) {
-        console.log('🔍 Big lens candidate (by name or material):', {
-          isBigLens,
-          detectedByName,
-          meshName,
-          materialName,
-          stlFileName,
-          fileName,
-          parentName,
-          userDataMaterialName: child.userData?.materialName,
-          directMaterialName: child.material?.name,
-          parentNames: parentNames.slice(0, 3),
-        });
-      }
-      
-      // ✅ LOG ALL MESHES with material containing "lens" or "big" to find big_lens
-      if (materialName.toLowerCase().includes('lens') || materialName.toLowerCase().includes('big')) {
-        console.log('🔍 Lens/Big-related mesh found:', {
-          index: processedCount,
-          meshName,
-          materialName,
-          stlFileName,
-          fileName,
-          parentNames: parentNames.slice(0, 3),
-          isBigLens,
-          materialType: child.material?.type,
-          userDataMaterialName: child.userData?.materialName,
-          directMaterialName: child.material?.name,
-          materialNameLower: materialName.toLowerCase(),
-          hasBigLens: materialName.toLowerCase().includes('big_lens'),
-          hasLensD40: materialName.toLowerCase().includes('lens_d40'),
-        });
-      }
-      
-      // ✅ LOG ALL MESHES for debug (only first ones to avoid spam)
-      if (processedCount < 10) {
-        console.log('🔍 Mesh debug info:', {
-          index: processedCount,
-          meshName,
-          stlFileName,
-          fileName,
-          parentNames: parentNames.slice(0, 3), // Premiers 3 parents
-          materialName,
-          materialType: child.material?.type,
-          materialConstructor: child.material?.constructor?.name,
-          geometryUrl,
-          originalColor: `#${lensColor.toString(16).padStart(6, '0')}`,
-          rgb: `rgb(${r}, ${g}, ${b})`,
-          isExactLensColor,
-          isExcluded,
-          isAntenna: child.userData.isAntenna,
-          isShellPiece: child.userData.isShellPiece,
-          userDataKeys: Object.keys(child.userData || {}),
-        });
-      }
-      
-      // ✅ LOG if detected as big_lens to see why
-      if (isBigLens) {
-        console.log('🔍 BIG_LENS detection reason:', {
-          meshName,
-          stlFileName,
-          fileName,
-          parentName,
-          parentNames: parentNames.slice(0, 3),
-          materialName,
-          materialNameLower: materialName.toLowerCase(),
-          materialHasBigLens: materialName.toLowerCase().includes('big_lens'),
-          materialHasLensD40: materialName.toLowerCase().includes('lens_d40'),
-                 isBigLensValue: isBigLens, // The actual value of isBigLens
-          isExactLensColor,
-          isExcluded,
-          rgb: `rgb(${r}, ${g}, ${b})`,
-          isAntenna: child.userData.isAntenna,
-          isShellPiece: child.userData.isShellPiece,
-          userDataMaterialName: child.userData?.materialName,
-          directMaterialName: child.material?.name,
         });
       }
       
       if (isBigLens) {
-        console.log('👓 ✅ BIG_LENS DETECTED! Applying cell shading with transparency:', {
-          meshName,
-          stlFileName,
-          fileName,
-          parentName,
-          materialName,
-          geometryUrl,
-          position: child.position.clone(),
-          userData: child.userData,
-        });
         
         // ✅ BIG_LENS: Cell shading WITH transparency (no glass material)
         // Apply cell shading like other parts, but with transparency
@@ -422,12 +315,6 @@ export default function URDFRobot({
             opacity: lensOpacity, // Ensure opacity is properly defined
           });
           
-          console.log('👓 Big lens opacity set:', {
-            lensOpacity,
-            materialTransparent: cellMaterial.transparent,
-            materialOpacity: cellMaterial.opacity,
-            uniformOpacity: cellMaterial.uniforms.opacity.value,
-          });
           
           child.material = cellMaterial;
           
@@ -457,14 +344,6 @@ export default function URDFRobot({
       // ALL orange parts = antennas (no size limit)
       const isAntenna = child.userData.isAntenna || isOrange;
       
-      // Log ALL orange parts
-      if (isOrange) {
-        console.log(`🟠 ORANGE → DARK:`, {
-          color: `#${originalColor.toString(16)}`,
-          vertices: vertexCount,
-          name: child.name || 'unnamed',
-        });
-      }
       
       if (isAntenna) {
         antennaCount++;
@@ -485,11 +364,6 @@ export default function URDFRobot({
           child.material = antennaMaterial;
         }
         
-        console.log('📡 Antenna material applied:', {
-          transparent,
-          color: transparent ? '#00FF00' : '#1a1a1a',
-          opacity: transparent ? opacity : 1.0
-        });
         
           // No outlines on antennas
         if (child.userData.outlineMesh) {
@@ -582,15 +456,10 @@ export default function URDFRobot({
       processedCount++;
     });
     
-    console.log(`🎨 Materials applied: ${processedCount} meshes processed (${antennaCount} antennas)${skippedCount > 0 ? `, ${skippedCount} skipped` : ''}`, {
-      mode: transparent ? 'X-RAY' : 'CELL SHADING ULTRA-SMOOTH',
-      transparent,
-      ...(transparent ? { opacity } : { 
-        bands: cellShadingConfig?.bands || 100, 
-        smoothness: cellShadingConfig?.smoothness ?? 0.45,
-        outlines: cellShadingConfig?.outlineEnabled ? 'enabled' : 'disabled'
-      }),
-    });
+    // Only log summary, not details
+    if (processedCount > 0) {
+      console.log(`🎨 Materials applied: ${processedCount} meshes (${antennaCount} antennas)${skippedCount > 0 ? `, ${skippedCount} skipped` : ''} - ${transparent ? 'X-RAY' : 'CELL SHADING'}`);
+    }
   }, [getCellShadingMaterial, getXrayMaterial]);
 
   // Cleanup: Dispose all cached materials on component unmount
@@ -632,7 +501,10 @@ export default function URDFRobot({
       
       // Clone model for this instance
       const robotModel = cachedModel.clone(true); // true = recursive clone
-      console.log('✅ URDF loaded from cache: %d meshes', robotModel.children.length);
+      // Reduced logging
+      if (robotModel.children.length > 0) {
+        console.log(`✅ URDF loaded: ${robotModel.children.length} children`);
+      }
       
       // ✅ Recalculate smooth normals after cloning to ensure smooth rendering
       // Cloning can sometimes lose normals, so we recalculate them systematically
@@ -657,9 +529,10 @@ export default function URDFRobot({
         }
       });
       
-      console.log(`✨ Smooth shading: ${normalsRecalculated} meshes with recalculated normals (threshold angle: 90°)`);
-      console.log(`📋 [Scene] STL files in scene: ${sceneStlFiles.length} unique files`);
-      console.log(`📋 [Scene] STL files list:`, sceneStlFiles.sort());
+      // Reduced logging - only log summary
+      if (normalsRecalculated > 0) {
+        console.log(`✨ Smooth shading: ${normalsRecalculated} meshes recalculated`);
+      }
       
       // ✅ Detect shells by BOUNDING BOX (shells are large)
       let shellPieceCount = 0;
@@ -697,12 +570,10 @@ export default function URDFRobot({
         }
       });
       
-      // Sort to see distribution
-      boundingBoxSizes.sort((a, b) => b - a);
-      console.log(`  🛡️ ${shellPieceCount} shell pieces detected (bbox volume > 0.0003)`);
-      console.log(`  📊 Bounding box volumes:`);
-      console.log(`    - Top 10:`, boundingBoxSizes.slice(0, 10).map(v => v.toFixed(4)));
-      console.log(`    - Bottom 10:`, boundingBoxSizes.slice(-10).map(v => v.toFixed(6)));
+      // Reduced logging - only log summary
+      if (shellPieceCount > 0) {
+        console.log(`🛡️ ${shellPieceCount} shell pieces detected`);
+      }
 
       // ✅ Prepare initial materials (cell shading or X-ray based on current mode)
       let meshCount = 0;
@@ -712,7 +583,10 @@ export default function URDFRobot({
         }
       });
       
-      console.log('✅ Robot ready with %d meshes, materials will be applied by useLayoutEffect', meshCount);
+      // Reduced logging
+      if (meshCount > 0) {
+        console.log(`✅ Robot ready: ${meshCount} meshes`);
+      }
       
       // Collect all meshes for Outline effect
       const collectedMeshes = [];
@@ -734,8 +608,48 @@ export default function URDFRobot({
       }
       
       // ✅ Model loaded, let useLayoutEffect apply materials
+      // ✅ IMPORTANT: Initialiser tous les joints à zéro pour éviter une position initiale incorrecte
+      // La plateforme Stewart nécessite que tous les joints soient initialisés correctement
+      if (robotModel && robotModel.joints) {
+        // Initialiser yaw_body à 0
+        if (robotModel.joints['yaw_body']) {
+          robotModel.setJointValue('yaw_body', 0);
+        }
+        
+        // Initialiser tous les joints stewart à 0
+        const stewartJointNames = ['stewart_1', 'stewart_2', 'stewart_3', 'stewart_4', 'stewart_5', 'stewart_6'];
+        stewartJointNames.forEach(jointName => {
+          if (robotModel.joints[jointName]) {
+            robotModel.setJointValue(jointName, 0);
+          }
+        });
+        
+        // Initialiser les joints passifs à 0 si disponibles
+        const passiveJointNames = [
+          'passive_1_x', 'passive_1_y', 'passive_1_z',
+          'passive_2_x', 'passive_2_y', 'passive_2_z',
+          'passive_3_x', 'passive_3_y', 'passive_3_z',
+          'passive_4_x', 'passive_4_y', 'passive_4_z',
+          'passive_5_x', 'passive_5_y', 'passive_5_z',
+          'passive_6_x', 'passive_6_y', 'passive_6_z',
+          'passive_7_x', 'passive_7_y', 'passive_7_z',
+        ];
+        passiveJointNames.forEach(jointName => {
+          if (robotModel.joints[jointName]) {
+            robotModel.setJointValue(jointName, 0);
+          }
+        });
+        
+        // ✅ Forcer la mise à jour des matrices après initialisation
+        robotModel.traverse((child) => {
+          if (child.isObject3D) {
+            child.updateMatrix();
+            child.updateMatrixWorld(true);
+          }
+        });
+      }
+      
       setRobot(robotModel);
-      console.log('✅ Robot model ready for rendering');
     }).catch((err) => {
       console.error('❌ URDF loading error:', err);
     });
@@ -747,6 +661,7 @@ export default function URDFRobot({
   }, [isActive, forceLoad, onMeshesReady]); // ✅ Load when isActive or forceLoad changes
 
   // ✅ Apply antennas on initial load and when they change (even if isActive=false)
+  const lastAntennasLogRef = useRef(null);
   useEffect(() => {
     if (!robot) return;
     
@@ -761,8 +676,27 @@ export default function URDFRobot({
       robot.setJointValue('right_antenna', rightPos);
     }
     
-    console.log('🤖 Antennas set to:', [leftPos, rightPos]);
+    // Only log if antennas changed significantly (threshold: 0.01 rad)
+    const currentAntennas = [leftPos, rightPos];
+    const lastAntennas = lastAntennasLogRef.current;
+    if (!lastAntennas || 
+        Math.abs(currentAntennas[0] - lastAntennas[0]) > 0.01 ||
+        Math.abs(currentAntennas[1] - lastAntennas[1]) > 0.01) {
+      console.log('🤖 Antennas set to:', currentAntennas);
+      lastAntennasLogRef.current = currentAntennas;
+    }
   }, [robot, antennas]); // Triggers on load AND when antennas change
+  
+  // ✅ Helper function pour comparer les arrays avec tolérance (évite les mises à jour inutiles)
+  // Tolérance augmentée à 0.001 pour éviter les micro-changements qui causent du flickering
+  const arraysEqual = (a, b, tolerance = 0.001) => {
+    if (!a || !b) return a === b;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (Math.abs(a[i] - b[i]) > tolerance) return false;
+    }
+    return true;
+  };
   
   // ✅ Animation loop synchronized with Three.js render (60 FPS)
   // useFrame is more performant than useEffect for Three.js updates
@@ -773,38 +707,128 @@ export default function URDFRobot({
     // If forceLoad is true, we want robot to move even if isActive is temporarily false
     if (!isActive && !forceLoad) return;
 
-    // STEP 1: Apply yaw_body (body rotation) - only if changed
-    if (yawBody !== lastYawBodyRef.current && yawBody !== undefined && robot.joints['yaw_body']) {
+    // STEP 1: Apply head joints (yaw_body + stewart_1 à stewart_6)
+    // ✅ Utiliser les joints directement comme dans le code Rerun (plus précis que la matrice de pose)
+    // Les joints respectent la cinématique de l'URDF
+    // ✅ IMPORTANT: URDFLoader met à jour automatiquement les matrices lors de setJointValue
+    // Ne PAS forcer updateMatrixWorld() pour éviter les conflits et le flickering
+    if (headJoints && Array.isArray(headJoints) && headJoints.length === 7) {
+      const headJointsChanged = !arraysEqual(headJoints, lastHeadJointsRef.current);
+      
+      if (headJointsChanged) {
+        // ✅ Debug: Vérifier quels joints sont disponibles (seulement la première fois)
+        if (!lastHeadJointsRef.current) {
+          const availableJoints = Object.keys(robot.joints || {});
+          const stewartJoints = availableJoints.filter(j => j.startsWith('stewart_'));
+          const passiveJoints = availableJoints.filter(j => j.startsWith('passive_'));
+          console.log('🔧 Available joints:', {
+            total: availableJoints.length,
+            stewart: stewartJoints.sort(),
+            passive: passiveJoints.length > 0 ? passiveJoints.slice(0, 6).sort() : 'none',
+            hasYawBody: !!robot.joints['yaw_body'],
+            headJointsValues: headJoints.map((v, i) => ({
+              index: i,
+              name: i === 0 ? 'yaw_body' : `stewart_${i}`,
+              value: v.toFixed(4),
+            })),
+          });
+        }
+        
+        // yaw_body (index 0) - Appliquer en premier
+        if (robot.joints['yaw_body']) {
+          robot.setJointValue('yaw_body', headJoints[0]);
+        } else {
+          console.warn('⚠️ Joint yaw_body not found in robot model');
+        }
+        
+        // stewart_1 à stewart_6 (indices 1-6) - Appliquer ensuite
+        const stewartJointNames = ['stewart_1', 'stewart_2', 'stewart_3', 'stewart_4', 'stewart_5', 'stewart_6'];
+        let appliedCount = 0;
+        const appliedValues = {};
+        for (let i = 0; i < 6; i++) {
+          const jointName = stewartJointNames[i];
+          if (robot.joints[jointName]) {
+            const jointValue = headJoints[i + 1];
+            robot.setJointValue(jointName, jointValue);
+            appliedValues[jointName] = jointValue;
+            appliedCount++;
+          } else {
+            if (!lastHeadJointsRef.current) {
+              console.warn(`⚠️ Joint ${jointName} not found in robot model`);
+            }
+          }
+        }
+        
+        if (appliedCount < 6 && !lastHeadJointsRef.current) {
+          console.warn(`⚠️ Only ${appliedCount}/6 stewart joints were applied`);
+        }
+        
+        // ✅ Log les valeurs appliquées la première fois pour debug
+        if (!lastHeadJointsRef.current && appliedCount > 0) {
+          console.log('✅ Applied stewart joints:', appliedValues);
+        }
+        
+        lastHeadJointsRef.current = headJoints.slice();
+      }
+    } else if (yawBody !== lastYawBodyRef.current && yawBody !== undefined && robot.joints['yaw_body']) {
+      // ✅ Fallback: utiliser yawBody seul si headJoints n'est pas disponible
+      const yawChanged = Math.abs(yawBody - (lastYawBodyRef.current || 0)) > 0.001;
+      if (yawChanged) {
       robot.setJointValue('yaw_body', yawBody);
       lastYawBodyRef.current = yawBody;
-    }
-
-    // STEP 2: Apply head_pose (complete head transformation via Stewart platform)
-    // ✅ Check if headPose changed to avoid unnecessary recalculations
-    const headPoseChanged = headPose && headPose.length === 16 && 
-                           JSON.stringify(headPose) !== JSON.stringify(lastHeadPoseRef.current);
-    
-    if (headPoseChanged) {
-      const xl330Link = robot.links['xl_330'];
-      
-      if (xl330Link) {
-        // ✅ Reuse Three.js objects instead of recreating them (CRITICAL for performance)
-        tempMatrix.current.fromArray(headPose);
-        tempMatrix.current.decompose(tempPosition.current, tempQuaternion.current, tempScale.current);
-        
-        // Apply rotation + translation
-        xl330Link.position.copy(tempPosition.current);
-        xl330Link.quaternion.copy(tempQuaternion.current);
-        xl330Link.updateMatrix();
-        xl330Link.updateMatrixWorld(true);
-        
-        lastHeadPoseRef.current = headPose.slice(); // Copy for comparison
       }
     }
 
-    // STEP 3: Update antennas - only if changed
-    const antennasChanged = antennas && antennas.length >= 2 && 
-                           JSON.stringify(antennas) !== JSON.stringify(lastAntennasRef.current);
+    // STEP 1.5: Apply passive joints (21 valeurs : passive_1_x/y/z à passive_7_x/y/z)
+    // ✅ CRITIQUE: Les joints passifs sont nécessaires pour la cinématique complète de la plateforme Stewart
+    // Seulement disponibles si Placo est actif
+    if (passiveJoints && (Array.isArray(passiveJoints) || (passiveJoints.array && Array.isArray(passiveJoints.array)))) {
+      const passiveArray = Array.isArray(passiveJoints) ? passiveJoints : passiveJoints.array;
+      const passiveJointsChanged = !arraysEqual(passiveArray, lastPassiveJointsRef.current);
+      
+      if (passiveJointsChanged && passiveArray.length >= 21) {
+        // ✅ Noms des joints passifs dans l'ordre exact du daemon
+        const passiveJointNames = [
+          'passive_1_x', 'passive_1_y', 'passive_1_z',
+          'passive_2_x', 'passive_2_y', 'passive_2_z',
+          'passive_3_x', 'passive_3_y', 'passive_3_z',
+          'passive_4_x', 'passive_4_y', 'passive_4_z',
+          'passive_5_x', 'passive_5_y', 'passive_5_z',
+          'passive_6_x', 'passive_6_y', 'passive_6_z',
+          'passive_7_x', 'passive_7_y', 'passive_7_z',
+        ];
+        
+        // Appliquer tous les joints passifs
+        for (let i = 0; i < Math.min(passiveArray.length, passiveJointNames.length); i++) {
+          const jointName = passiveJointNames[i];
+          if (robot.joints[jointName]) {
+            robot.setJointValue(jointName, passiveArray[i]);
+          }
+        }
+        
+        lastPassiveJointsRef.current = passiveArray.slice();
+      }
+    }
+
+    // ✅ IMPORTANT: Ne PAS forcer updateMatrixWorld() ici
+    // URDFLoader met à jour automatiquement les matrices lors de setJointValue()
+    // Forcer updateMatrixWorld() peut créer des conflits et causer du flickering
+
+    // STEP 2: Optionnel - Appliquer head_pose pour comparaison/debug (mais les joints sont prioritaires)
+    // ✅ La matrice de pose peut être utilisée pour vérifier la cohérence, mais les joints sont la source de vérité
+    if (headPose && headPose.length === 16) {
+      const headPoseChanged = !arraysEqual(headPose, lastHeadPoseRef.current);
+      if (headPoseChanged) {
+        lastHeadPoseRef.current = headPose.slice(); // Garder en cache pour comparaison
+        // Note: On n'applique plus la matrice directement car les joints sont plus précis
+      }
+    }
+
+    // STEP 3: Update antennas - only if changed (avec tolérance pour éviter les mises à jour inutiles)
+    if (antennas && antennas.length >= 2) {
+      const antennasChanged = !lastAntennasRef.current || 
+                             Math.abs(antennas[0] - lastAntennasRef.current[0]) > 0.001 ||
+                             Math.abs(antennas[1] - lastAntennasRef.current[1]) > 0.001;
     
     if (antennasChanged) {
       if (robot.joints['left_antenna']) {
@@ -814,6 +838,8 @@ export default function URDFRobot({
         robot.setJointValue('right_antenna', antennas[1]);
       }
       lastAntennasRef.current = antennas.slice(); // Copy for comparison
+        // Pas besoin de mettre à jour les matrices pour les antennes (elles sont indépendantes)
+      }
     }
     
     // ✅ Hover detection with raycaster for debug (throttled for performance)
@@ -828,42 +854,9 @@ export default function URDFRobot({
       const mesh = intersects[0].object;
       if (mesh.isMesh && mesh !== hoveredMesh.current) {
         hoveredMesh.current = mesh;
-        const geometryUrl = mesh.geometry?.userData?.url || '';
-        const fileName = geometryUrl.split('/').pop() || '';
-        
-        console.log('🖱️ HOVER on mesh:', {
-          meshName: mesh.name || '',
-          stlFileName: mesh.userData?.stlFileName || '',
-          fileName: fileName || '',
-          materialName: mesh.userData?.materialName || mesh.material?.name || '',
-          directMaterialName: mesh.material?.name || '',
-          materialType: mesh.material?.type || '',
-          originalColor: mesh.userData?.originalColor ? `#${mesh.userData.originalColor.toString(16).padStart(6, '0')}` : 'N/A',
-          isAntenna: mesh.userData?.isAntenna || false,
-          isShellPiece: mesh.userData?.isShellPiece || false,
-          isBigLens: (() => {
-            const matName = (mesh.userData?.materialName || mesh.material?.name || '').toLowerCase();
-            return matName.includes('big_lens') || 
-                   matName.includes('lens_d40') ||
-                   matName.includes('small_lens') ||
-                   matName.includes('lens_d30');
-          })(),
-          parentName: mesh.parent?.name || '',
-          parentNames: (() => {
-            const names = [];
-            let p = mesh.parent;
-            let depth = 0;
-            while (p && depth < 5) {
-              if (p.name) names.push(p.name);
-              p = p.parent;
-              depth++;
-            }
-            return names;
-          })(),
-          position: mesh.position.clone(),
-          userDataKeys: Object.keys(mesh.userData || {}),
-          geometryUserDataKeys: Object.keys(mesh.geometry?.userData || {}),
-        });
+            // Reduced logging - only log mesh name and material
+            const materialName = mesh.userData?.materialName || mesh.material?.name || 'unnamed';
+            console.log('🖱️ HOVER:', mesh.name || 'unnamed', '-', materialName);
       }
     } else {
       hoveredMesh.current = null;
@@ -878,11 +871,10 @@ export default function URDFRobot({
     if (!robot) return;
     
     const isInitialSetup = !isReady;
-    console.log(isInitialSetup ? '🎨 Initial material setup (before first render)' : '🔄 Material update (mode/params changed)', {
-      cellShading,
-      isTransparent,
-      xrayOpacity,
-    });
+    // Reduced logging - only log on initial setup
+    if (isInitialSetup) {
+      console.log('🎨 Initial material setup');
+    }
     
     applyMaterials(robot, isTransparent, cellShading, xrayOpacity);
     

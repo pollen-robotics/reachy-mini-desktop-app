@@ -27,6 +27,9 @@ const getInitialDarkMode = () => {
   return systemPreference;
 };
 
+// Track last logged state to avoid repeated logs
+let lastLoggedStatus = null;
+
 const useAppStore = create((set) => ({
   // ✨ Main robot state (State Machine)
   // Possible states: 'disconnected', 'ready-to-start', 'starting', 'ready', 'busy', 'stopping', 'crashed'
@@ -85,7 +88,10 @@ const useAppStore = create((set) => ({
   // Update robotStatus + busyReason + legacy states (backwards compat)
   transitionTo: {
     disconnected: () => {
-      console.log('🤖 [STATE] → disconnected');
+      if (lastLoggedStatus !== 'disconnected') {
+        console.log('🤖 [STATE] → disconnected');
+        lastLoggedStatus = 'disconnected';
+      }
       set({
         robotStatus: 'disconnected',
         busyReason: null,
@@ -99,7 +105,10 @@ const useAppStore = create((set) => ({
     },
     
     readyToStart: () => {
-      console.log('🤖 [STATE] → ready-to-start');
+      if (lastLoggedStatus !== 'ready-to-start') {
+        console.log('🤖 [STATE] → ready-to-start');
+        lastLoggedStatus = 'ready-to-start';
+      }
       set({
         robotStatus: 'ready-to-start',
         busyReason: null,
@@ -110,7 +119,10 @@ const useAppStore = create((set) => ({
     },
     
     starting: () => {
-      console.log('🤖 [STATE] → starting');
+      if (lastLoggedStatus !== 'starting') {
+        console.log('🤖 [STATE] → starting');
+        lastLoggedStatus = 'starting';
+      }
       set({
         robotStatus: 'starting',
         busyReason: null,
@@ -121,7 +133,10 @@ const useAppStore = create((set) => ({
     },
     
     ready: () => {
-      console.log('🤖 [STATE] → ready');
+      if (lastLoggedStatus !== 'ready') {
+        console.log('🤖 [STATE] → ready');
+        lastLoggedStatus = 'ready';
+      }
       set({
         robotStatus: 'ready',
         busyReason: null,
@@ -135,7 +150,11 @@ const useAppStore = create((set) => ({
     },
     
     busy: (reason) => {
-      console.log(`🤖 [STATE] → busy (${reason})`);
+      const newStatus = `busy (${reason})`;
+      if (lastLoggedStatus !== newStatus) {
+        console.log(`🤖 [STATE] → ${newStatus}`);
+        lastLoggedStatus = newStatus;
+      }
       set((state) => {
         const updates = {
           robotStatus: 'busy',
@@ -153,7 +172,10 @@ const useAppStore = create((set) => ({
     },
     
     stopping: () => {
-      console.log('🤖 [STATE] → stopping');
+      if (lastLoggedStatus !== 'stopping') {
+        console.log('🤖 [STATE] → stopping');
+        lastLoggedStatus = 'stopping';
+      }
       set({
         robotStatus: 'stopping',
         busyReason: null,
@@ -163,7 +185,10 @@ const useAppStore = create((set) => ({
     },
     
     crashed: () => {
-      console.log('🤖 [STATE] → crashed');
+      if (lastLoggedStatus !== 'crashed') {
+        console.log('🤖 [STATE] → crashed');
+        lastLoggedStatus = 'crashed';
+      }
       set({
         robotStatus: 'crashed',
         busyReason: null,

@@ -15,6 +15,10 @@ struct Args {
     /// Additional dependencies to install
     #[arg(short, long, value_delimiter = ' ', num_args = 1..)]
     dependencies: Vec<String>,
+
+    /// Source for reachy-mini package: 'pypi' (default) or 'develop' (from GitHub)
+    #[arg(long, default_value = "pypi")]
+    reachy_mini_source: String,
 }
 
 fn main() {
@@ -60,17 +64,42 @@ fn main() {
 
     // Installing dependencies
     if !args.dependencies.is_empty() {
-        let deps = args.dependencies.join(" ");
+        let mut deps = args.dependencies;
+        
+        // Replace reachy-mini with GitHub version if develop source is requested
+        if args.reachy_mini_source == "develop" {
+            let github_url = "git+https://github.com/pollen-robotics/reachy_mini.git@develop";
+            deps = deps
+                .iter()
+                .map(|dep| {
+                    // Replace reachy-mini[...] with git+https://...@develop[...]
+                    if dep.starts_with("reachy-mini") {
+                        if let Some(extras_start) = dep.find('[') {
+                            // Has extras like [placo_kinematics]
+                            let extras = &dep[extras_start..];
+                            format!("{}{}", github_url, extras)
+                        } else {
+                            // No extras
+                            github_url.to_string()
+                        }
+                    } else {
+                        dep.clone()
+                    }
+                })
+                .collect();
+        }
+        
+        let deps_str = deps.join(" ");
         #[cfg(not(target_os = "windows"))]
         run_command(&format!(
             "UV_PYTHON_INSTALL_DIR=. UV_WORKING_DIR=. ./uv pip install {}",
-            deps
+            deps_str
         ))
         .expect("Failed to install dependencies");
         #[cfg(target_os = "windows")]
         run_command(&format!(
             "$env:UV_PYTHON_INSTALL_DIR = '.'; $env:UV_WORKING_DIR = '.'; ./uv.exe pip install {}",
-            deps
+            deps_str
         ))
         .expect("Failed to install dependencies");
     }

@@ -20,6 +20,8 @@ const DAEMON_ARGS: &[&str] = &[
     "python",
     "-m",
     "reachy_mini.daemon.app.main",
+    "--kinematics-engine",
+    "Placo",
 ];
 
 const MAX_LOGS: usize = 50;

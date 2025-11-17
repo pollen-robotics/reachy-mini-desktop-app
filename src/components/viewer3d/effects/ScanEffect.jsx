@@ -42,7 +42,8 @@ export default function ScanEffect({
     // ⚡ Scan duration read from central config
     const duration = DAEMON_CONFIG.ANIMATIONS.SCAN_DURATION / 1000;
 
-    console.log(`🔍 Starting progressive scan of ${meshes.length} meshes (duration: ${duration}s)`);
+    // Reduced logging - only log summary
+    console.log(`🔍 Starting scan: ${meshes.length} meshes`);
     
     // ✅ Save complete X-ray state of each mesh (including shader materials)
     const originalStates = new Map();
@@ -66,9 +67,6 @@ export default function ScanEffect({
 
     // ✅ Filter shells AND outline meshes
     const scannableMeshes = meshes.filter(mesh => !mesh.userData.isShellPiece && !mesh.userData.isOutline);
-    
-    const shellCount = meshes.length - scannableMeshes.length;
-    console.log(`🔍 Scanning ${scannableMeshes.length}/${meshes.length} meshes (${shellCount} shell pieces excluded)`);
     
     const sortedMeshes = [...scannableMeshes].sort((a, b) => {
       // Calculate global Y position of each mesh
@@ -283,7 +281,8 @@ export default function ScanEffect({
             // Check if all scannable meshes are scanned
             scannedCount++;
             if (scannedCount === scannableMeshes.length) {
-              console.log('✅ All meshes scanned with AAA effect');
+              // Reduced logging
+              console.log('✅ Scan complete');
               isScanningRef.current = false; // ✅ Reset flag
               
               if (onCompleteRef.current) {

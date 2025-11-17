@@ -62,6 +62,7 @@ export default function ScanAnnotations({
   const [annotation, setAnnotation] = useState(null);
   const currentGroupRef = useRef(null); // Track current group to avoid repeated changes
   const annotationDataRef = useRef(null); // Store base annotation data (meshPosition, componentName)
+  const lastGroupRef = useRef(null); // Track last logged group to reduce logging
 
   // ✅ Function to calculate text position on screen edges
   const updateAnnotationPosition = useCallback((meshPosition, componentName) => {
@@ -152,7 +153,11 @@ export default function ScanAnnotations({
 
     // New group detected
     currentGroupRef.current = componentGroup;
-    console.log('🔍 ScanAnnotations: new group', componentGroup, mesh.name);
+    // Reduced logging - only log when group changes
+    if (componentGroup !== lastGroupRef.current) {
+      console.log(`🔍 Scan group: ${componentGroup}`);
+      lastGroupRef.current = componentGroup;
+    }
 
     // Calculate mesh position
     const worldPosition = new THREE.Vector3();

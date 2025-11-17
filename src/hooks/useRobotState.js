@@ -84,8 +84,9 @@ export function useRobotState(isActive) {
           if (!fetchState.callCount) fetchState.callCount = 0;
           fetchState.callCount++;
           
-          if (fetchState.callCount % 10 === 1) {
-            console.log('🤖 Robot state from daemon:', {
+          // Reduced logging - only log every 50 calls (~every 5 seconds at 10Hz)
+          if (fetchState.callCount % 50 === 1) {
+            console.log('🤖 Robot state:', {
               control_mode: data.control_mode,
               motors_on: motorsOn,
               is_moving: isMoving,

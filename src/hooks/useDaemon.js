@@ -124,9 +124,19 @@ export const useDaemon = () => {
       // Periodically check that daemon has started (but don't block)
       const checkInterval = setInterval(async () => {
         try {
-          await checkStatus();
-          console.log('✅ Daemon is ready');
-          clearInterval(checkInterval);
+          // Check if daemon is ready by testing the API
+          const response = await fetchWithTimeout(
+            buildApiUrl(DAEMON_CONFIG.ENDPOINTS.STATE_FULL),
+            {},
+            DAEMON_CONFIG.TIMEOUTS.STARTUP_CHECK,
+            { silent: true }
+          );
+          
+          if (response.ok) {
+            await checkStatus(); // Update state
+            console.log('✅ Daemon is ready');
+            clearInterval(checkInterval);
+          }
         } catch (e) {
           console.warn('⚠️ Daemon not ready yet, checking again...');
         }

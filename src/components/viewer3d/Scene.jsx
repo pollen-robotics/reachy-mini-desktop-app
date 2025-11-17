@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { OrbitControls } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import * as THREE from 'three';
@@ -12,12 +12,14 @@ import CinematicCamera from './CinematicCamera';
 import HeadFollowCamera from './HeadFollowCamera';
 import useAppStore from '../../store/useAppStore';
 import { DAEMON_CONFIG } from '../../config/daemon';
+import useRobotParts from './hooks/useRobotParts';
 
 /**
  * Scène 3D avec éclairage, environnement et effets post-processing
  */
 export default function Scene({ 
   headPose, 
+  headJoints, // ✅ Array de 7 valeurs [yaw_body, stewart_1, ..., stewart_6]
   yawBody, 
   antennas, 
   isActive, 
@@ -40,6 +42,64 @@ export default function Scene({
   const [outlineMeshes, setOutlineMeshes] = useState([]);
   const [robotRef, setRobotRef] = useState(null); // Reference to robot for HeadFollowCamera
   const [currentScannedMesh, setCurrentScannedMesh] = useState(null); // Mesh currently being scanned
+  
+  // ✅ Exposer les informations cinématiques du robot
+  const kinematics = useRobotParts(isActive, robotRef);
+  
+  // ✅ Extraire les joints passifs pour les passer à URDFRobot
+  const passiveJoints = kinematics.passiveJoints?.array || kinematics.passiveJoints || null;
+  
+  // ✅ Exposer les données cinématiques via window pour debug (accessible depuis la console)
+  const lastLogRef = useRef(null);
+  useEffect(() => {
+    if (kinematics && Object.keys(kinematics).length > 0) {
+      window.kinematics = kinematics;
+      
+      // ✅ Logger seulement quand les données cinématiques importantes changent
+      const logKey = JSON.stringify({
+        joints: kinematics.joints,
+        headPose: kinematics.headPose?.matrix,
+      });
+      
+      if (logKey !== lastLogRef.current) {
+        // ✅ Log exhaustif mais intelligent pour debug cinématique
+        const logData = {
+          // ✅ Joints actifs (7 head joints + 2 antennas)
+          joints: kinematics.joints,
+          
+          // ✅ Head pose (calculée par Placo FK)
+          headPose: kinematics.headPose ? {
+            position: kinematics.headPose.position,
+            positionDirect: kinematics.headPose.positionDirect, // Position brute de la matrice
+            euler: kinematics.headPose.euler,
+            matrix: kinematics.headPose.matrix ? '4x4 matrix' : null,
+          } : null,
+          
+          // ✅ Transformations des liens URDF (pour comparaison avec Placo)
+          links: kinematics.links ? Object.keys(kinematics.links) : [],
+          linksData: kinematics.links,
+          
+          // ✅ Joints passifs (21 valeurs : passive_1_x/y/z à passive_7_x/y/z)
+          // Seulement disponibles si Placo est actif (kinematics_engine == "Placo")
+          passiveJoints: kinematics.passiveJoints ? {
+            count: kinematics.passiveJoints.count || kinematics.passiveJoints.array?.length || 0,
+            hasStructured: !!kinematics.passiveJoints.structured,
+            sample: kinematics.passiveJoints.structured ? {
+              passive_1_x: kinematics.passiveJoints.structured.passive_1_x,
+              passive_1_y: kinematics.passiveJoints.structured.passive_1_y,
+              passive_7_z: kinematics.passiveJoints.structured.passive_7_z,
+            } : null,
+          } : null,
+          hasPassiveJoints: !!kinematics.passiveJoints,
+          
+          timestamp: kinematics.timestamp,
+        };
+        
+        console.log('📊 Kinematics exposed to window.kinematics', logData);
+        lastLogRef.current = logKey;
+      }
+    }
+  }, [kinematics]);
   
   // ✅ Reset currentScannedMesh when showScanEffect becomes false
   useEffect(() => {
@@ -253,6 +313,8 @@ export default function Scene({
       
       <URDFRobot 
         headPose={headPose} 
+        headJoints={headJoints} // ✅ Utiliser les joints directement (comme Rerun)
+        passiveJoints={passiveJoints} // ✅ Joints passifs pour la cinématique complète Stewart
         yawBody={yawBody} 
         antennas={antennas}
         isActive={isActive} 
@@ -273,7 +335,10 @@ export default function Scene({
           enabled={true}
             onScanMesh={(mesh, index, total) => {
               // Update currently scanned mesh for annotations
-              console.log('📡 Scene: onScanMesh called', mesh.uuid, mesh.name, index, total);
+              // Reduced logging - only log every 10th mesh
+              if (index % 10 === 0 || index === total - 1) {
+                console.log(`📡 Scan: ${index + 1}/${total} meshes`);
+              }
               setCurrentScannedMesh(mesh);
               // Call parent callback if provided
               if (onScanMesh) {
