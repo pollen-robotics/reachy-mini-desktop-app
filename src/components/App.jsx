@@ -1,7 +1,11 @@
-import React, { useEffect, useMemo, useCallback } from 'react';
+import React, { useEffect, useMemo, useCallback, useState } from 'react';
 import { Box } from '@mui/material';
 import { RobotNotDetectedView, StartingView, ReadyToStartView, TransitionView, ActiveRobotView, ClosingView } from './views';
 import useAppStore from '../store/useAppStore';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getVersion } from '@tauri-apps/api/app';
+import AppTopBar from './views/AppTopBar';
+import FPSMeter from './FPSMeter';
 import { useDaemon } from '../hooks/useDaemon';
 import { useDaemonHealthCheck } from '../hooks/useDaemonHealthCheck';
 import { useUsbDetection } from '../hooks/useUsbDetection';
@@ -114,13 +118,25 @@ function App() {
 
   // Conditional view: Robot not connected
   if (!isUsbConnected) {
-    return <RobotNotDetectedView />;
+    return (
+      <>
+        <AppTopBar />
+        <FPSMeter />
+        <RobotNotDetectedView />
+      </>
+    );
   }
 
   // ⚡ PRIORITY: Starting daemon (visual scan)
   // Must remain visible even if isTransitioning becomes true
   if (isStarting) {
-    return <StartingView startupError={startupError} />;
+    return (
+      <>
+        <AppTopBar />
+        <FPSMeter />
+        <StartingView startupError={startupError} />
+      </>
+    );
   }
 
   // Intermediate view: Transition after scan - simple spinner during resize
@@ -128,6 +144,8 @@ function App() {
   if (isTransitioning) {
     return (
       <>
+        <AppTopBar />
+        <FPSMeter />
         {/* ActiveRobotView hidden to load apps in background */}
         <Box sx={{ position: 'absolute', opacity: 0, pointerEvents: 'none', zIndex: -1 }}>
           <ActiveRobotView 
@@ -152,7 +170,13 @@ function App() {
 
   // Intermediate view: Stopping daemon - show spinner
   if (isStopping) {
-    return <ClosingView />;
+    return (
+      <>
+        <AppTopBar />
+        <FPSMeter />
+        <ClosingView />
+      </>
+    );
   }
 
   // Main view: Robot connected but daemon not active - show start screen
@@ -162,6 +186,9 @@ function App() {
       setHardwareError(null);
     }
     return (
+      <>
+        <AppTopBar />
+        <FPSMeter />
       <ReadyToStartView 
         startDaemon={startDaemon} 
         isStarting={isStarting} 
@@ -175,17 +202,26 @@ function App() {
         onDismissUpdate={dismissUpdate}
         onCheckUpdates={checkForUpdates}
       />
+      </>
     );
   }
 
   // ⚠️ If hardware error detected, stay blocked on StartingView
   if (hardwareError) {
-    return <StartingView startupError={hardwareError} />;
+    return (
+      <>
+        <AppTopBar />
+        <FPSMeter />
+        <StartingView startupError={hardwareError} />
+      </>
+    );
   }
 
   // Full control view: Robot connected and daemon active
   return (
     <>
+      <AppTopBar />
+      <FPSMeter />
       <ActiveRobotView 
         isActive={isActive}
         isStarting={isStarting}

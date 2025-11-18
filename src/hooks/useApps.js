@@ -240,11 +240,24 @@ export function useApps(isActive) {
       const installed = enrichedApps.filter(app => app.source_kind === 'installed');
       const available = enrichedApps.filter(app => app.source_kind !== 'installed');
       
-      // 6. For installed apps that don't have emoji, try to find it from available apps
+      // 6. For installed apps that don't have emoji or lastModified, try to find it from available apps
       // (available apps have the correct Hugging Face metadata)
+      console.log(`📅 [useApps] Enriching ${installed.length} installed apps with metadata from ${available.length} available apps`);
       const installedWithEmoji = installed.map(installedApp => {
-        // If already has emoji (not the fallback box), keep it
-        if (installedApp.extra?.cardData?.emoji && installedApp.extra.cardData.emoji !== '📦') {
+        // Check if we need to enrich with metadata from available apps
+        const needsEmoji = !installedApp.extra?.cardData?.emoji || installedApp.extra.cardData.emoji === '📦';
+        const needsLastModified = !installedApp.extra?.lastModified;
+        
+        console.log(`📅 [useApps] App "${installedApp.name}":`, {
+          needsEmoji,
+          needsLastModified,
+          hasLastModified: !!installedApp.extra?.lastModified,
+          lastModified: installedApp.extra?.lastModified,
+        });
+        
+        // If already has everything, keep it
+        if (!needsEmoji && !needsLastModified) {
+          console.log(`📅 [useApps] App "${installedApp.name}" already has all metadata`);
           return installedApp;
         }
         
@@ -256,17 +269,48 @@ export function useApps(isActive) {
           availApp.id?.toLowerCase() === installedApp.name?.toLowerCase()
         );
         
-        if (matchingAvailable && matchingAvailable.extra?.cardData?.emoji) {
-          console.log(`✅ Found emoji for installed app "${installedApp.name}" from available app:`, matchingAvailable.extra.cardData.emoji);
-          return {
-            ...installedApp,
-            extra: {
-              ...installedApp.extra,
-              cardData: {
-                emoji: matchingAvailable.extra.cardData.emoji,
-              },
-            },
+        if (matchingAvailable) {
+          console.log(`📅 [useApps] Found matching available app for "${installedApp.name}":`, {
+            name: matchingAvailable.name,
+            id: matchingAvailable.id,
+            hasLastModified: !!matchingAvailable.extra?.lastModified,
+            lastModified: matchingAvailable.extra?.lastModified,
+          });
+          
+          const enrichedExtra = {
+            ...installedApp.extra,
           };
+          
+          // Add emoji if needed
+          if (needsEmoji && matchingAvailable.extra?.cardData?.emoji) {
+          console.log(`✅ Found emoji for installed app "${installedApp.name}" from available app:`, matchingAvailable.extra.cardData.emoji);
+            enrichedExtra.cardData = {
+              ...(enrichedExtra.cardData || {}),
+              emoji: matchingAvailable.extra.cardData.emoji,
+            };
+          }
+          
+          // Add lastModified if needed
+          if (needsLastModified && matchingAvailable.extra?.lastModified) {
+            console.log(`✅ Found lastModified for installed app "${installedApp.name}" from available app:`, matchingAvailable.extra.lastModified);
+            enrichedExtra.lastModified = matchingAvailable.extra.lastModified;
+          } else if (needsLastModified) {
+            console.log(`⚠️ [useApps] Matching available app "${matchingAvailable.name}" does not have lastModified`);
+          }
+          
+          const enrichedApp = {
+            ...installedApp,
+            extra: enrichedExtra,
+          };
+          
+          console.log(`📅 [useApps] Enriched app "${installedApp.name}":`, {
+            hasLastModified: !!enrichedApp.extra?.lastModified,
+            lastModified: enrichedApp.extra?.lastModified,
+          });
+          
+          return enrichedApp;
+        } else {
+          console.log(`⚠️ [useApps] No matching available app found for "${installedApp.name}"`);
         }
         
         return installedApp;

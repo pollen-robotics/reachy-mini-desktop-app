@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { IconButton, Switch, Tooltip, Box, Typography } from '@mui/material';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
@@ -8,11 +8,14 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import ThreeSixtyOutlinedIcon from '@mui/icons-material/ThreeSixtyOutlined';
 import MyLocationOutlinedIcon from '@mui/icons-material/MyLocationOutlined';
 import CircleIcon from '@mui/icons-material/Circle';
+import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined';
+import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined';
 import { Leva } from 'leva';
 import * as THREE from 'three';
 import Scene from './Scene';
 import useRobotWebSocket from './hooks/useRobotWebSocket';
 import useAppStore from '../../store/useAppStore';
+import SettingsOverlay from './SettingsOverlay';
 
 /**
  * Main 3D viewer component
@@ -84,19 +87,41 @@ export default function RobotViewer3D({
   // ✅ Use provided props or those from WebSocket robotState
   // Si headJoints est explicitement null, on n'utilise JAMAIS les données du WebSocket pour les mouvements
   // Cela garantit que le robot reste statique dans la vue de scan
-  const finalAntennas = antennas !== null ? antennas : (shouldConnectWebSocket ? (robotState.antennas || [0, 0]) : [0, 0]);
-  const finalHeadPose = headPose !== null ? headPose : (shouldConnectWebSocket ? robotState.headPose : null);
-  const finalHeadJoints = headJoints !== null ? headJoints : (shouldConnectWebSocket ? robotState.headJoints : null);
-  const finalYawBody = yawBody !== null ? yawBody : (shouldConnectWebSocket ? robotState.yawBody : null);
+  // ✅ OPTIMIZED: Memoize computed props to avoid recalculating on every render
+  const finalAntennas = useMemo(() => 
+    antennas !== null ? antennas : (shouldConnectWebSocket ? (robotState.antennas || [0, 0]) : [0, 0]),
+    [antennas, shouldConnectWebSocket, robotState.antennas]
+  );
+  const finalHeadPose = useMemo(() => 
+    headPose !== null ? headPose : (shouldConnectWebSocket ? robotState.headPose : null),
+    [headPose, shouldConnectWebSocket, robotState.headPose]
+  );
+  const finalHeadJoints = useMemo(() => 
+    headJoints !== null ? headJoints : (shouldConnectWebSocket ? robotState.headJoints : null),
+    [headJoints, shouldConnectWebSocket, robotState.headJoints]
+  );
+  const finalYawBody = useMemo(() => 
+    yawBody !== null ? yawBody : (shouldConnectWebSocket ? robotState.yawBody : null),
+    [yawBody, shouldConnectWebSocket, robotState.yawBody]
+  );
+  // 🚀 GAME-CHANGING: Extract passiveJoints from unified WebSocket
+  const finalPassiveJoints = useMemo(() => 
+    shouldConnectWebSocket ? robotState.passiveJoints : null,
+    [shouldConnectWebSocket, robotState.passiveJoints]
+  );
   
   const [isTransparent, setIsTransparent] = useState(initialMode === 'xray');
   const [showLevaControls, setShowLevaControls] = useState(forceLevaOpen);
+  const [showSettingsOverlay, setShowSettingsOverlay] = useState(false);
   
   // ✅ Get darkMode from store
   const darkMode = useAppStore(state => state.darkMode);
   
   // ✅ Adapt backgroundColor based on darkMode if not explicitly provided
-  const effectiveBackgroundColor = backgroundColor === '#e0e0e0' 
+  // If transparent, keep transparent. Otherwise adapt default color to darkMode
+  const effectiveBackgroundColor = backgroundColor === 'transparent' 
+    ? 'transparent'
+    : backgroundColor === '#e0e0e0' 
     ? (darkMode ? '#1a1a1a' : '#e0e0e0')
     : backgroundColor;
   
@@ -185,7 +210,8 @@ export default function RobotViewer3D({
     <div style={{ 
       width: '100%', 
       height: '100%', 
-      background: effectiveBackgroundColor,
+      background: effectiveBackgroundColor === 'transparent' ? 'transparent' : effectiveBackgroundColor,
+      backgroundColor: effectiveBackgroundColor === 'transparent' ? 'transparent' : effectiveBackgroundColor,
       borderRadius: hideBorder ? '0' : '16px',
       position: 'relative',
       overflow: 'visible',
@@ -195,34 +221,45 @@ export default function RobotViewer3D({
       
       <Canvas
         camera={{ position: cameraConfig.position, fov: cameraConfig.fov }}
-        dpr={[1, 2]} // Support retina displays (pixel ratio 1x to 2x)
+        dpr={[1, 2, 3]} // ✅ HIGH QUALITY: Support retina displays up to 3x pixel ratio
+        frameloop={hideEffects ? "demand" : "always"} // ✅ Stop rendering loop for small/hidden views
         gl={{ 
-          antialias: true,
-          alpha: true,
+          antialias: true, // ✅ MSAA anti-aliasing enabled
+          alpha: effectiveBackgroundColor === 'transparent',
           preserveDrawingBuffer: true,
           powerPreference: 'high-performance',
-          toneMapping: THREE.ACESFilmicToneMapping,
+          toneMapping: THREE.ACESFilmicToneMapping, // ✅ Professional tone mapping
           toneMappingExposure: 1.0,
+          stencil: false, // Disable stencil buffer for better performance
+          depth: true, // Enable depth buffer
+          logarithmicDepthBuffer: false, // Keep standard depth buffer for better performance
         }}
         onCreated={({ gl }) => {
           // ✅ Disable automatic sorting of transparent objects to avoid flickering
           gl.sortObjects = false;
+          // ✅ Set clear color for transparent background
+          if (effectiveBackgroundColor === 'transparent') {
+            gl.setClearColor(0x000000, 0);
+          }
         }}
         style={{ 
           width: '100%', 
           height: '100%', 
           display: 'block', 
-                   background: effectiveBackgroundColor,
+          background: effectiveBackgroundColor === 'transparent' ? 'transparent' : effectiveBackgroundColor,
                    border: hideBorder ? 'none' : darkMode 
                      ? '1px solid rgba(255, 255, 255, 0.08)' 
                      : '1px solid rgba(0, 0, 0, 0.08)',
           borderRadius: hideBorder ? '0' : '16px',
         }}
       >
+        {effectiveBackgroundColor !== 'transparent' && (
                  <color attach="background" args={[effectiveBackgroundColor]} />
+        )}
                <Scene 
                 headPose={finalHeadPose}
                 headJoints={finalHeadJoints} // ✅ Utiliser les joints directement
+                passiveJoints={finalPassiveJoints} // 🚀 GAME-CHANGING: Pass passiveJoints from unified WebSocket
                 yawBody={finalYawBody}
                 antennas={finalAntennas} 
                 isActive={isActive} 
@@ -258,6 +295,7 @@ export default function RobotViewer3D({
             display: 'flex',
             alignItems: 'center',
             gap: '4px',
+            // z-index hierarchy: 10 = UI controls (buttons, tooltips)
             zIndex: 10,
           }}
         >
@@ -268,10 +306,7 @@ export default function RobotViewer3D({
             arrow
           >
             <IconButton
-              onClick={() => {
-                // TODO: Navigate to settings
-                console.log('Settings clicked');
-              }}
+              onClick={() => setShowSettingsOverlay(true)}
               size="small"
               sx={{
                 width: 32,
@@ -287,6 +322,37 @@ export default function RobotViewer3D({
               }}
             >
               <SettingsOutlinedIcon sx={{ fontSize: 20 }} />
+            </IconButton>
+          </Tooltip>
+
+          {/* Dark Mode Toggle */}
+          <Tooltip
+            title={darkMode ? 'Light mode' : 'Dark mode'}
+            placement="top"
+            arrow
+          >
+            <IconButton
+              onClick={() => useAppStore.getState().toggleDarkMode()}
+              size="small"
+              sx={{
+                width: 32,
+                height: 32,
+                transition: 'all 0.2s ease',
+                opacity: 0.7,
+                color: '#666',
+                bgcolor: darkMode ? 'rgba(255, 149, 0, 0.08)' : 'transparent',
+                '&:hover': {
+                  opacity: 1,
+                  color: '#FF9500',
+                  bgcolor: darkMode ? 'rgba(255, 149, 0, 0.12)' : 'rgba(0, 0, 0, 0.04)',
+                },
+              }}
+            >
+              {darkMode ? (
+                <LightModeOutlinedIcon sx={{ fontSize: 18 }} />
+              ) : (
+                <DarkModeOutlinedIcon sx={{ fontSize: 18 }} />
+              )}
             </IconButton>
           </Tooltip>
 
@@ -428,6 +494,7 @@ export default function RobotViewer3D({
             }`,
             backdropFilter: 'blur(10px)',
             transition: 'all 0.3s ease',
+            // z-index hierarchy: 10 = UI controls (status tag)
             zIndex: 10,
           }}
         >
@@ -462,6 +529,13 @@ export default function RobotViewer3D({
           </Typography>
         </Box>
       )}
+
+      {/* Settings Overlay */}
+      <SettingsOverlay
+        open={showSettingsOverlay}
+        onClose={() => setShowSettingsOverlay(false)}
+        darkMode={darkMode}
+      />
     </div>
   );
 }

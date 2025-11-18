@@ -12,6 +12,7 @@ import SystemUpdateIcon from '@mui/icons-material/SystemUpdate';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import reachyUpdateBoxSvg from '../../assets/reachy-update-box.svg';
 import useAppStore from '../../store/useAppStore';
+import FullscreenOverlay from '../FullscreenOverlay';
 
 /**
  * Simple update view similar to ReadyToStartView
@@ -49,41 +50,28 @@ function UpdateLogger({
 
   if (!isOpen) return null;
 
+  const handleClose = () => {
+    setIsOpen(false);
+    onDismiss?.();
+  };
+
   return (
-    <>
-      {/* Backdrop */}
+    <FullscreenOverlay
+      open={isOpen}
+      onClose={handleClose}
+      darkMode={darkMode}
+      zIndex={10000} // Most critical system overlay (UpdateLogger)
+      backdropBlur={40}
+      backdropOpacity={darkMode ? 0.95 : 0.85}
+      centered={false} // Custom layout with titlebar
+      showCloseButton={false} // Custom close button in titlebar
+    >
       <Box
         sx={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          bgcolor: darkMode ? 'rgba(0, 0, 0, 0.7)' : 'rgba(0, 0, 0, 0.5)',
-          backdropFilter: 'blur(4px)',
-          zIndex: 9999,
-        }}
-        onClick={() => {
-          setIsOpen(false);
-          onDismiss?.();
-        }}
-      />
-      
-      {/* Overlay Panel */}
-      <Box
-        onClick={(e) => e.stopPropagation()}
-        sx={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)',
-          backdropFilter: 'blur(40px)',
-          WebkitBackdropFilter: 'blur(40px)',
           display: 'flex',
           flexDirection: 'column',
-          zIndex: 10000,
+          width: '100%',
+          height: '100%',
           overflow: 'hidden',
         }}
       >
@@ -110,10 +98,7 @@ function UpdateLogger({
         >
           <IconButton
             size="medium"
-            onClick={() => {
-              setIsOpen(false);
-              onDismiss?.();
-            }}
+            onClick={handleClose}
             sx={{
               color: darkMode ? '#888' : '#666',
               '&:hover': {
@@ -296,7 +281,7 @@ function UpdateLogger({
           </Box>
         </Box>
       </Box>
-    </>
+    </FullscreenOverlay>
   );
 }
 

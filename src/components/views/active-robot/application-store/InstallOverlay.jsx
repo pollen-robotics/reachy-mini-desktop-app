@@ -3,6 +3,7 @@ import { Box, Typography, CircularProgress } from '@mui/material';
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck';
+import FullscreenOverlay from '../../../FullscreenOverlay';
 
 /**
  * Overlay fullscreen pour l'installation d'une app
@@ -54,26 +55,14 @@ export default function InstallOverlay({ appInfo, jobInfo, darkMode, jobType = '
   }, [jobInfo?.logs?.length, isShowingResult, latestLogs.length]);
 
   return (
-    <Box
-      sx={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        bgcolor: darkMode ? 'rgba(0, 0, 0, 0.92)' : 'rgba(255, 255, 255, 0.95)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 9999,
-        animation: 'fadeIn 0.3s ease',
-        '@keyframes fadeIn': {
-          from: { opacity: 0 },
-          to: { opacity: 1 },
-        },
-      }}
+    <FullscreenOverlay
+      open={!!appInfo}
+      onClose={() => {}} // No close button, overlay closes automatically
+      darkMode={darkMode}
+      zIndex={10003} // Above DiscoverModal (10002)
+      showCloseButton={false} // No manual close, auto-closes on completion
+      centeredX={true} // Center horizontally
+      centeredY={false} // Don't center vertically
     >
       <Box
         sx={{
@@ -442,7 +431,7 @@ export default function InstallOverlay({ appInfo, jobInfo, darkMode, jobType = '
           </>
         )}
       </Box>
-    </Box>
+    </FullscreenOverlay>
   );
 }
 

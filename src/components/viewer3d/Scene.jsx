@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, memo } from 'react';
 import { OrbitControls } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import * as THREE from 'three';
@@ -12,14 +12,15 @@ import CinematicCamera from './CinematicCamera';
 import HeadFollowCamera from './HeadFollowCamera';
 import useAppStore from '../../store/useAppStore';
 import { DAEMON_CONFIG } from '../../config/daemon';
-import useRobotParts from './hooks/useRobotParts';
+// 🚀 GAME-CHANGING: Removed useRobotParts - now using unified WebSocket via props
 
 /**
  * Scène 3D avec éclairage, environnement et effets post-processing
  */
-export default function Scene({ 
+function Scene({ 
   headPose, 
   headJoints, // ✅ Array de 7 valeurs [yaw_body, stewart_1, ..., stewart_6]
+  passiveJoints, // 🚀 GAME-CHANGING: Array de 21 valeurs [passive_1_x, passive_1_y, passive_1_z, ..., passive_7_z] (depuis unified WebSocket)
   yawBody, 
   antennas, 
   isActive, 
@@ -51,63 +52,30 @@ export default function Scene({
     }
   }, [onMeshesReady, outlineMeshes]);
   
-  // ✅ Exposer les informations cinématiques du robot
-  const kinematics = useRobotParts(isActive, robotRef);
+  // 🚀 GAME-CHANGING: passiveJoints now comes from props (unified WebSocket) instead of useRobotParts
+  // This eliminates the DOUBLE WebSocket problem!
   
-  // ✅ Extraire les joints passifs pour les passer à URDFRobot
-  const passiveJoints = kinematics.passiveJoints?.array || kinematics.passiveJoints || null;
-  
-  // ✅ Exposer les données cinématiques via window pour debug (accessible depuis la console)
+  // ✅ Exposer les données cinématiques via window pour debug (simplifié, sans useRobotParts)
   const lastLogRef = useRef(null);
   useEffect(() => {
-    if (kinematics && Object.keys(kinematics).length > 0) {
-      window.kinematics = kinematics;
-      
-      // ✅ Logger seulement quand les données cinématiques importantes changent
+    // Only log if we have meaningful data
+    if (headJoints && headJoints.length === 7) {
       const logKey = JSON.stringify({
-        joints: kinematics.joints,
-        headPose: kinematics.headPose?.matrix,
+        headJoints: headJoints.map(v => v.toFixed(3)),
+        hasPassiveJoints: !!passiveJoints,
       });
       
       if (logKey !== lastLogRef.current) {
-        // ✅ Log exhaustif mais intelligent pour debug cinématique
-        const logData = {
-          // ✅ Joints actifs (7 head joints + 2 antennas)
-          joints: kinematics.joints,
-          
-          // ✅ Head pose (calculée par Placo FK)
-          headPose: kinematics.headPose ? {
-            position: kinematics.headPose.position,
-            positionDirect: kinematics.headPose.positionDirect, // Position brute de la matrice
-            euler: kinematics.headPose.euler,
-            matrix: kinematics.headPose.matrix ? '4x4 matrix' : null,
-          } : null,
-          
-          // ✅ Transformations des liens URDF (pour comparaison avec Placo)
-          links: kinematics.links ? Object.keys(kinematics.links) : [],
-          linksData: kinematics.links,
-          
-          // ✅ Joints passifs (21 valeurs : passive_1_x/y/z à passive_7_x/y/z)
-          // Seulement disponibles si Placo est actif (kinematics_engine == "Placo")
-          passiveJoints: kinematics.passiveJoints ? {
-            count: kinematics.passiveJoints.count || kinematics.passiveJoints.array?.length || 0,
-            hasStructured: !!kinematics.passiveJoints.structured,
-            sample: kinematics.passiveJoints.structured ? {
-              passive_1_x: kinematics.passiveJoints.structured.passive_1_x,
-              passive_1_y: kinematics.passiveJoints.structured.passive_1_y,
-              passive_7_z: kinematics.passiveJoints.structured.passive_7_z,
-            } : null,
-          } : null,
-          hasPassiveJoints: !!kinematics.passiveJoints,
-          
-          timestamp: kinematics.timestamp,
+        window.kinematics = {
+          headJoints,
+          passiveJoints,
+          headPose,
+          timestamp: new Date().toISOString(),
         };
-        
-        console.log('📊 Kinematics exposed to window.kinematics', logData);
         lastLogRef.current = logKey;
       }
     }
-  }, [kinematics]);
+  }, [headJoints, passiveJoints, headPose]);
   
   // ✅ Reset currentScannedMesh when showScanEffect becomes false
   useEffect(() => {
@@ -123,7 +91,10 @@ export default function Scene({
   const { activeEffect } = useAppStore();
 
   // Centralized Leva controls
-  const { cellShading, lighting, ssao, xraySettings, scene } = useLevaControls(showLevaControls);
+  const { cellShading, lighting, xraySettings, scene } = useLevaControls(showLevaControls);
+
+  // 🚀 GAME-CHANGING: Reuse Vector3 objects to avoid allocations
+  const headPositionVectorRef = useRef(new THREE.Vector3());
 
   // Calculate Reachy's head position in real-time
   // Use useMemo to recalculate only when effect changes (optimization)
@@ -133,19 +104,27 @@ export default function Scene({
     // Find camera link (at head level)
     const cameraLink = robotRef.links?.['camera'];
     if (cameraLink) {
-      const worldPosition = new THREE.Vector3();
-      cameraLink.getWorldPosition(worldPosition);
+      // 🚀 GAME-CHANGING: Reuse Vector3 instead of creating new one
+      cameraLink.getWorldPosition(headPositionVectorRef.current);
       
       // Add offset so particles appear above and in front of head
-      return [worldPosition.x, worldPosition.y + 0.03, worldPosition.z + 0.02];
+      return [
+        headPositionVectorRef.current.x, 
+        headPositionVectorRef.current.y + 0.03, 
+        headPositionVectorRef.current.z + 0.02
+      ];
     }
     
     // Fallback to xl_330 if camera is not available
     const headLink = robotRef.links?.['xl_330'];
     if (headLink) {
-      const worldPosition = new THREE.Vector3();
-      headLink.getWorldPosition(worldPosition);
-      return [worldPosition.x, worldPosition.y + 0.03, worldPosition.z + 0.02];
+      // 🚀 GAME-CHANGING: Reuse Vector3 instead of creating new one
+      headLink.getWorldPosition(headPositionVectorRef.current);
+      return [
+        headPositionVectorRef.current.x, 
+        headPositionVectorRef.current.y + 0.03, 
+        headPositionVectorRef.current.z + 0.02
+      ];
     }
     
     return [0, 0.18, 0.02]; // Fallback if no link found
@@ -450,14 +429,15 @@ export default function Scene({
         />
       )}
       
-      {/* ✅ AAA Post-processing: Bloom for X-ray mode */}
+      {/* ✅ HIGH QUALITY Post-processing: Bloom for X-ray mode */}
       {isTransparent && (
         <EffectComposer>
           <Bloom
-            intensity={1.2} // Bloom intensity
-            luminanceThreshold={0.6} // Luminance threshold (pixels brighter than this bloom)
-            luminanceSmoothing={0.9} // Bloom smoothing
-            height={300} // Bloom resolution (lower = more performant)
+            intensity={1.4} // ✅ Increased bloom intensity for better glow
+            luminanceThreshold={0.5} // ✅ Lower threshold for more bloom
+            luminanceSmoothing={0.95} // ✅ Higher smoothing for smoother bloom
+            height={512} // ✅ HIGH QUALITY: Increased resolution for sharper bloom (was 300)
+            radius={0.8} // ✅ Bloom radius for better spread
           />
         </EffectComposer>
       )}
@@ -465,3 +445,56 @@ export default function Scene({
   );
 }
 
+// 🚀 GAME-CHANGING: Memoize Scene to prevent unnecessary re-renders
+// Only re-render if props actually changed (deep comparison for arrays)
+export default memo(Scene, (prevProps, nextProps) => {
+  // Compare primitive props
+  if (
+    prevProps.isActive !== nextProps.isActive ||
+    prevProps.isTransparent !== nextProps.isTransparent ||
+    prevProps.forceLoad !== nextProps.forceLoad ||
+    prevProps.hideGrid !== nextProps.hideGrid ||
+    prevProps.showScanEffect !== nextProps.showScanEffect ||
+    prevProps.useCinematicCamera !== nextProps.useCinematicCamera ||
+    prevProps.useHeadFollowCamera !== nextProps.useHeadFollowCamera ||
+    prevProps.lockCameraToHead !== nextProps.lockCameraToHead ||
+    prevProps.hideEffects !== nextProps.hideEffects ||
+    prevProps.darkMode !== nextProps.darkMode ||
+    prevProps.yawBody !== nextProps.yawBody
+  ) {
+    return false; // Re-render
+  }
+  
+  // Compare arrays with tolerance (0.005 rad)
+  const arraysEqual = (a, b, tolerance = 0.005) => {
+    if (a === b) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (Math.abs(a[i] - b[i]) > tolerance) return false;
+    }
+    return true;
+  };
+  
+  // Compare headJoints
+  if (!arraysEqual(prevProps.headJoints, nextProps.headJoints)) {
+    return false; // Re-render
+  }
+  
+  // Compare passiveJoints
+  if (!arraysEqual(prevProps.passiveJoints, nextProps.passiveJoints)) {
+    return false; // Re-render
+  }
+  
+  // Compare antennas
+  if (!arraysEqual(prevProps.antennas, nextProps.antennas)) {
+    return false; // Re-render
+  }
+  
+  // Compare headPose
+  if (!arraysEqual(prevProps.headPose, nextProps.headPose)) {
+    return false; // Re-render
+  }
+  
+  // All props are equal, skip re-render
+  return true;
+});

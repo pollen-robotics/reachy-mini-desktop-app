@@ -27,25 +27,17 @@ export function useLevaControls(showLevaControls) {
     rimIntensity: { value: 0.8, min: 0, max: 2, step: 0.1, label: 'Rim Light' },
   }, { collapsed: false, hidden: !showLevaControls });
 
-  // 3. SSAO (Ambient Occlusion) - Disabled by default as it requires NormalPass
-  const ssao = useControls('🌫️ SSAO', {
-    enabled: { value: false, label: 'Enable' },
-    intensity: { value: 80, min: 0, max: 150, step: 1, label: 'Intensity' },
-    radius: { value: 0.1, min: 0, max: 1, step: 0.01, label: 'Radius' },
-    samples: { value: 31, min: 8, max: 64, step: 1, label: 'Samples' },
-  }, { collapsed: false, hidden: !showLevaControls });
-
-  // 4. X-Ray Mode
+  // 3. X-Ray Mode (SSAO removed - not implemented)
   const xraySettings = useControls('👁️ X-Ray', {
     opacity: { value: 0.5, min: 0.1, max: 0.9, step: 0.05, label: 'Opacity' },
   }, { collapsed: false, hidden: !showLevaControls });
 
-  // 5. Scene
+  // 4. Scene
   const scene = useControls('🌍 Scene', {
     showGrid: { value: true, label: 'Grid' },
     fogDistance: { value: 2.5, min: 0.5, max: 5, step: 0.1, label: 'Fog Distance' },
   }, { collapsed: false, hidden: !showLevaControls });
 
-  return { cellShading, lighting, ssao, xraySettings, scene };
+  return { cellShading, lighting, xraySettings, scene };
 }
 

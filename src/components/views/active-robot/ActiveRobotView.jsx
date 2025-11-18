@@ -1,13 +1,6 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { Box, Typography, IconButton, Button, CircularProgress, Snackbar, Alert, LinearProgress, ButtonGroup, Slider, Switch } from '@mui/material';
-import PowerSettingsNewOutlinedIcon from '@mui/icons-material/PowerSettingsNewOutlined';
-import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined';
-import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined';
-import VolumeUpIcon from '@mui/icons-material/VolumeUp';
-import MicIcon from '@mui/icons-material/Mic';
-import MicOffIcon from '@mui/icons-material/MicOff';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { Box, Typography, IconButton, Button, CircularProgress, Snackbar, Alert, LinearProgress, ButtonGroup, Switch, Tooltip } from '@mui/material';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { open } from '@tauri-apps/plugin-shell';
 import Viewer3D from '../../viewer3d';
@@ -16,11 +9,13 @@ import ViewportSwapper from './ViewportSwapper';
 import LogConsole from './LogConsole';
 import ApplicationStore from './application-store';
 import RobotHeader from './RobotHeader';
-import AudioVisualizer from './camera/AudioVisualizer';
+import PowerButton from './PowerButton';
+import AudioControls from './audio/AudioControls';
 import { useRobotState } from '../../../hooks/useRobotState';
 import useAppStore from '../../../store/useAppStore';
 import { CHOREOGRAPHY_DATASETS, DANCES, QUICK_EMOTIONS } from '../../../constants/choreographies';
 import { buildApiUrl } from '../../../config/daemon';
+
 
 function ActiveRobotView({ 
   isActive, 
@@ -38,19 +33,21 @@ function ActiveRobotView({
   // Use mock if available, otherwise the real API
   const appWindow = window.mockGetCurrentWindow ? window.mockGetCurrentWindow() : getCurrentWindow();
   
-  // Get dark mode and daemon state from global store
-  const { darkMode, isDaemonCrashed, resetTimeouts, update } = useAppStore();
+  // ✅ OPTIMIZED: Separate selectors (Zustand optimizes these internally)
+  // Using separate selectors avoids creating new objects on each render
+  const darkMode = useAppStore(state => state.darkMode);
+  const isDaemonCrashed = useAppStore(state => state.isDaemonCrashed);
+  const resetTimeouts = useAppStore(state => state.resetTimeouts);
+  const update = useAppStore(state => state.update);
+  const robotStatus = useAppStore(state => state.robotStatus);
+  const busyReason = useAppStore(state => state.busyReason);
   
-  // Get complete robot state from daemon API
-  const { isOn, isMoving } = useRobotState(isActive);
-  
-  // ✅ Computed helpers to simplify conditions
+  // ✅ Computed helpers
   const isBusy = useAppStore(state => state.isBusy());
   const isReady = useAppStore(state => state.isReady());
   
-  // ✨ State machine
-  const robotStatus = useAppStore(state => state.robotStatus);
-  const busyReason = useAppStore(state => state.busyReason);
+  // Get complete robot state from daemon API
+  const { isOn, isMoving } = useRobotState(isActive);
   
   // Toast notifications
   const [toast, setToast] = useState({ open: false, message: '', severity: 'info' });
@@ -60,8 +57,6 @@ function ActiveRobotView({
   const [volume, setVolume] = useState(50);
   const [microphoneVolume, setMicrophoneVolume] = useState(50);
   
-  // Logs collapse state
-  const [logsExpanded, setLogsExpanded] = useState(false);
   
   // Load volume from API
   useEffect(() => {
@@ -100,7 +95,7 @@ function ActiveRobotView({
   }, [isActive]);
 
   // Update volume via API
-  const handleVolumeChange = async (newVolume) => {
+  const handleVolumeChange = useCallback(async (newVolume) => {
     setVolume(newVolume);
     try {
       await fetch(buildApiUrl('/api/volume/set'), {
@@ -111,10 +106,10 @@ function ActiveRobotView({
     } catch (err) {
       console.warn('Failed to set volume:', err);
     }
-  };
+  }, []);
 
-  // Update microphone via API
-  const handleMicrophoneChange = async (enabled) => {
+  // Update microphone via API (toggle)
+  const handleMicrophoneChange = useCallback(async (enabled) => {
     setMicrophoneVolume(enabled ? 50 : 0);
     try {
       await fetch(buildApiUrl('/api/volume/microphone/set'), {
@@ -124,6 +119,20 @@ function ActiveRobotView({
       });
     } catch (err) {
       console.warn('Failed to set microphone:', err);
+    }
+  }, []);
+
+  // Update microphone volume via API (slider)
+  const handleMicrophoneVolumeChange = async (newVolume) => {
+    setMicrophoneVolume(newVolume);
+    try {
+      await fetch(buildApiUrl('/api/volume/microphone/set'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ volume: newVolume }),
+      });
+    } catch (err) {
+      console.warn('Failed to set microphone volume:', err);
     }
   };
   
@@ -160,29 +169,33 @@ function ActiveRobotView({
     setToastProgress(100);
   }, []);
   
-  // Progress bar animation
+  // ✅ OPTIMIZED: Progress bar animation using requestAnimationFrame
   useEffect(() => {
-    if (!toast.open) return;
+    if (!toast.open) {
+      setToastProgress(100);
+      return;
+    }
     
     setToastProgress(100);
     const duration = 3500; // Matches autoHideDuration
-    const interval = 20; // Update every 20ms
-    const steps = duration / interval;
-    const decrement = 100 / steps;
+    const startTime = performance.now();
     
-    const timer = setInterval(() => {
-      setToastProgress(prev => {
-        const next = prev - decrement;
-        // Stop at 5% to avoid flickering when toast disappears
-        if (next <= 5) {
-          clearInterval(timer);
-          return 5;
-        }
-        return next;
-      });
-    }, interval);
+    const animate = () => {
+      const elapsed = performance.now() - startTime;
+      const progress = Math.max(0, 100 - (elapsed / duration) * 100);
+      
+      setToastProgress(progress);
+      
+      if (progress > 0 && elapsed < duration) {
+        requestAnimationFrame(animate);
+      }
+    };
     
-    return () => clearInterval(timer);
+    const frameId = requestAnimationFrame(animate);
+    
+    return () => {
+      cancelAnimationFrame(frameId);
+    };
   }, [toast.open]);
   
   // Wrapper for Quick Actions with toast and visual effects
@@ -216,12 +229,12 @@ function ActiveRobotView({
     showToast(`${action.emoji} ${action.label}`, 'info');
   }, [sendCommand, playRecordedMove, showToast]);
 
-  // Quick Actions: 7 emotions from QUICK_EMOTIONS + 1 sleep action = 8 total
+  // Quick Actions: All emotions from QUICK_EMOTIONS + 1 sleep action
   const quickActions = [
     // Sleep action
     { name: 'goto_sleep', emoji: '😴', label: 'Sleep', type: 'action' },
-    // 7 emotions from QUICK_EMOTIONS (first half)
-    ...QUICK_EMOTIONS.slice(0, 7).map(emotion => ({
+    // All emotions from QUICK_EMOTIONS
+    ...QUICK_EMOTIONS.map(emotion => ({
       name: emotion.name,
       emoji: emotion.emoji,
       label: emotion.label,
@@ -277,6 +290,7 @@ function ActiveRobotView({
             bottom: 0,
             bgcolor: darkMode ? 'rgba(0, 0, 0, 0.85)' : 'rgba(255, 255, 255, 0.9)',
             backdropFilter: 'blur(20px)',
+            // z-index hierarchy: 9999 = fullscreen overlays (Settings, Install, Error)
             zIndex: 9999,
             display: 'flex',
             alignItems: 'center',
@@ -398,48 +412,6 @@ function ActiveRobotView({
         {/* Empty titlebar */}
       </Box>
 
-      {/* Dark Mode Toggle - Fixed at top right of window, slightly lower */}
-      <IconButton
-        size="small"
-        onClick={() => useAppStore.getState().toggleDarkMode()}
-        sx={{
-          position: 'absolute',
-          top: 18,
-          right: 18,
-          width: 32,
-          height: 32,
-          bgcolor: darkMode ? 'rgba(255, 149, 0, 0.08)' : 'transparent',
-          zIndex: 10,
-          '&:hover': {
-            bgcolor: darkMode ? 'rgba(255, 149, 0, 0.12)' : 'rgba(0, 0, 0, 0.04)',
-          },
-        }}
-      >
-        {darkMode ? (
-          <LightModeOutlinedIcon sx={{ fontSize: 18, color: '#FF9500' }} />
-        ) : (
-          <DarkModeOutlinedIcon sx={{ fontSize: 18, color: darkMode ? '#aaa' : '#999' }} />
-        )}
-      </IconButton>
-
-      {/* Drop shadow in middle for elevation effect - Positioned full height */}
-      <Box
-        sx={{
-          position: 'absolute',
-          left: '50%',
-          top: 0,
-          bottom: 0,
-          width: '16px',
-          background: darkMode
-            ? 'linear-gradient(to left, transparent 0%, rgba(0, 0, 0, 0.25) 15%, rgba(0, 0, 0, 0.15) 50%, transparent 100%)'
-            : 'linear-gradient(to left, transparent 0%, rgba(0, 0, 0, 0.12) 15%, rgba(0, 0, 0, 0.06) 50%, transparent 100%)',
-          pointerEvents: 'none',
-          zIndex: 3,
-          transform: 'translateX(-50%)',
-          filter: 'blur(4px)',
-        }}
-      />
-
       {/* Content - 2 columns */}
       <Box
         sx={{
@@ -448,6 +420,7 @@ function ActiveRobotView({
           height: 'calc(100% - 33px)',
           gap: 0,
           position: 'relative',
+          bgcolor: 'transparent',
         }}
       >
         {/* Left column (450px) - Current content */}
@@ -461,7 +434,9 @@ function ActiveRobotView({
             px: 3,
             overflowY: 'auto',
             overflowX: 'hidden',
+            scrollbarGutter: 'stable',
             position: 'relative',
+            // z-index hierarchy: 1-2 = layout base elements
             zIndex: 1,
             height: '100%',
             // Scrollbar styling
@@ -493,71 +468,40 @@ function ActiveRobotView({
           }}
         >
           {/* ViewportSwapper: handles swap between 3D and Camera with Portals */}
-          <ViewportSwapper
-            view3D={
-              <Viewer3D 
-                isActive={isActive} 
-                forceLoad={true}
-                useHeadFollowCamera={true}
-                showCameraToggle={true}
-                showStatusTag={true}
-                isOn={isOn}
-                isMoving={isMoving}
-                robotStatus={robotStatus}
-                busyReason={busyReason}
-                hideCameraFeed={true}
-              />
-            }
-            viewCamera={
-              <CameraFeed 
-                width={640}
-                height={480}
-                isLarge={true}
-              />
-            }
-          />
+          {/* ✅ OPTIMIZED: Memoize Viewer3D props to avoid re-renders when parent re-renders */}
+          {useMemo(() => (
+            <ViewportSwapper
+              view3D={
+                <Viewer3D 
+                  isActive={isActive} 
+                  forceLoad={true}
+                  useHeadFollowCamera={true}
+                  showCameraToggle={true}
+                  showStatusTag={true}
+                  isOn={isOn}
+                  isMoving={isMoving}
+                  robotStatus={robotStatus}
+                  busyReason={busyReason}
+                  hideCameraFeed={true}
+                />
+              }
+              viewCamera={
+                <CameraFeed 
+                  width={640}
+                  height={480}
+                  isLarge={true}
+                />
+              }
+            />
+          ), [isActive, isOn, isMoving, robotStatus, busyReason])}
           
           {/* Power Button - top left corner */}
-          <IconButton
-            onClick={stopDaemon}
-            disabled={!isReady}
-            sx={{
-              position: 'absolute',
-              top: 12,
-              left: 12,
-              bgcolor: 'rgba(255, 255, 255, 0.95)',
-              color: '#FF9500',
-              width: 36,
-              height: 36,
-              border: '1.5px solid rgba(255, 149, 0, 0.3)',
-              backdropFilter: 'blur(10px)',
-              transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-              opacity: isReady ? 1 : 0.4,
-              boxShadow: '0 2px 8px rgba(255, 149, 0, 0.15)',
-              zIndex: 20,
-              '&:hover': {
-                bgcolor: 'rgba(255, 149, 0, 0.08)',
-                transform: isReady ? 'scale(1.08)' : 'none',
-                borderColor: 'rgba(255, 149, 0, 0.5)',
-                boxShadow: '0 4px 12px rgba(255, 149, 0, 0.25)',
-              },
-              '&:active': {
-                transform: isReady ? 'scale(0.95)' : 'none',
-              },
-              '&:disabled': {
-                bgcolor: 'rgba(255, 255, 255, 0.6)',
-                color: '#999',
-                borderColor: 'rgba(0, 0, 0, 0.1)',
-              },
-            }}
-            title={isStopping ? 'Stopping...' : !isReady ? 'Robot is busy...' : 'Power Off'}
-          >
-            {isStopping ? (
-              <CircularProgress size={16} thickness={4} sx={{ color: '#999' }} />
-            ) : (
-              <PowerSettingsNewOutlinedIcon sx={{ fontSize: 18 }} />
-            )}
-          </IconButton>
+          <PowerButton
+            onStopDaemon={stopDaemon}
+            isReady={isReady}
+            isStopping={isStopping}
+            darkMode={darkMode}
+          />
         </Box>
         
         {/* Robot Header - Title, version, status, mode */}
@@ -566,216 +510,38 @@ function ActiveRobotView({
             darkMode={darkMode}
           />
 
-        {/* Audio Controls - Single Line 50/50 */}
-        <Box
-          sx={{
-            width: '100%',
-            mb: 1.5,
-            display: 'flex',
-            gap: 1,
-          }}
-        >
-          {/* Volume Control - 50% */}
-          <Box
-            sx={{
-              flex: '0 0 50%',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 0.75,
-              p: 1.25,
-              borderRadius: '12px',
-              bgcolor: darkMode ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
-              border: darkMode ? '1px solid rgba(255, 255, 255, 0.06)' : '1px solid rgba(0, 0, 0, 0.06)',
-              transition: 'all 0.2s ease',
-              '&:hover': {
-                bgcolor: darkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)',
-                borderColor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
-              },
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <VolumeUpIcon sx={{ fontSize: 12, color: '#FF9500' }} />
-                <Typography
-                  sx={{
-                    fontSize: 9,
-                    fontWeight: 600,
-                    color: darkMode ? '#aaa' : '#666',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                  }}
-                >
-                  Volume
-                </Typography>
-              </Box>
-              <Typography
-                sx={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  color: '#FF9500',
-                  fontFamily: 'SF Mono, Monaco, Menlo, monospace',
-                }}
-              >
-                {volume}%
-              </Typography>
-            </Box>
-            <Slider
-              value={volume}
-              onChange={(e, val) => handleVolumeChange(val)}
-              sx={{
-                '& .MuiSlider-thumb': {
-                  width: 12,
-                  height: 12,
-                  bgcolor: '#FF9500',
-                  border: `2px solid ${darkMode ? '#1a1a1a' : '#fff'}`,
-                  boxShadow: '0 2px 4px rgba(255, 149, 0, 0.3)',
-                  '&:hover': {
-                    boxShadow: '0 0 0 5px rgba(255, 149, 0, 0.16)',
-                    transform: 'scale(1.1)',
-                  },
-                  transition: 'all 0.2s ease',
-                },
-                '& .MuiSlider-track': {
-                  bgcolor: '#FF9500',
-                  border: 'none',
-                  height: 2.5,
-                  borderRadius: '2px',
-                },
-                '& .MuiSlider-rail': {
-                  bgcolor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
-                  height: 2.5,
-                  borderRadius: '2px',
-                },
-              }}
-            />
-          </Box>
-
-          {/* Microphone Control - 50% */}
-          <Box
-            sx={{
-              flex: '0 0 50%',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 0.75,
-              p: 1.25,
-              borderRadius: '12px',
-              bgcolor: darkMode ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
-              border: darkMode 
-                ? `1px solid ${microphoneVolume > 0 ? 'rgba(34, 197, 94, 0.2)' : 'rgba(255, 255, 255, 0.06)'}`
-                : `1px solid ${microphoneVolume > 0 ? 'rgba(34, 197, 94, 0.15)' : 'rgba(0, 0, 0, 0.06)'}`,
-              transition: 'all 0.2s ease',
-              '&:hover': {
-                bgcolor: darkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)',
-                borderColor: microphoneVolume > 0 
-                  ? (darkMode ? 'rgba(34, 197, 94, 0.3)' : 'rgba(34, 197, 94, 0.25)')
-                  : (darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'),
-              },
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                {microphoneVolume > 0 ? (
-                  <MicIcon sx={{ fontSize: 12, color: '#22c55e' }} />
-                ) : (
-                  <MicOffIcon sx={{ fontSize: 12, color: darkMode ? '#666' : '#999', opacity: 0.6 }} />
-                )}
-                <Typography
-                  sx={{
-                    fontSize: 9,
-                    fontWeight: 600,
-                    color: darkMode ? '#aaa' : '#666',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                  }}
-                >
-                  Microphone
-                </Typography>
-              </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                {/* Audio Visualizer */}
-                {microphoneVolume > 0 && (
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      px: 0.75,
-                      py: 0.25,
-                      borderRadius: '6px',
-                      bgcolor: darkMode ? 'rgba(34, 197, 94, 0.1)' : 'rgba(34, 197, 94, 0.08)',
-                    }}
-                  >
-                    <AudioVisualizer 
-                      barCount={6} 
-                      color={darkMode ? 'rgba(34, 197, 94, 0.9)' : '#22c55e'}
-                      showBackground={false}
-                      isLarge={true}
-                    />
-                  </Box>
-                )}
-                <IconButton
-                  onClick={() => handleMicrophoneChange(microphoneVolume === 0)}
-                  size="small"
-                  sx={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: '8px',
-                    bgcolor: microphoneVolume > 0 
-                      ? (darkMode ? 'rgba(34, 197, 94, 0.15)' : 'rgba(34, 197, 94, 0.1)')
-                      : 'transparent',
-                    color: microphoneVolume > 0 ? '#22c55e' : (darkMode ? '#666' : '#999'),
-                    padding: 0,
-                    transition: 'all 0.2s ease',
-                    '&:hover': {
-                      bgcolor: microphoneVolume > 0 
-                        ? (darkMode ? 'rgba(34, 197, 94, 0.2)' : 'rgba(34, 197, 94, 0.15)')
-                        : (darkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)'),
-                      transform: 'scale(1.05)',
-                    },
-                  }}
-                >
-                  {microphoneVolume > 0 ? (
-                    <MicIcon sx={{ fontSize: 14 }} />
-                  ) : (
-                    <MicOffIcon sx={{ fontSize: 14 }} />
-                  )}
-                </IconButton>
-              </Box>
-            </Box>
-            {/* Spacer pour aligner avec le slider du volume */}
-            <Box sx={{ height: 2.5 }} />
-          </Box>
+        {/* Audio Controls - Wrapper stable pour garantir le sizing correct */}
+        <Box sx={{ width: '100%', mt: 1.5, mb: 1.5 }}>
+          <AudioControls
+            volume={volume}
+            microphoneVolume={microphoneVolume}
+            onVolumeChange={handleVolumeChange}
+            onMicrophoneChange={handleMicrophoneChange}
+            darkMode={darkMode}
+          />
         </Box>
         
-        {/* Logs Console - Collapsible */}
+        {/* Logs Console */}
         <Box sx={{ mt: 1, width: '100%' }}>
           <Box 
             sx={{ 
               display: 'flex', 
               justifyContent: 'space-between', 
               alignItems: 'center', 
-              mb: logsExpanded ? 1.5 : 0,
-              cursor: 'pointer',
-              userSelect: 'none',
+              mb: 1.5,
             }}
-            onClick={() => setLogsExpanded(!logsExpanded)}
           >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
               <Typography sx={{ fontSize: 11, fontWeight: 600, color: darkMode ? '#888' : '#999', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Daemon Logs
+                Logs
               </Typography>
-              <IconButton
-                size="small"
-                sx={{
-                  width: 20,
-                  height: 20,
-                  padding: 0,
-                  color: darkMode ? '#888' : '#999',
-                  transition: 'transform 0.2s ease',
-                  transform: logsExpanded ? 'rotate(0deg)' : 'rotate(180deg)',
-                }}
+              <Tooltip 
+                title="Real-time logs from the Reachy Mini robot daemon. Logs are collected via the Python daemon's logging system and streamed to the frontend through Tauri's IPC (Inter-Process Communication). The daemon runs as a background service and captures system events, robot movements, errors, and status updates. Frontend logs (actions, API calls) are also displayed here with timestamps." 
+                arrow 
+                placement="top"
               >
-                <ExpandMoreIcon sx={{ fontSize: 16 }} />
-              </IconButton>
+                <InfoOutlinedIcon sx={{ fontSize: 12, color: darkMode ? '#666' : '#999', opacity: 0.6, cursor: 'help' }} />
+              </Tooltip>
             </Box>
             <Typography
               onClick={async (e) => {
@@ -789,11 +555,11 @@ function ActiveRobotView({
                 }
               }}
               sx={{
-                fontSize: 9,
+                fontSize: 10,
                 fontWeight: 500,
-                color: darkMode ? '#666' : '#999',
+                color: darkMode ? '#888' : '#777',
                 textDecoration: 'none',
-                opacity: 0.7,
+                opacity: 0.85,
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
                 '&:hover': {
@@ -807,15 +573,11 @@ function ActiveRobotView({
             </Typography>
           </Box>
           
-          {logsExpanded && (
-            <Box sx={{ transition: 'all 0.3s ease' }}>
               <LogConsole logs={logs} darkMode={darkMode} />
-            </Box>
-          )}
         </Box>
         </Box>
 
-                {/* Right column (450px) - Application Store with elevation effect */}
+                {/* Right column (450px) - Application Store */}
                 <Box
                   sx={{
                     width: '450px',
@@ -823,12 +585,13 @@ function ActiveRobotView({
                     display: 'flex',
                     flexDirection: 'column',
                     borderLeft: darkMode
-                      ? '1px solid rgba(255, 255, 255, 0.08)'
-                      : '1px solid rgba(0, 0, 0, 0.06)',
-                    // ✅ Simple elevation effect with transform
+                      ? '1px solid rgba(255, 255, 255, 0.15)'
+                      : '1px solid rgba(0, 0, 0, 0.12)',
                     position: 'relative',
                     zIndex: 2,
                     transform: 'translateY(-8px)',
+                    bgcolor: 'transparent !important',
+                    backgroundColor: 'transparent !important',
                   }}
                 >
           <ApplicationStore 
@@ -844,54 +607,83 @@ function ActiveRobotView({
         </Box>
       </Box>
 
-      {/* Toast Notifications - Bottom right */}
+      {/* Toast Notifications - Bottom center */}
       <Snackbar
         open={toast.open}
         autoHideDuration={3500}
         onClose={handleCloseToast}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         sx={{
           bottom: '24px !important',
-          right: '24px !important',
+          left: '50% !important',
+          right: 'auto !important',
+          transform: 'translateX(-50%) !important',
         }}
       >
-        <Box sx={{ position: 'relative', overflow: 'hidden', borderRadius: '7px' }}>
-          {/* Animated time bar - Color based on type */}
+        <Box 
+          sx={{ 
+            position: 'relative', 
+            overflow: 'hidden', 
+            borderRadius: '12px',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            boxShadow: toast.severity === 'success'
+              ? (darkMode ? '0 8px 32px rgba(34, 197, 94, 0.3), 0 2px 8px rgba(0, 0, 0, 0.4)' : '0 8px 32px rgba(34, 197, 94, 0.25), 0 2px 8px rgba(0, 0, 0, 0.15)')
+              : toast.severity === 'error'
+              ? (darkMode ? '0 8px 32px rgba(239, 68, 68, 0.3), 0 2px 8px rgba(0, 0, 0, 0.4)' : '0 8px 32px rgba(239, 68, 68, 0.25), 0 2px 8px rgba(0, 0, 0, 0.15)')
+              : (darkMode ? '0 8px 32px rgba(255, 149, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.4)' : '0 8px 32px rgba(255, 149, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.15)'),
+          }}
+        >
+          {/* Animated time bar - More visible */}
           <Box
             sx={{
               position: 'absolute',
               top: 0,
               left: 0,
-              right: 0,
-              height: '6px',
-              bgcolor: toast.severity === 'success' 
-                ? (darkMode ? 'rgba(34, 197, 94, 0.4)' : 'rgba(34, 197, 94, 0.3)')
+              height: '4px',
+              background: toast.severity === 'success' 
+                ? 'linear-gradient(90deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 100%)'
                 : toast.severity === 'error'
-                ? (darkMode ? 'rgba(239, 68, 68, 0.4)' : 'rgba(239, 68, 68, 0.3)')
-                : (darkMode ? 'rgba(255, 179, 102, 0.4)' : 'rgba(255, 179, 102, 0.3)'),
-              zIndex: 1,
+                ? 'linear-gradient(90deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 100%)'
+                : 'linear-gradient(90deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 100%)',
+              zIndex: 2,
               transition: 'width 0.02s linear',
               width: `${toastProgress}%`,
+              borderRadius: '12px 0 0 0',
+              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
             }}
           />
           
+          {/* Main content with semi-transparent background and border */}
           <Box
             sx={{
-              borderRadius: '7px',
+              position: 'relative',
+              borderRadius: '12px',
               fontSize: 14,
-              fontWeight: 500,
-              boxShadow: darkMode ? '0 6px 20px rgba(0, 0, 0, 0.5)' : '0 6px 20px rgba(0, 0, 0, 0.1)',
-              bgcolor: darkMode ? '#2a2a2a' : '#fff',
-              border: toast.severity === 'success'
-                ? '1.5px solid rgba(34, 197, 94, 0.3)'
+              fontWeight: 600,
+              letterSpacing: '-0.01em',
+              // Semi-transparent background with opacity 0.8
+              background: toast.severity === 'success'
+                ? 'rgba(34, 197, 94, 0.8)'
                 : toast.severity === 'error'
-                ? '1.5px solid rgba(239, 68, 68, 0.3)'
-                : (darkMode ? '1.5px solid rgba(255, 255, 255, 0.15)' : '1.5px solid rgba(0, 0, 0, 0.12)'),
-              color: darkMode ? '#f5f5f5' : '#333',
-              minWidth: 200,
-              px: 2.5,
-              py: 1.5,
+                ? 'rgba(239, 68, 68, 0.8)'
+                : 'rgba(255, 149, 0, 0.8)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+              border: toast.severity === 'success'
+                ? '1px solid rgba(34, 197, 94, 0.5)'
+                : toast.severity === 'error'
+                ? '1px solid rgba(239, 68, 68, 0.5)'
+                : '1px solid rgba(255, 149, 0, 0.5)',
+              color: '#fff',
+              minWidth: 220,
+              px: 3,
+              py: 1.75,
               pt: 2.5,
+              textAlign: 'center',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             {toast.message}

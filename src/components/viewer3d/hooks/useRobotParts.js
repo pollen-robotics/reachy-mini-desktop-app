@@ -3,6 +3,22 @@ import * as THREE from 'three';
 import { convertRowMajorToColumnMajor, extractPositionFromRowMajorMatrix } from '../utils/matrixUtils';
 
 /**
+ * ✅ OPTIMIZED: Compare arrays numerically with tolerance (much faster than JSON.stringify)
+ * @param {Array} a - First array
+ * @param {Array} b - Second array
+ * @param {number} tolerance - Tolerance for comparison (default: 0.005 rad ~0.3°)
+ * @returns {boolean} True if arrays are equal within tolerance
+ */
+const arraysEqual = (a, b, tolerance = 0.005) => {
+  if (a === b) return true; // ✅ Early return if same reference
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (Math.abs(a[i] - b[i]) > tolerance) return false;
+  }
+  return true;
+};
+
+/**
  * Hook pour exposer les informations cinématiques du robot
  * Focus sur la cinématique : joints actifs, transformations des liens clés, pose de la tête
  * 
@@ -52,13 +68,22 @@ export default function useRobotParts(isActive, robotModel) {
   const tempPosition = useRef(new THREE.Vector3());
   const tempQuaternion = useRef(new THREE.Quaternion());
   const tempEuler = useRef(new THREE.Euler());
+  const reconnectTimeoutRef = useRef(null); // ✅ Track reconnect timeout for cleanup
+  const isMountedRef = useRef(true);
 
   // ✅ Récupérer les données cinématiques du WebSocket
   useEffect(() => {
+    isMountedRef.current = true; // Reset mount state
+    
     if (!isActive || !robotModel) {
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
+      }
+      // ✅ Cleanup reconnect timeout
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
       return;
     }
@@ -242,17 +267,30 @@ export default function useRobotParts(isActive, robotModel) {
             }
 
             // ✅ Mettre à jour seulement si les données cinématiques importantes ont changé
-            const kinematicsKey = JSON.stringify({
-              joints: newKinematics.joints,
-              headPose: newKinematics.headPose?.matrix,
-            });
+            // ✅ OPTIMIZED: Using numeric comparison instead of JSON.stringify (much faster)
+            const jointsChanged = newKinematics.joints && (
+              !lastKinematicsRef.current?.joints ||
+              Object.keys(newKinematics.joints).some(key => {
+                const oldVal = lastKinematicsRef.current.joints?.[key];
+                const newVal = newKinematics.joints[key];
+                return oldVal === undefined || Math.abs(oldVal - newVal) > 0.005;
+              })
+            );
             
-            if (kinematicsKey !== lastKinematicsRef.current) {
+            const headPoseChanged = newKinematics.headPose?.matrix && (
+              !lastKinematicsRef.current?.headPose?.matrix ||
+              !arraysEqual(newKinematics.headPose.matrix, lastKinematicsRef.current.headPose.matrix, 0.005)
+            );
+            
+            if (jointsChanged || headPoseChanged) {
               setKinematics(prev => ({
                 ...prev,
                 ...newKinematics,
               }));
-              lastKinematicsRef.current = kinematicsKey;
+              lastKinematicsRef.current = {
+                joints: newKinematics.joints,
+                headPose: newKinematics.headPose,
+              };
             }
           } catch (err) {
             console.error('❌ Kinematics WebSocket parse error:', err);
@@ -264,10 +302,15 @@ export default function useRobotParts(isActive, robotModel) {
         };
 
         ws.onclose = () => {
-          setTimeout(() => {
-            if (isActive && robotModel) {
+          // ✅ Cleanup previous timeout if exists
+          if (reconnectTimeoutRef.current) {
+            clearTimeout(reconnectTimeoutRef.current);
+          }
+          reconnectTimeoutRef.current = setTimeout(() => {
+            if (isMountedRef.current && isActive && robotModel) {
               connectWebSocket();
             }
+            reconnectTimeoutRef.current = null;
           }, 1000);
         };
 
@@ -280,9 +323,15 @@ export default function useRobotParts(isActive, robotModel) {
     connectWebSocket();
 
     return () => {
+      isMountedRef.current = false; // Mark as unmounted
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
+      }
+      // ✅ Cleanup reconnect timeout to prevent memory leaks
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
     };
   }, [isActive, robotModel]);

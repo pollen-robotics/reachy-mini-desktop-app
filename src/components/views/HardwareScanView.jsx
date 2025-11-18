@@ -80,6 +80,7 @@ function HardwareScanView({
         justifyContent: 'center',
         px: 4,
         gap: 1.5,
+        bgcolor: 'transparent',
       }}
     >
       <Box
@@ -87,6 +88,7 @@ function HardwareScanView({
           width: '100%',
           maxWidth: '450px',
           position: 'relative',
+          bgcolor: 'transparent',
         }}
       >
         <Box
@@ -94,6 +96,7 @@ function HardwareScanView({
             width: '100%',
             height: '480px',
             position: 'relative',
+            bgcolor: 'transparent',
           }}
         >
           <Viewer3D 
@@ -195,7 +198,7 @@ function HardwareScanView({
             
             <Button
               variant="outlined"
-              startIcon={isRetrying ? <CircularProgress size={15} sx={{ color: '#ef4444' }} /> : <RefreshIcon sx={{ fontSize: 15 }} />}
+              startIcon={isRetrying ? <CircularProgress size={15} sx={{ color: '#ef4444' }} /> : <RefreshIcon sx={{ fontSize: 15, color: '#ef4444' }} />}
               onClick={handleRetry}
               disabled={isRetrying}
               sx={{
@@ -207,13 +210,14 @@ function HardwareScanView({
                 py: 0.75,
                 borderRadius: '10px',
                 textTransform: 'none',
+                bgcolor: 'transparent',
                 '&:hover': {
                   borderColor: '#dc2626',
-                  bgcolor: 'rgba(239, 68, 68, 0.04)',
+                  bgcolor: darkMode ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.04)',
                 },
                 '&:disabled': {
-                  borderColor: '#fca5a5',
-                  color: '#fca5a5',
+                  borderColor: darkMode ? 'rgba(239, 68, 68, 0.3)' : '#fca5a5',
+                  color: darkMode ? 'rgba(239, 68, 68, 0.3)' : '#fca5a5',
                 },
               }}
             >

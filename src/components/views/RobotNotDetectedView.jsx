@@ -59,33 +59,6 @@ export default function RobotNotDetectedView() {
           },
         }}
       />
-      {/* Titlebar */}
-      <Box
-        onMouseDown={async (e) => {
-          e.preventDefault();
-          try {
-            await appWindow.startDragging();
-          } catch (err) {
-            console.error('Drag error:', err);
-          }
-        }}
-        sx={{
-          height: 44,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          px: 2,
-          cursor: 'move',
-          userSelect: 'none',
-          position: 'relative',
-          zIndex: 2,
-        }}
-      >
-        <Box sx={{ width: 12, height: 12 }} />
-        <Box sx={{ height: 20 }} /> {/* Espace pour le drag */}
-        <Box sx={{ width: 20, height: 20 }} />
-      </Box>
-
       {/* Robot Not Detected Content */}
       <Box
         sx={{
@@ -93,7 +66,7 @@ export default function RobotNotDetectedView() {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          height: 'calc(100% - 44px)',
+          height: 'calc(100vh - 44px)',
           position: 'relative',
           zIndex: 2,
         }}

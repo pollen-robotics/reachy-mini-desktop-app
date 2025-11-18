@@ -24,7 +24,7 @@ export default function RobotHeader({ daemonVersion, darkMode = false }) {
           fontWeight: 600,
           color: darkMode ? '#f5f5f5' : '#1d1d1f',
           letterSpacing: '-0.4px',
-          mb: 0.75,
+          mb: -0.5,
         }}
       >
         Reachy Mini

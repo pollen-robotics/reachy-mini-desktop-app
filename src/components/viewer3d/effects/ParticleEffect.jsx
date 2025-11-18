@@ -332,12 +332,17 @@ export default function ParticleEffect({
     });
   });
 
-  // Cleanup
-  useMemo(() => {
+  // ✅ Cleanup particles on unmount or when particles change
+  useEffect(() => {
     return () => {
+      // Dispose materials and textures to prevent memory leaks
       particles.forEach(p => {
-        p.material.map?.dispose();
+        if (p.material) {
+          if (p.material.map) {
+            p.material.map.dispose();
+          }
         p.material.dispose();
+        }
       });
     };
   }, [particles]);

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import ReactDOM from 'react-dom/client';
 import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 
@@ -35,6 +35,7 @@ if (typeof window !== 'undefined' && !window.__TAURI__) {
 import App from './components/App';
 import DevPlayground from './components/DevPlayground';
 import robotModelCache from './utils/robotModelCache';
+import useAppStore from './store/useAppStore';
 
 // 🚀 Preload robot 3D model (FORCE complete reload)
 robotModelCache.clear();
@@ -50,9 +51,13 @@ setTimeout(() => {
   });
 }, 100);
 
-const theme = createTheme({
+// Theme wrapper component that adapts to darkMode
+function ThemeWrapper({ children }) {
+  const darkMode = useAppStore(state => state.darkMode);
+  
+  const theme = useMemo(() => createTheme({
   palette: {
-    mode: 'light',
+      mode: darkMode ? 'dark' : 'light',
     primary: {
       main: '#FF9500',
       light: '#FFB340',
@@ -68,21 +73,108 @@ const theme = createTheme({
     error: {
       main: '#ef4444',
     },
-    divider: 'rgba(0, 0, 0, 0.18)', // Uniform and contrasted borders
+      divider: darkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.18)',
+    },
+    components: {
+      MuiTooltip: {
+        styleOverrides: {
+          tooltip: {
+            backgroundColor: darkMode ? 'rgba(255, 255, 255, 0.95)' : 'rgba(0, 0, 0, 0.9)',
+            color: darkMode ? '#1d1d1f' : '#fff',
+            fontSize: '11px',
+            fontWeight: 500,
+            padding: '10px 14px',
+            borderRadius: '8px',
+            boxShadow: darkMode 
+              ? '0 4px 12px rgba(0, 0, 0, 0.25)' 
+              : '0 4px 12px rgba(0, 0, 0, 0.15)',
+            maxWidth: '300px',
+            lineHeight: 1.6,
+          },
+          arrow: {
+            color: darkMode ? 'rgba(255, 255, 255, 0.95)' : 'rgba(0, 0, 0, 0.9)',
+          },
+        },
+      },
+      MuiAccordion: {
+        styleOverrides: {
+          root: {
+            boxShadow: 'none !important',
+            backgroundColor: 'transparent !important',
+            '&:before': {
+              display: 'none !important',
+            },
+            '&.Mui-expanded': {
+              boxShadow: 'none !important',
+            },
+          },
+        },
+      },
+      MuiAccordionSummary: {
+        styleOverrides: {
+          root: {
+            backgroundColor: 'transparent !important',
+            '&.Mui-expanded': {
+              backgroundColor: 'transparent !important',
+            },
+          },
+        },
+      },
+      MuiAccordionDetails: {
+        styleOverrides: {
+          root: {
+            backgroundColor: 'transparent !important',
+          },
+        },
+      },
+      MuiPaper: {
+        styleOverrides: {
+          root: {
+            '&.MuiAccordion-root': {
+              boxShadow: 'none !important',
+              backgroundColor: 'transparent !important',
+              background: 'transparent !important',
+              '&.Mui-expanded': {
+                backgroundColor: 'transparent !important',
+                background: 'transparent !important',
+              },
+            },
+            '&.MuiAccordionSummary-root': {
+              backgroundColor: 'transparent !important',
+              background: 'transparent !important',
+              '&.Mui-expanded': {
+                backgroundColor: 'transparent !important',
+                background: 'transparent !important',
+              },
+            },
+            '&.MuiAccordionDetails-root': {
+              backgroundColor: 'transparent !important',
+              background: 'transparent !important',
+            },
+          },
+        },
+      },
   },
-});
+  }), [darkMode]);
+
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      {children}
+    </ThemeProvider>
+  );
+}
 
 // Choose component to display
 const RootComponent = DEV_MODE ? DevPlayground : App;
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
+    <ThemeWrapper>
       <div style={{ width: '100%', height: '100%' }}>
         <RootComponent />
       </div>
-    </ThemeProvider>
+    </ThemeWrapper>
   </React.StrictMode>
 );
 

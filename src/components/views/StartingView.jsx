@@ -36,39 +36,16 @@ function StartingView({ startupError }) {
       sx={{
         width: '100vw',
         height: '100vh',
-        background: darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)',
+        background: darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(250, 250, 252, 0.85)',
         backdropFilter: 'blur(40px)',
         WebkitBackdropFilter: 'blur(40px)',
         overflow: 'hidden',
       }}
     >
-      {/* Titlebar */}
-      <Box
-        onMouseDown={async (e) => {
-          e.preventDefault();
-          try {
-            await appWindow.startDragging();
-          } catch (err) {
-            console.error('Drag error:', err);
-          }
-        }}
-        sx={{
-          height: 44,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          px: 2,
-          cursor: 'move',
-          userSelect: 'none',
-        }}
-      >
-        <Box sx={{ height: 20 }} /> {/* Space for drag */}
-      </Box>
-
       {/* Centered content */}
       <Box
         sx={{
-          height: 'calc(100% - 44px)',
+          height: 'calc(100vh - 44px)',
         }}
       >
         <HardwareScanView 

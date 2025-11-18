@@ -26,7 +26,7 @@ export const DAEMON_CONFIG = {
     LOGS_FETCH: 1000,         // Logs every 1s
     USB_CHECK: 1000,          // USB every 1s
     VERSION_FETCH: 10000,     // Version every 10s
-    ROBOT_STATE: 300,         // Robot state (position, motors) every 300ms
+    ROBOT_STATE: 500,         // ✅ OPTIMIZED: Robot state (position, motors) every 500ms (was 300ms) to reduce re-renders
     APP_STATUS: 2000,         // Current app status every 2s
     JOB_POLLING: 500,         // Poll job install/remove every 500ms
     CURRENT_APP_REFRESH: 300, // Delay before refresh after stop app
@@ -141,12 +141,6 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions 
   const method = options.method || 'GET';
   const startTime = Date.now();
   
-  // Log start if not silent
-  if (!shouldBeSilent && appStoreInstance) {
-    const logLabel = label || `${method} ${baseEndpoint}`;
-    appStoreInstance.getState().addFrontendLog(`→ ${logLabel}`);
-  }
-  
   try {
     // Create AbortController to be able to cancel manually if needed
     const controller = new AbortController();
@@ -160,11 +154,11 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions 
     clearTimeout(timeoutId);
     const duration = Date.now() - startTime;
     
-    // Log result if not silent
+    // Log result if not silent (only show completion, not start to avoid redundancy)
     if (!shouldBeSilent && appStoreInstance) {
       const logLabel = label || `${method} ${baseEndpoint}`;
       if (response.ok) {
-        appStoreInstance.getState().addFrontendLog(`✓ ${logLabel} (${duration}ms)`);
+        appStoreInstance.getState().addFrontendLog(`✓ ${logLabel}`);
       } else {
         appStoreInstance.getState().addFrontendLog(`✗ ${logLabel} (${response.status})`);
       }

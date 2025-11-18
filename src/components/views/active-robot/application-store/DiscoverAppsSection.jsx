@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { Box, Typography, Button, InputBase, CircularProgress } from '@mui/material';
+import { Box, Typography, Button, InputBase, CircularProgress, Tooltip } from '@mui/material';
 import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
 import SearchIcon from '@mui/icons-material/Search';
 import StarOutlineIcon from '@mui/icons-material/StarOutline';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import { open } from '@tauri-apps/plugin-shell';
+import hfLogo from '../../../../assets/hf-logo.svg';
 
 /**
  * Section displaying available apps (Discover from Hugging Face)
@@ -24,6 +26,7 @@ export default function DiscoverAppsSection({
       <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', mb: 1.5 }}>
         {/* Left: DISCOVER + counter */}
         <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <Typography
             sx={{
               fontSize: 11,
@@ -35,6 +38,14 @@ export default function DiscoverAppsSection({
           >
             Discover
           </Typography>
+            <Tooltip 
+              title="Browse and install new apps from Hugging Face Spaces. Search for apps that extend Reachy's capabilities." 
+              arrow 
+              placement="top"
+            >
+              <InfoOutlinedIcon sx={{ fontSize: 12, color: darkMode ? '#666' : '#999', opacity: 0.6, cursor: 'help' }} />
+            </Tooltip>
+          </Box>
           <Typography
             sx={{
               fontSize: 11,
@@ -46,7 +57,27 @@ export default function DiscoverAppsSection({
           </Typography>
         </Box>
         
-        {/* Right: from Hugging Face */}
+        {/* Right: from Hugging Face Logo */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Typography
+            sx={{
+              fontSize: 10,
+              color: darkMode ? '#888' : '#999',
+              fontWeight: 500,
+            }}
+          >
+            from
+          </Typography>
+          <Box
+            component="img"
+            src={hfLogo}
+            alt="Hugging Face"
+            sx={{
+              height: 14,
+              width: 'auto',
+              opacity: 1,
+            }}
+          />
         <Typography
           sx={{
             fontSize: 10,
@@ -54,8 +85,9 @@ export default function DiscoverAppsSection({
             fontWeight: 500,
           }}
         >
-          from 🤗 Hugging Face
+            Hugging Face
         </Typography>
+        </Box>
       </Box>
 
       {/* Search Bar */}
@@ -161,18 +193,9 @@ export default function DiscoverAppsSection({
                         isInstalling ? `1.5px solid rgba(255, 149, 0, 0.3)` :
                         `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)'}`,
                 // ✅ No transition on bgcolor/border to avoid animation on dark mode change
-                transition: 'transform 0.25s ease, box-shadow 0.25s ease',
                 position: 'relative',
                 overflow: 'hidden',
-                '&:hover': {
-                  borderColor: installFailed ? '#ef4444' : 
-                               isInstalling ? 'rgba(255, 149, 0, 0.4)' : 
-                               (darkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.15)'),
-                  transform: !isInstalling && !installFailed ? 'translateY(-1px)' : 'none',
-                  boxShadow: installFailed ? 'none' : 
-                             isInstalling ? 'none' : 
-                             (darkMode ? '0 4px 12px rgba(0, 0, 0, 0.25)' : '0 4px 12px rgba(0, 0, 0, 0.08)'),
-                },
+                boxShadow: 'none',
                 // Pulsing animation during installation
                 ...(isInstalling && {
                   animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',

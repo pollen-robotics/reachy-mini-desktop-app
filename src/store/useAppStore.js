@@ -279,10 +279,11 @@ const useAppStore = create((set) => ({
     frontendLogs: [
       ...state.frontendLogs.slice(-50), // Keep max 50 logs
       {
-        timestamp: new Date().toLocaleTimeString('fr-FR', { 
+        timestamp: new Date().toLocaleTimeString('en-GB', { 
           hour: '2-digit', 
           minute: '2-digit', 
-          second: '2-digit' 
+          second: '2-digit',
+          hour12: false // 24-hour format
         }),
         message,
         source: 'frontend', // To visually distinguish

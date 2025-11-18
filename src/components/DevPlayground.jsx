@@ -2,6 +2,9 @@ import React, { useState, useCallback } from 'react';
 import { Box, Typography, Button, Stack, CircularProgress } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import Viewer3D from './viewer3d';
+import FPSMeter from './FPSMeter';
+import AudioLevelBars from './views/active-robot/audio/AudioLevelBars';
+import AudioControls from './views/active-robot/audio/AudioControls';
 import { getShortComponentName } from '../utils/componentNames';
 
 /**
@@ -9,7 +12,7 @@ import { getShortComponentName } from '../utils/componentNames';
  * Accès automatique via http://localhost:5173/#dev
  */
 export default function DevPlayground() {
-  const [mode, setMode] = useState('normal'); // 'normal', 'scan' ou 'hardware-scan'
+  const [mode, setMode] = useState('audio-controls'); // 'audio-controls', 'normal', 'scan', 'hardware-scan' ou 'audio-speaker'
   const [currentComponent, setCurrentComponent] = useState(null);
   const [scanProgress, setScanProgress] = useState({ current: 0, total: 0 });
   const [scanComplete, setScanComplete] = useState(false); // Scan completed successfully
@@ -139,11 +142,28 @@ export default function DevPlayground() {
         p: 4,
       }}
     >
+      <FPSMeter />
       <Typography variant="h5" sx={{ fontWeight: 600, color: '#333' }}>
         🔬 Dev Playground
       </Typography>
       
       <Stack direction="row" spacing={2}>
+        <Button 
+          variant={mode === 'audio-controls' ? 'contained' : 'outlined'}
+          size="small"
+          onClick={() => handleModeChange('audio-controls')}
+          sx={{ textTransform: 'none' }}
+        >
+          Audio Controls (Exact Context)
+        </Button>
+        <Button 
+          variant={mode === 'audio-speaker' ? 'contained' : 'outlined'}
+          size="small"
+          onClick={() => handleModeChange('audio-speaker')}
+          sx={{ textTransform: 'none' }}
+        >
+          Audio Speaker
+        </Button>
         <Button 
           variant={mode === 'normal' ? 'contained' : 'outlined'}
           size="small"
@@ -172,13 +192,97 @@ export default function DevPlayground() {
       
       <Box sx={{ 
         width: '100%', 
-        maxWidth: mode === 'normal' ? '600px' : '450px', 
+        maxWidth: mode === 'audio-controls' ? '900px' : mode === 'normal' ? '600px' : mode === 'audio-speaker' ? '800px' : '450px', 
         display: 'flex',
         flexDirection: 'column',
         gap: 2,
         alignItems: 'center',
       }}>
-        {/* 3D Viewer */}
+        {/* Audio Controls - Exact context reproduction */}
+        {mode === 'audio-controls' ? (
+          <Box sx={{
+            width: '100%',
+            maxWidth: '900px',
+            height: '600px',
+            bgcolor: '#f5f5f5',
+            borderRadius: '16px',
+            p: 0,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'row',
+            border: '1px solid rgba(0, 0, 0, 0.1)',
+          }}>
+            {/* Left column (450px) - Exact reproduction */}
+            <Box
+              sx={{
+                width: '450px',
+                flexShrink: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                px: 3,
+                overflowY: 'auto',
+                overflowX: 'hidden',
+                scrollbarGutter: 'stable',
+                position: 'relative',
+                zIndex: 1,
+                height: '100%',
+                bgcolor: '#f5f5f5',
+                '&::-webkit-scrollbar': {
+                  width: '6px',
+                },
+                '&::-webkit-scrollbar-track': {
+                  background: 'transparent',
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  background: 'rgba(0, 0, 0, 0.1)',
+                  borderRadius: '3px',
+                },
+                '&:hover::-webkit-scrollbar-thumb': {
+                  background: 'rgba(0, 0, 0, 0.15)',
+                },
+              }}
+            >
+              {/* Audio Controls - Exact reproduction */}
+              <Box sx={{ width: '100%', mt: 4 }}>
+                <AudioControls
+                  volume={75}
+                  microphoneVolume={50}
+                  onVolumeChange={(val) => console.log('Volume:', val)}
+                  onMicrophoneChange={(enabled) => console.log('Microphone:', enabled)}
+                  darkMode={false}
+                />
+              </Box>
+            </Box>
+
+            {/* Right column - Empty space to match exact layout */}
+            <Box
+              sx={{
+                flex: 1,
+                bgcolor: '#ffffff',
+                height: '100%',
+              }}
+            />
+          </Box>
+        ) : mode === 'audio-speaker' ? (
+          <Box sx={{ 
+            width: '100%', 
+            maxWidth: '600px',
+            height: '200px',
+            bgcolor: '#1a1a1a',
+            borderRadius: '12px',
+            p: 3,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <AudioLevelBars 
+              isActive={true} 
+              color="rgba(255, 255, 255, 0.35)" 
+              barCount={8} 
+            />
+          </Box>
+        ) : (
         <Box sx={{ 
           width: '100%', 
           height: mode === 'normal' ? '400px' : '380px',
@@ -231,6 +335,7 @@ export default function DevPlayground() {
             />
           )}
         </Box>
+        )}
 
         {/* Hardware Scan Progress UI */}
         {mode === 'hardware-scan' && (

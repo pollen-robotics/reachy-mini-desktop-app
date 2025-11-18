@@ -95,9 +95,14 @@ export function useRobotState(isActive) {
             });
           }
           
-          setRobotState({
-            isOn: motorsOn,
-            isMoving: isMoving,
+          // ✅ OPTIMIZED: Only update state if values actually changed (avoid unnecessary re-renders)
+          setRobotState(prev => {
+            const newState = { isOn: motorsOn, isMoving: isMoving };
+            // Return previous state if values haven't changed (prevents re-render)
+            if (prev.isOn === newState.isOn && prev.isMoving === newState.isMoving) {
+              return prev;
+            }
+            return newState;
           });
           
           // ✅ No resetTimeouts() here, handled by useDaemonHealthCheck

@@ -292,6 +292,7 @@ export default function ScanAnnotations({
             letterSpacing: '1px',
             textTransform: 'uppercase',
             opacity: 1,
+            // z-index hierarchy: 9999 = fullscreen overlays (scan annotations in 3D scene)
             zIndex: 9999,
             position: 'relative',
             background: 'none',

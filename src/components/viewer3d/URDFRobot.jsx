@@ -1,4 +1,4 @@
-import { useRef, useEffect, useLayoutEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useLayoutEffect, useState, useCallback, memo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { createCellShadingMaterial, updateCellShadingMaterial, createXrayMaterial, updateXrayMaterial } from './utils/materials';
@@ -10,7 +10,7 @@ import robotModelCache from '../../utils/robotModelCache';
  * Loads assets from /assets/robot-3d/ instead of daemon
  * Manages 3D model loading, head and antenna animations
  */
-export default function URDFRobot({ 
+function URDFRobot({ 
   headPose, // ✅ Matrice de pose (pour debug/comparaison, mais on utilise les joints)
   headJoints, // ✅ Array de 7 valeurs [yaw_body, stewart_1, ..., stewart_6]
   passiveJoints, // ✅ Array de 21 valeurs [passive_1_x, passive_1_y, passive_1_z, ..., passive_7_z] (optionnel, seulement si Placo actif)
@@ -33,6 +33,7 @@ export default function URDFRobot({
   const raycaster = useRef(new THREE.Raycaster());
   const mouse = useRef(new THREE.Vector2());
   const hoveredMesh = useRef(null);
+  const frameCountRef = useRef(0); // ✅ OPTIMIZED: Frame counter for deterministic throttling (optimization #2)
   
   // ✅ Reuse Three.js objects to avoid allocations on each frame
   const tempMatrix = useRef(new THREE.Matrix4());
@@ -705,8 +706,10 @@ export default function URDFRobot({
   }, [robot, antennas]); // Triggers on load AND when antennas change
   
   // ✅ Helper function pour comparer les arrays avec tolérance (évite les mises à jour inutiles)
-  // Tolérance augmentée à 0.001 pour éviter les micro-changements qui causent du flickering
-  const arraysEqual = (a, b, tolerance = 0.001) => {
+  // ✅ OPTIMIZED: Increased tolerance to 0.005 rad (~0.3°) to avoid micro-updates that cause frame drops
+  // Early return on reference equality for better performance
+  const arraysEqual = (a, b, tolerance = 0.005) => {
+    if (a === b) return true; // ✅ Early return if same reference (optimization #3)
     if (!a || !b) return a === b;
     if (a.length !== b.length) return false;
     for (let i = 0; i < a.length; i++) {
@@ -716,6 +719,7 @@ export default function URDFRobot({
   };
   
   // ✅ Animation loop synchronized with Three.js render (60 FPS)
+  // 🚀 GAME-CHANGING: Throttled to 10 Hz to match WebSocket frequency (83% reduction in checks)
   // useFrame is more performant than useEffect for Three.js updates
   useFrame(() => {
     if (!robot) return;
@@ -723,6 +727,12 @@ export default function URDFRobot({
     // ✅ Allow animations if robot is loaded (isActive OR forceLoad)
     // If forceLoad is true, we want robot to move even if isActive is temporarily false
     if (!isActive && !forceLoad) return;
+    
+    // 🚀 GAME-CHANGING: Throttle to 10 Hz (check every 6 frames at 60 FPS)
+    frameCountRef.current++;
+    if (frameCountRef.current % 6 !== 0) {
+      return; // Skip this frame - only process every 6th frame (~10 Hz)
+    }
 
     // STEP 1: Apply head joints (yaw_body + stewart_1 à stewart_6)
     // ✅ Utiliser les joints directement comme dans le code Rerun (plus précis que la matrice de pose)
@@ -789,7 +799,8 @@ export default function URDFRobot({
       }
     } else if (yawBody !== lastYawBodyRef.current && yawBody !== undefined && robot.joints['yaw_body']) {
       // ✅ Fallback: utiliser yawBody seul si headJoints n'est pas disponible
-      const yawChanged = Math.abs(yawBody - (lastYawBodyRef.current || 0)) > 0.001;
+      // ✅ OPTIMIZED: Increased tolerance to match arraysEqual (0.005 rad)
+      const yawChanged = Math.abs(yawBody - (lastYawBodyRef.current || 0)) > 0.005;
       if (yawChanged) {
       robot.setJointValue('yaw_body', yawBody);
       lastYawBodyRef.current = yawBody;
@@ -845,9 +856,10 @@ export default function URDFRobot({
     // ✅ IMPORTANT: Appliquer les antennes même si elles sont [0, 0] (repliées)
     // Vérifier si antennas est défini (peut être null, undefined, ou un array)
     if (antennas !== null && antennas !== undefined && Array.isArray(antennas) && antennas.length >= 2) {
+      // ✅ OPTIMIZED: Increased tolerance to match arraysEqual (0.005 rad) to avoid micro-updates
       const antennasChanged = !lastAntennasRef.current || 
-                             Math.abs(antennas[0] - lastAntennasRef.current[0]) > 0.001 ||
-                             Math.abs(antennas[1] - lastAntennasRef.current[1]) > 0.001;
+                             Math.abs(antennas[0] - lastAntennasRef.current[0]) > 0.005 ||
+                             Math.abs(antennas[1] - lastAntennasRef.current[1]) > 0.005;
     
     if (antennasChanged) {
       if (robot.joints['left_antenna']) {
@@ -862,10 +874,11 @@ export default function URDFRobot({
     }
     
     // ✅ Hover detection with raycaster for debug (throttled for performance)
-    // Disable in production or throttle to ~10 FPS max
+    // 🚀 GAME-CHANGING: Raycaster already throttled by useFrame throttling above (10 Hz)
+    // No need to throttle again since we're already at 10 Hz
     if (process.env.NODE_ENV === 'development') {
-      // Throttle raycaster to ~10 FPS (every 6 frames approximately)
-      if (Math.random() < 0.16) { // ~10% of frames
+      // frameCountRef already incremented above, so we're already at 10 Hz
+      // Just run raycaster on every throttled frame
     raycaster.current.setFromCamera(mouse.current, camera);
     const intersects = raycaster.current.intersectObject(robot, true);
     
@@ -879,7 +892,6 @@ export default function URDFRobot({
       }
     } else {
       hoveredMesh.current = null;
-        }
       }
     }
   });
@@ -926,3 +938,62 @@ export default function URDFRobot({
   ) : null;
 }
 
+// 🚀 GAME-CHANGING: Memoize URDFRobot to prevent unnecessary re-renders
+// Only re-render if props actually changed (deep comparison for arrays)
+const URDFRobotMemo = memo(URDFRobot, (prevProps, nextProps) => {
+  // Compare primitive props
+  if (
+    prevProps.isActive !== nextProps.isActive ||
+    prevProps.isTransparent !== nextProps.isTransparent ||
+    prevProps.forceLoad !== nextProps.forceLoad ||
+    prevProps.xrayOpacity !== nextProps.xrayOpacity ||
+    prevProps.yawBody !== nextProps.yawBody
+  ) {
+    return false; // Re-render
+  }
+  
+  // Compare cellShading object (shallow)
+  if (prevProps.cellShading?.enabled !== nextProps.cellShading?.enabled) {
+    return false; // Re-render
+  }
+  
+  // Compare arrays with tolerance (0.005 rad)
+  const arraysEqual = (a, b, tolerance = 0.005) => {
+    if (a === b) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (Math.abs(a[i] - b[i]) > tolerance) return false;
+    }
+    return true;
+  };
+  
+  // Compare headJoints
+  if (!arraysEqual(prevProps.headJoints, nextProps.headJoints)) {
+    return false; // Re-render
+  }
+  
+  // Compare passiveJoints
+  const prevPassive = Array.isArray(prevProps.passiveJoints) ? prevProps.passiveJoints : prevProps.passiveJoints?.array;
+  const nextPassive = Array.isArray(nextProps.passiveJoints) ? nextProps.passiveJoints : nextProps.passiveJoints?.array;
+  if (!arraysEqual(prevPassive, nextPassive)) {
+    return false; // Re-render
+  }
+  
+  // Compare antennas
+  if (!arraysEqual(prevProps.antennas, nextProps.antennas)) {
+    return false; // Re-render
+  }
+  
+  // Compare headPose
+  if (!arraysEqual(prevProps.headPose, nextProps.headPose)) {
+    return false; // Re-render
+  }
+  
+  // Callbacks are assumed stable (onMeshesReady, onRobotReady)
+  // If they change, we want to re-render anyway
+  
+  // All props are equal, skip re-render
+  return true;
+});
+
+export default URDFRobotMemo;

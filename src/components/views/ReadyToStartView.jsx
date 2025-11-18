@@ -2,7 +2,6 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Box, Typography, Button, CircularProgress, LinearProgress } from '@mui/material';
 import SystemUpdateIcon from '@mui/icons-material/SystemUpdate';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { getVersion } from '@tauri-apps/api/app';
 import reachyBusteSvg from '../../assets/reachy-buste.svg';
 import reachyUpdateBoxSvg from '../../assets/reachy-update-box.svg';
 import useAppStore from '../../store/useAppStore';
@@ -51,14 +50,6 @@ export default function ReadyToStartView({
   const { darkMode } = useAppStore();
   const [isButtonLoading, setIsButtonLoading] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
-  const [currentVersion, setCurrentVersion] = useState('');
-
-  useEffect(() => {
-    getVersion().then(setCurrentVersion).catch(() => {
-      // If API is not available, don't set version (will display "unknown")
-      setCurrentVersion(null);
-    });
-  }, []);
   
   // Choose a random message (memoized - never changes)
   const randomMessage = useMemo(() => {
@@ -102,58 +93,12 @@ export default function ReadyToStartView({
         overflow: 'hidden',
       }}
     >
-      {/* Titlebar */}
-      <Box
-        onMouseDown={async (e) => {
-          e.preventDefault();
-          try {
-            await appWindow.startDragging();
-          } catch (err) {
-            console.error('Drag error:', err);
-          }
-        }}
-        sx={{
-          height: 44,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          px: 2,
-          pt: 1.5,
-          cursor: 'move',
-          userSelect: 'none',
-          position: 'relative',
-          WebkitAppRegion: 'drag',
-        }}
-      >
-            {/* Space for macOS buttons (red, yellow, green) - approximately 78px */}
-        <Box sx={{ width: 78, height: 12, WebkitAppRegion: 'no-drag' }} />
-        <Box sx={{ height: 20 }} /> {/* Space for drag */}
-        {/* Version number - always visible when available */}
-        <Typography
-          sx={{
-            position: 'absolute',
-            top: 'calc(env(safe-area-inset-top, 0px) + 10px)',
-            right: 12,
-            fontSize: 9,
-            color: darkMode ? 'rgba(255, 255, 255, 0.35)' : 'rgba(0, 0, 0, 0.35)',
-            fontWeight: 500,
-            letterSpacing: '0.02em',
-            pointerEvents: 'none',
-            fontFamily: 'SF Mono, Monaco, Menlo, monospace',
-            lineHeight: 1.2,
-          }}
-        >
-          {currentVersion ? `Reachy Mini Desktop App v${currentVersion}` : 'Reachy Mini Desktop App unknown version'}
-        </Typography>
-        <Box sx={{ width: 20, height: 20 }} />
-      </Box>
-
       {/* Start daemon view */}
       <Box
         sx={{
           display: 'flex',
           flexDirection: 'column',
-          height: 'calc(100% - 44px)',
+          height: 'calc(100vh - 44px)',
           px: 4,
           position: 'relative',
         }}

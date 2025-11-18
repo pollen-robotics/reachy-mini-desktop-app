@@ -22,38 +22,13 @@ export default function TransitionView() {
         overflow: 'hidden',
       }}
     >
-      {/* Titlebar */}
-      <Box
-        onMouseDown={async (e) => {
-          e.preventDefault();
-          try {
-            await appWindow.startDragging();
-          } catch (err) {
-            console.error('Drag error:', err);
-          }
-        }}
-        sx={{
-          height: 44,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          px: 2,
-          cursor: 'move',
-          userSelect: 'none',
-        }}
-      >
-        <Box sx={{ width: 12, height: 12 }} />
-        <Box sx={{ height: 20 }} /> {/* Espace pour le drag */}
-        <Box sx={{ width: 20, height: 20 }} />
-      </Box>
-
       {/* Spinner centré */}
       <Box
         sx={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          height: 'calc(100% - 44px)',
+          height: 'calc(100vh - 44px)',
         }}
       >
         <CircularProgress 

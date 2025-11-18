@@ -18,8 +18,13 @@ export default function HeadFollowCamera({
   const cameraRef = useRef();
   const { set } = useThree();
   const frameCountRef = useRef(0);
+  // ✅ OPTIMIZED: Reuse Vector3 objects to avoid allocations on each frame
   const targetPositionRef = useRef(new THREE.Vector3());
   const targetLookAtRef = useRef(new THREE.Vector3());
+  const headWorldPositionRef = useRef(new THREE.Vector3());
+  const cameraWorldPositionRef = useRef(new THREE.Vector3());
+  const cameraWorldQuaternionRef = useRef(new THREE.Quaternion());
+  const forwardVectorRef = useRef(new THREE.Vector3(1, 0, 0));
 
   // Set this camera as active camera
   useEffect(() => {
@@ -36,48 +41,46 @@ export default function HeadFollowCamera({
     const headLink = robot.links?.['xl_330'];
     
     if (headLink) {
-      const headWorldPosition = new THREE.Vector3();
-      headLink.getWorldPosition(headWorldPosition);
+      // ✅ OPTIMIZED: Reuse Vector3 objects instead of creating new ones
+      headLink.getWorldPosition(headWorldPositionRef.current);
       
       if (lockToOrientation) {
         // 🔒 LOCKED MODE: Follows head orientation via camera frame
         const cameraFrame = robot.links?.['camera'];
         
         if (cameraFrame) {
-          const cameraWorldPosition = new THREE.Vector3();
-          const cameraWorldQuaternion = new THREE.Quaternion();
-          cameraFrame.getWorldPosition(cameraWorldPosition);
-          cameraFrame.getWorldQuaternion(cameraWorldQuaternion);
+          cameraFrame.getWorldPosition(cameraWorldPositionRef.current);
+          cameraFrame.getWorldQuaternion(cameraWorldQuaternionRef.current);
           
-          // Calculate forward vector based on orientation
-          const forwardVector = new THREE.Vector3(1, 0, 0);
-          forwardVector.applyQuaternion(cameraWorldQuaternion);
+          // Calculate forward vector based on orientation (reuse existing vector)
+          forwardVectorRef.current.set(1, 0, 0);
+          forwardVectorRef.current.applyQuaternion(cameraWorldQuaternionRef.current);
           
           const distance = Math.sqrt(offset[0]**2 + offset[1]**2 + offset[2]**2) || 0.26;
-          const targetPosition = cameraWorldPosition.clone().add(
-            forwardVector.multiplyScalar(distance)
-          );
+          targetPositionRef.current.copy(cameraWorldPositionRef.current);
+          targetPositionRef.current.add(forwardVectorRef.current.multiplyScalar(distance));
           
           // Smoothing to avoid jitter
-          cameraRef.current.position.lerp(targetPosition, 0.1);
-          cameraRef.current.lookAt(cameraWorldPosition);
+          cameraRef.current.position.lerp(targetPositionRef.current, 0.1);
+          cameraRef.current.lookAt(cameraWorldPositionRef.current);
         } else {
           cameraRef.current.position.set(...offset);
-          cameraRef.current.lookAt(headWorldPosition);
+          cameraRef.current.lookAt(headWorldPositionRef.current);
         }
       } else {
         // 🔓 UNLOCKED MODE: FIXED position and target (doesn't follow anything)
-        // Camera stays at fixed position in world
-        const fixedCameraPosition = new THREE.Vector3(0, 0.25, 0.32);
-        const fixedTarget = new THREE.Vector3(0, 0.2, 0);
+        // Camera stays at fixed position in world (reuse vectors)
+        targetPositionRef.current.set(0, 0.25, 0.32);
+        targetLookAtRef.current.set(0, 0.2, 0);
         
-        cameraRef.current.position.copy(fixedCameraPosition);
-        cameraRef.current.lookAt(fixedTarget);
+        cameraRef.current.position.copy(targetPositionRef.current);
+        cameraRef.current.lookAt(targetLookAtRef.current);
       }
     } else {
       // Fallback: fixed position if no head found
       cameraRef.current.position.set(...offset);
-      cameraRef.current.lookAt(0, 0.2, 0);
+      targetLookAtRef.current.set(0, 0.2, 0);
+      cameraRef.current.lookAt(targetLookAtRef.current);
     }
   });
 

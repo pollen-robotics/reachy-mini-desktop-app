@@ -184,6 +184,7 @@ export default function QuickActionsDonut({
                 transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                 opacity: isActive && !isBusy && isReady ? 1 : 0.3,
                 transform: isSelected ? 'scale(1.3)' : 'scale(1)',
+                // z-index hierarchy: 1 = base, 10 = selected UI control
                 zIndex: isSelected ? 10 : 1,
                 border: isSelected
                   ? `2px solid ${darkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.2)'}`

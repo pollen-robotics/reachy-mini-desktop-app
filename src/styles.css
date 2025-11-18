@@ -31,6 +31,52 @@ body {
   height: 100vh;
 }
 
+/* Force transparent background and no shadow for Accordion in right column */
+.MuiAccordion-root {
+  box-shadow: none !important;
+  background-color: transparent !important;
+  background: transparent !important;
+}
+
+.MuiAccordion-root.Mui-expanded {
+  box-shadow: none !important;
+  background-color: transparent !important;
+  background: transparent !important;
+}
+
+.MuiAccordionSummary-root {
+  background-color: transparent !important;
+  background: transparent !important;
+}
+
+.MuiAccordionDetails-root {
+  background-color: transparent !important;
+  background: transparent !important;
+}
+
+/* Force transparent background for Paper component used by Accordion */
+.MuiPaper-root.MuiAccordion-root {
+  box-shadow: none !important;
+  background-color: transparent !important;
+  background: transparent !important;
+}
+
+.MuiPaper-root.MuiAccordion-root.Mui-expanded {
+  box-shadow: none !important;
+  background-color: transparent !important;
+  background: transparent !important;
+}
+
+.MuiPaper-root.MuiAccordionSummary-root {
+  background-color: transparent !important;
+  background: transparent !important;
+}
+
+.MuiPaper-root.MuiAccordionDetails-root {
+  background-color: transparent !important;
+  background: transparent !important;
+}
+
 .container {
   max-width: 500px;
   padding: 2rem;
