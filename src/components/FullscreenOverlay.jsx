@@ -20,7 +20,7 @@ import CloseIcon from '@mui/icons-material/Close';
  * @param {function} onClose - Callback when overlay should close
  * @param {boolean} darkMode - Dark mode theme
  * @param {number} zIndex - z-index value (default: 9999)
- * @param {boolean} showCloseButton - Show close button top-right (default: true)
+ * @param {boolean} showCloseButton - Show close button top-right (default: false - modals handle their own close button)
  * @param {boolean} usePortal - Render in portal (default: true)
  * @param {number} backdropBlur - Backdrop blur intensity in px (default: 20)
  * @param {number} backdropOpacity - Backdrop opacity (0-1, default: 0.92 for dark, 0.95 for light)
@@ -35,7 +35,7 @@ export default function FullscreenOverlay({
   onClose,
   darkMode,
   zIndex = 9999,
-  showCloseButton = true,
+  showCloseButton = false,
   usePortal = true,
   backdropBlur = 20,
   backdropOpacity,
@@ -66,6 +66,13 @@ export default function FullscreenOverlay({
     }
   };
 
+  // Use MUI default background colors to match the app background
+  // Dark mode: #121212 (MUI default), Light mode: #ffffff (MUI default)
+  // Convert hex to rgba with opacity
+  const overlayBgColor = darkMode 
+    ? `rgba(18, 18, 18, ${defaultBackdropOpacity})` // #121212 with opacity
+    : `rgba(255, 255, 255, ${defaultBackdropOpacity})`; // #ffffff with opacity
+
   const overlayContent = (
     <Box
       onClick={handleBackdropClick}
@@ -75,9 +82,7 @@ export default function FullscreenOverlay({
         left: 0,
         right: 0,
         bottom: 0,
-        bgcolor: darkMode 
-          ? `rgba(0, 0, 0, ${defaultBackdropOpacity})` 
-          : `rgba(255, 255, 255, ${defaultBackdropOpacity})`,
+        bgcolor: overlayBgColor,
         backdropFilter: `blur(${backdropBlur}px)`,
         WebkitBackdropFilter: `blur(${backdropBlur}px)`,
         display: 'flex',
@@ -92,27 +97,6 @@ export default function FullscreenOverlay({
         overflow: 'auto',
       }}
     >
-      {/* Close button - top right */}
-      {showCloseButton && (
-        <IconButton
-          onClick={onClose}
-          sx={{
-            position: 'absolute',
-            top: 18,
-            right: 18,
-            color: darkMode ? '#888' : '#666',
-            bgcolor: darkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)',
-            '&:hover': {
-              bgcolor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-              color: darkMode ? '#fff' : '#333',
-            },
-            zIndex: zIndex + 1, // Above overlay content
-          }}
-        >
-          <CloseIcon sx={{ fontSize: 20 }} />
-        </IconButton>
-      )}
-
       {/* Content wrapper - prevents click propagation */}
       <Box
         onClick={(e) => e.stopPropagation()}

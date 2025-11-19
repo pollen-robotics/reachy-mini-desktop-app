@@ -541,33 +541,6 @@ function ActiveRobotView({
                 <InfoOutlinedIcon sx={{ fontSize: 12, color: darkMode ? '#666' : '#999', opacity: 0.6, cursor: 'help' }} />
               </Tooltip>
             </Box>
-            <Typography
-              onClick={async (e) => {
-                e.stopPropagation();
-                try {
-                  // Opens in external system browser (Safari, Chrome, etc.)
-                  await open('http://localhost:8000/docs');
-                } catch (err) {
-                  console.error('Failed to open API docs:', err);
-                }
-              }}
-              sx={{
-                fontSize: 10,
-                fontWeight: 500,
-                color: darkMode ? '#888' : '#777',
-                textDecoration: 'none',
-                opacity: 0.85,
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                '&:hover': {
-                  opacity: 1,
-                  color: '#FF9500',
-                  textDecoration: 'underline',
-                },
-              }}
-            >
-              API Docs →
-            </Typography>
           </Box>
           
               <LogConsole logs={logs} darkMode={darkMode} />
@@ -615,75 +588,100 @@ function ActiveRobotView({
           left: '50% !important',
           right: 'auto !important',
           transform: 'translateX(-50%) !important',
+          display: 'flex !important',
+          justifyContent: 'center !important',
+          alignItems: 'center !important',
+          width: '100%',
+          '& > *': {
+            margin: '0 auto !important',
+          },
         }}
       >
         <Box 
           sx={{ 
             position: 'relative', 
             overflow: 'hidden', 
-            borderRadius: '12px',
+            borderRadius: '14px',
             backdropFilter: 'blur(20px)',
             WebkitBackdropFilter: 'blur(20px)',
-            boxShadow: toast.severity === 'success'
-              ? (darkMode ? '0 8px 32px rgba(34, 197, 94, 0.3), 0 2px 8px rgba(0, 0, 0, 0.4)' : '0 8px 32px rgba(34, 197, 94, 0.25), 0 2px 8px rgba(0, 0, 0, 0.15)')
-              : toast.severity === 'error'
-              ? (darkMode ? '0 8px 32px rgba(239, 68, 68, 0.3), 0 2px 8px rgba(0, 0, 0, 0.4)' : '0 8px 32px rgba(239, 68, 68, 0.25), 0 2px 8px rgba(0, 0, 0, 0.15)')
-              : (darkMode ? '0 8px 32px rgba(255, 149, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.4)' : '0 8px 32px rgba(255, 149, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.15)'),
+            boxShadow: darkMode 
+              ? '0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3)'
+              : '0 8px 24px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.1)',
           }}
         >
-          {/* Animated time bar - More visible */}
-          <Box
-            sx={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              height: '4px',
-              background: toast.severity === 'success' 
-                ? 'linear-gradient(90deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 100%)'
-                : toast.severity === 'error'
-                ? 'linear-gradient(90deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 100%)'
-                : 'linear-gradient(90deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 100%)',
-              zIndex: 2,
-              transition: 'width 0.02s linear',
-              width: `${toastProgress}%`,
-              borderRadius: '12px 0 0 0',
-              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
-            }}
-          />
-          
-          {/* Main content with semi-transparent background and border */}
+          {/* Main content */}
           <Box
             sx={{
               position: 'relative',
-              borderRadius: '12px',
+              borderRadius: '14px',
               fontSize: 14,
               fontWeight: 600,
               letterSpacing: '-0.01em',
-              // Semi-transparent background with opacity 0.8
-              background: toast.severity === 'success'
-                ? 'rgba(34, 197, 94, 0.8)'
+              background: darkMode
+                ? (toast.severity === 'success'
+                  ? 'rgba(34, 197, 94, 0.25)'
+                  : toast.severity === 'error'
+                  ? 'rgba(239, 68, 68, 0.25)'
+                  : 'rgba(255, 149, 0, 0.25)')
+                : (toast.severity === 'success'
+                  ? 'rgba(34, 197, 94, 0.2)'
+                  : toast.severity === 'error'
+                  ? 'rgba(239, 68, 68, 0.2)'
+                  : 'rgba(255, 149, 0, 0.2)'),
+              border: `1px solid ${toast.severity === 'success'
+                ? darkMode ? 'rgba(34, 197, 94, 0.85)' : 'rgba(34, 197, 94, 0.75)'
                 : toast.severity === 'error'
-                ? 'rgba(239, 68, 68, 0.8)'
-                : 'rgba(255, 149, 0, 0.8)',
-              backdropFilter: 'blur(20px)',
-              WebkitBackdropFilter: 'blur(20px)',
-              border: toast.severity === 'success'
-                ? '1px solid rgba(34, 197, 94, 0.5)'
+                ? darkMode ? 'rgba(239, 68, 68, 0.85)' : 'rgba(239, 68, 68, 0.75)'
+                : darkMode ? 'rgba(255, 149, 0, 0.85)' : 'rgba(255, 149, 0, 0.75)'}`,
+              color: toast.severity === 'success'
+                ? darkMode ? '#4ade80' : '#15803d'
                 : toast.severity === 'error'
-                ? '1px solid rgba(239, 68, 68, 0.5)'
-                : '1px solid rgba(255, 149, 0, 0.5)',
-              color: '#fff',
-              minWidth: 220,
-              px: 3,
-              py: 1.75,
-              pt: 2.5,
+                ? darkMode ? '#f87171' : '#b91c1c'
+                : darkMode ? '#ffb340' : '#c2410c',
+              minWidth: 200,
+              px: 2.5,
+              py: 1.5,
+              pt: 2,
               textAlign: 'center',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Animated time bar - Full surface */}
+            <Box
+              sx={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                bottom: 0,
+                right: 0,
+                width: `${toastProgress}%`,
+                height: '100%',
+                background: toast.severity === 'success' 
+                  ? 'rgba(34, 197, 94, 0.15)'
+                  : toast.severity === 'error'
+                  ? 'rgba(239, 68, 68, 0.15)'
+                  : 'rgba(255, 149, 0, 0.15)',
+                zIndex: 0,
+                transition: 'width 0.02s linear',
+                borderTopLeftRadius: '14px',
+                borderBottomLeftRadius: '14px',
+                borderTopRightRadius: 0,
+                borderBottomRightRadius: 0,
+              }}
+            />
+            
+            {/* Text content - Above the progress bar */}
+            <Box
+              sx={{
+                position: 'relative',
+                zIndex: 1,
             }}
           >
             {toast.message}
+            </Box>
           </Box>
         </Box>
       </Snackbar>

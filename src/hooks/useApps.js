@@ -7,7 +7,7 @@ import { fetchHuggingFaceAppList } from '../views/active-robot/application-store
  * Hook to manage applications (list, installation, launch)
  * Integrated with the FastAPI daemon API
  */
-export function useApps(isActive) {
+export function useApps(isActive, official = true) {
   const appStore = useAppStore();
   const { addFrontendLog } = appStore; // ⚡ Destructure for compatibility
   const [availableApps, setAvailableApps] = useState([]);
@@ -21,18 +21,115 @@ export function useApps(isActive) {
   const jobPollingIntervals = useRef(new Map());
   
   /**
+   * Fetch official apps directly from Hugging Face
+   */
+  const fetchOfficialApps = useCallback(async () => {
+    const OFFICIAL_APP_LIST_URL = 'https://huggingface.co/datasets/pollen-robotics/reachy-mini-official-app-store/raw/main/app-list.json';
+    const HF_SPACES_API_URL = 'https://huggingface.co/api/spaces';
+    
+    try {
+      // 1. Fetch the list of official app IDs
+      const listResponse = await fetch(OFFICIAL_APP_LIST_URL);
+      if (!listResponse.ok) {
+        throw new Error(`Failed to fetch official app list: ${listResponse.status}`);
+      }
+      const authorizedIds = await listResponse.json();
+      
+      if (!Array.isArray(authorizedIds)) {
+        return [];
+      }
+      
+      // 2. Fetch data for each space in parallel
+      const spacePromises = authorizedIds.map(async (spaceId) => {
+        try {
+          const spaceResponse = await fetch(`${HF_SPACES_API_URL}/${spaceId}`);
+          if (spaceResponse.ok) {
+            return await spaceResponse.json();
+          }
+          return null;
+        } catch (err) {
+          console.warn(`⚠️ Failed to fetch space ${spaceId}:`, err.message);
+          return null;
+        }
+      });
+      
+      const spacesData = await Promise.all(spacePromises);
+      
+      // 3. Build AppInfo list
+      const apps = [];
+      for (const item of spacesData) {
+        if (!item || !item.id) continue;
+        
+        apps.push({
+          name: item.id.split('/').pop(),
+          id: item.id,
+          description: item.cardData?.short_description || '',
+          url: `https://huggingface.co/spaces/${item.id}`,
+          source_kind: 'hf_space',
+          extra: item,
+        });
+      }
+      
+      return apps;
+    } catch (error) {
+      console.error('❌ Failed to fetch official apps:', error);
+      return [];
+    }
+  }, []);
+  
+  /**
    * Fetch all available apps
    * Combines apps from Hugging Face dataset with installed apps from daemon
+   * @param {boolean} official - If true, fetch only official apps directly from HF. If false, fetch all apps from daemon.
    */
-  const fetchAvailableApps = useCallback(async () => {
+  const fetchAvailableApps = useCallback(async (officialParam = official) => {
     try {
       setIsLoading(true);
       
-      // 1. Fetch apps from daemon (primary source - contains all available apps)
       let daemonApps = [];
-      try {
+      let installedAppsFromDaemon = [];
+      
+      if (officialParam) {
+        // Fetch official apps directly from Hugging Face
+        console.log(`🔄 Fetching official apps directly from HF`);
+        daemonApps = await fetchOfficialApps();
+        console.log(`✅ Fetched ${daemonApps.length} official apps`);
+        console.log('📦 Raw official apps data:', JSON.stringify(daemonApps, null, 2));
+        
+        // Log first app structure for debugging
+        if (daemonApps.length > 0) {
+          console.log('🔍 First official app structure:', {
+            name: daemonApps[0].name,
+            id: daemonApps[0].id,
+            extra: daemonApps[0].extra,
+            hasRuntime: !!daemonApps[0].extra?.runtime,
+            runtime: daemonApps[0].extra?.runtime,
+          });
+        }
+        
+        // Also fetch installed apps from daemon
+        try {
+          const installedUrl = buildApiUrl('/api/apps/list-available/installed');
+          const installedResponse = await fetchWithTimeout(
+            installedUrl,
+            {},
+            DAEMON_CONFIG.TIMEOUTS.APPS_LIST,
+            { silent: true }
+          );
+          if (installedResponse.ok) {
+            installedAppsFromDaemon = await installedResponse.json();
+            console.log(`✅ Fetched ${installedAppsFromDaemon.length} installed apps from daemon`);
+          }
+        } catch (err) {
+          console.warn('⚠️ Failed to fetch installed apps:', err.message);
+        }
+      } else {
+        // Fetch all apps from daemon
+        try {
+          const url = buildApiUrl(`/api/apps/list-available?official=false`);
+          console.log(`🔄 Fetching all apps from daemon`);
         const response = await fetchWithTimeout(
-          buildApiUrl('/api/apps/list-available'),
+            url,
           {},
           DAEMON_CONFIG.TIMEOUTS.APPS_LIST,
           { silent: true } // ⚡ Silent polling
@@ -40,11 +137,76 @@ export function useApps(isActive) {
         
         if (response.ok) {
           daemonApps = await response.json();
+            console.log(`✅ Fetched ${daemonApps.length} apps from daemon`);
+            console.log('📦 Raw apps data from daemon:', JSON.stringify(daemonApps, null, 2));
+            
+            // Log first app structure for debugging
+            if (daemonApps.length > 0) {
+              console.log('🔍 First app structure:', {
+                name: daemonApps[0].name,
+                id: daemonApps[0].id,
+                extra: daemonApps[0].extra,
+                hasRuntime: !!daemonApps[0].extra?.runtime,
+                runtime: daemonApps[0].extra?.runtime,
+              });
+            }
+            
+            // Enrich non-official apps with runtime data from Hugging Face API
+            // (backend doesn't provide runtime for non-official apps)
+            const HF_SPACES_API_URL = 'https://huggingface.co/api/spaces';
+            const runtimePromises = daemonApps.map(async (app) => {
+              // Skip if already has runtime
+              if (app.extra?.runtime) {
+                return app;
+              }
+              
+              // Get space ID from app.id (root level) or app.extra.id
+              const spaceId = app.id || app.extra?.id;
+              if (!spaceId) {
+                console.warn(`⚠️ No ID found for app ${app.name}, skipping runtime enrichment`);
+                return app;
+              }
+              
+              try {
+                // Build space ID (might be full path or just name)
+                const fullSpaceId = spaceId.includes('/') ? spaceId : `pollen-robotics/${spaceId}`;
+                console.log(`🔄 Fetching runtime for ${fullSpaceId}`);
+                const spaceResponse = await fetch(`${HF_SPACES_API_URL}/${fullSpaceId}`);
+                if (spaceResponse.ok) {
+                  const spaceData = await spaceResponse.json();
+                  if (spaceData.runtime) {
+                    // Add runtime to extra
+                    app.extra = {
+                      ...app.extra,
+                      runtime: spaceData.runtime,
+                    };
+                    console.log(`✅ Added runtime for ${app.name}:`, spaceData.runtime);
+                  } else {
+                    console.log(`⚠️ No runtime data in API response for ${app.name}`);
+                  }
+                } else {
+                  console.warn(`⚠️ Failed to fetch runtime for ${fullSpaceId}: ${spaceResponse.status}`);
+                }
+              } catch (err) {
+                console.warn(`⚠️ Error fetching runtime for ${app.name}:`, err.message);
+              }
+              return app;
+            });
+            
+            daemonApps = await Promise.all(runtimePromises);
+            const appsWithRuntime = daemonApps.filter(app => app.extra?.runtime).length;
+            console.log(`✅ Enriched ${appsWithRuntime}/${daemonApps.length} apps with runtime data`);
         } else {
           console.warn('⚠️ Failed to fetch apps from daemon:', response.status);
         }
       } catch (daemonErr) {
         console.warn('⚠️ Daemon not available:', daemonErr.message);
+        }
+      }
+      
+      // Combine official apps with installed apps if needed
+      if (officialParam && installedAppsFromDaemon.length > 0) {
+        daemonApps = [...daemonApps, ...installedAppsFromDaemon];
       }
       
       // 2. Fetch metadata from Hugging Face dataset (to enrich with likes, downloads, etc.)
@@ -139,33 +301,53 @@ export function useApps(isActive) {
           ) : null);
         
         
+        // Consolidate runtime: priority is daemonApp.extra.runtime (from backend or fetchOfficialApps)
+        // This ensures runtime is preserved for both official and non-official apps
+        const consolidatedRuntime = daemonApp.extra?.runtime || hfMetadata?.runtime || null;
+        
+        // Debug: log runtime data for troubleshooting
+        if (daemonApp.name && (daemonApp.extra?.runtime || hfMetadata?.runtime)) {
+          console.log(`🔍 Runtime for "${daemonApp.name}":`, {
+            fromDaemon: daemonApp.extra?.runtime,
+            fromHF: hfMetadata?.runtime,
+            consolidated: consolidatedRuntime,
+          });
+        }
+        
         // Build enriched app
         const enrichedApp = {
           name: daemonApp.name,
-          id: hfMetadata?.id || daemonApp.name,
+          id: hfMetadata?.id || daemonApp.id || daemonApp.name,
           description: daemonApp.description || hfMetadata?.description || '',
           url: daemonApp.url || (hfMetadata?.id 
-            ? `https://huggingface.co/spaces/pollen-robotics/${hfMetadata.id}` 
+            ? `https://huggingface.co/spaces/${hfMetadata.id}` 
             : null),
           source_kind: daemonApp.source_kind,
           extra: {
             // Spread daemonApp.extra first (to preserve any existing data)
             ...daemonApp.extra,
-            // Then ALWAYS override cardData with correct emoji (this ensures our emoji wins)
+            // Preserve cardData from daemon (contains colorFrom, colorTo, etc.) and enrich with emoji
             // Priority: HF metadata > daemon extra.cardData > daemon icon > fallback
             cardData: {
+              // Preserve all existing cardData fields (colorFrom, colorTo, title, etc.)
+              ...(daemonApp.extra?.cardData || {}),
+              // Override emoji only if we have a better source
               emoji: hfMetadata?.icon || 
                      daemonApp.extra?.cardData?.emoji || 
                      daemonApp.icon || 
                      daemonApp.emoji || // Also check for emoji field directly
+                     daemonApp.extra?.cardData?.emoji || // Fallback to existing emoji
                      '📦',
             },
-            // Add HF metadata if available
+            // Add HF metadata if available (but don't override if daemon already has it)
             ...(hfMetadata && {
-              likes: hfMetadata.likes || 0,
-              downloads: hfMetadata.downloads || 0,
-              lastModified: hfMetadata.lastModified || new Date().toISOString(),
+              likes: hfMetadata.likes || daemonApp.extra?.likes || 0,
+              downloads: hfMetadata.downloads || daemonApp.extra?.downloads || 0,
+              lastModified: hfMetadata.lastModified || daemonApp.extra?.lastModified || new Date().toISOString(),
             }),
+            // Explicitly set runtime from consolidated value (preserves runtime for both official and non-official apps)
+            // This must come after the spread to ensure it's not overridden
+            runtime: consolidatedRuntime,
           },
           // Daemon data (version, path if installed)
           ...(daemonApp.version && { version: daemonApp.version }),
@@ -204,8 +386,20 @@ export function useApps(isActive) {
             ...installedApp.extra,
           };
           
-          // Add emoji if needed
-          if (needsEmoji && matchingAvailable.extra?.cardData?.emoji) {
+          // Preserve and enrich cardData if needed (preserve colorFrom, colorTo, etc.)
+          if (matchingAvailable.extra?.cardData) {
+            enrichedExtra.cardData = {
+              // Preserve existing cardData fields
+              ...(enrichedExtra.cardData || {}),
+              // Merge with available app's cardData (to get colorFrom, colorTo, etc.)
+              ...matchingAvailable.extra.cardData,
+              // Override emoji only if needed
+              ...(needsEmoji && matchingAvailable.extra.cardData.emoji ? {
+                emoji: matchingAvailable.extra.cardData.emoji
+              } : {}),
+            };
+          } else if (needsEmoji && matchingAvailable.extra?.cardData?.emoji) {
+            // Fallback: only add emoji if cardData doesn't exist
             enrichedExtra.cardData = {
               ...(enrichedExtra.cardData || {}),
               emoji: matchingAvailable.extra.cardData.emoji,
@@ -215,6 +409,11 @@ export function useApps(isActive) {
           // Add lastModified if needed
           if (needsLastModified && matchingAvailable.extra?.lastModified) {
             enrichedExtra.lastModified = matchingAvailable.extra.lastModified;
+          }
+          
+          // Preserve likes and other metadata from available app
+          if (matchingAvailable.extra?.likes !== undefined) {
+            enrichedExtra.likes = matchingAvailable.extra.likes;
           }
           
           return {
@@ -236,7 +435,7 @@ export function useApps(isActive) {
       setIsLoading(false);
       return [];
     }
-  }, []);
+  }, [official, fetchOfficialApps]);
   
   /**
    * Fetch job status (install/remove)
@@ -693,19 +892,20 @@ export function useApps(isActive) {
   
   /**
    * Initial fetch + polling of current app status
+   * Refetches when official changes
    */
   useEffect(() => {
     if (!isActive) return;
     
-    // Initial fetch
-    fetchAvailableApps();
+    // Fetch apps (will refetch when official changes)
+    fetchAvailableApps(official);
     fetchCurrentAppStatus();
     
     // Polling current app status
     const interval = setInterval(fetchCurrentAppStatus, DAEMON_CONFIG.INTERVALS.APP_STATUS);
     
     return () => clearInterval(interval);
-  }, [isActive, fetchAvailableApps, fetchCurrentAppStatus]);
+  }, [isActive, official, fetchAvailableApps, fetchCurrentAppStatus]);
   
   return {
     // Data

@@ -247,7 +247,7 @@ function Scene({
       return cameraMeshes.length > 0 ? cameraMeshes : [errorFocusMesh];
     }
 
-    // Otherwise, return just the error mesh
+      // Otherwise, return just the error mesh
     return [errorFocusMesh];
   }, [errorFocusMesh, robotRef, outlineMeshes]);
 

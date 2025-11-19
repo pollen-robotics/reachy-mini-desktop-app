@@ -142,6 +142,11 @@ export async function fetchHuggingFaceAppList() {
     });
     
     if (!response.ok) {
+      // Silently return empty array for 401/404 errors (dataset may not exist or be private)
+      // The backend already provides all necessary data from Hugging Face Spaces API
+      if (response.status === 401 || response.status === 404) {
+        return [];
+      }
       throw new Error(`Failed to fetch app list: ${response.status} ${response.statusText}`);
     }
     
@@ -205,8 +210,11 @@ export async function fetchHuggingFaceAppList() {
     
     return enrichedApps || [];
   } catch (error) {
-    console.error('❌ Failed to fetch Hugging Face app list:', error);
-    console.error('❌ Error details:', error.message);
+    // Silently return empty array on error - backend already provides all necessary data
+    // Only log non-network errors (parsing errors, etc.)
+    if (!error.message.includes('Failed to fetch') && !error.message.includes('401') && !error.message.includes('404')) {
+      console.warn('⚠️ Failed to fetch Hugging Face app list:', error.message);
+    }
     // Return empty array on error to prevent breaking the app
     return [];
   }

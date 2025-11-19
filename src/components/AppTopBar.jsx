@@ -40,7 +40,7 @@ export default function AppTopBar() {
           userSelect: 'none',
           WebkitAppRegion: 'drag',
           bgcolor: 'transparent',
-          zIndex: 10000,
+          zIndex: 99999,
         }}
       />
       {/* Version number - always visible when available */}
@@ -56,7 +56,7 @@ export default function AppTopBar() {
           pointerEvents: 'none',
           fontFamily: 'SF Mono, Monaco, Menlo, monospace',
           lineHeight: 1.2,
-          zIndex: 10001,
+          zIndex: 99999,
         }}
       >
 {currentVersion ? `v${currentVersion}` : 'unknown version'}

@@ -13,7 +13,7 @@ const getStoredPreference = () => {
   return stored ? JSON.parse(stored) : null;
 };
 
-  // Determine initial dark mode
+// Determine initial dark mode
 const getInitialDarkMode = () => {
   const storedPreference = getStoredPreference();
   // If user has stored preference, use it
@@ -85,7 +85,7 @@ const useAppStore = create((set) => ({
   // Update robotStatus + busyReason + legacy states (backwards compat)
   transitionTo: {
     disconnected: () => {
-      lastLoggedStatus = 'disconnected';
+        lastLoggedStatus = 'disconnected';
       set({
         robotStatus: 'disconnected',
         busyReason: null,
@@ -99,7 +99,7 @@ const useAppStore = create((set) => ({
     },
     
     readyToStart: () => {
-      lastLoggedStatus = 'ready-to-start';
+        lastLoggedStatus = 'ready-to-start';
       set({
         robotStatus: 'ready-to-start',
         busyReason: null,
@@ -110,7 +110,7 @@ const useAppStore = create((set) => ({
     },
     
     starting: () => {
-      lastLoggedStatus = 'starting';
+        lastLoggedStatus = 'starting';
       set({
         robotStatus: 'starting',
         busyReason: null,
@@ -121,7 +121,7 @@ const useAppStore = create((set) => ({
     },
     
     ready: () => {
-      lastLoggedStatus = 'ready';
+        lastLoggedStatus = 'ready';
       set({
         robotStatus: 'ready',
         busyReason: null,
@@ -136,7 +136,7 @@ const useAppStore = create((set) => ({
     
     busy: (reason) => {
       const newStatus = `busy (${reason})`;
-      lastLoggedStatus = newStatus;
+        lastLoggedStatus = newStatus;
       set((state) => {
         const updates = {
           robotStatus: 'busy',
@@ -154,7 +154,7 @@ const useAppStore = create((set) => ({
     },
     
     stopping: () => {
-      lastLoggedStatus = 'stopping';
+        lastLoggedStatus = 'stopping';
       set({
         robotStatus: 'stopping',
         busyReason: null,
@@ -164,7 +164,7 @@ const useAppStore = create((set) => ({
     },
     
     crashed: () => {
-      lastLoggedStatus = 'crashed';
+        lastLoggedStatus = 'crashed';
       set({
         robotStatus: 'crashed',
         busyReason: null,

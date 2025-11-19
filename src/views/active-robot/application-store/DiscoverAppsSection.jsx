@@ -4,6 +4,7 @@ import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
 import SearchIcon from '@mui/icons-material/Search';
 import StarOutlineIcon from '@mui/icons-material/StarOutline';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import ReachyBox from '../../../assets/reachy-update-box.svg';
 import { open } from '@tauri-apps/plugin-shell';
 import hfLogo from '../../../assets/hf-logo.svg';
 
@@ -20,6 +21,7 @@ export default function DiscoverAppsSection({
   getJobInfo,
   searchQuery,
   setSearchQuery,
+  onOpenCreateTutorial, // Callback to open Create App Tutorial modal
 }) {
   return (
     <Box sx={{ px: 3, pb: 3 }}>
@@ -426,13 +428,7 @@ export default function DiscoverAppsSection({
         {/* Ghost item: Build your own */}
         <Box
           component="button"
-          onClick={async () => {
-            try {
-              await open('https://huggingface.co/new-space');
-            } catch (err) {
-              console.error('Failed to open Hugging Face URL:', err);
-            }
-          }}
+          onClick={onOpenCreateTutorial}
           sx={{
             display: 'flex',
             flexDirection: 'row',
@@ -441,14 +437,14 @@ export default function DiscoverAppsSection({
             p: 2.5,
             borderRadius: '14px',
             bgcolor: 'transparent',
-            border: (theme) => `1px dashed ${theme.palette.primary.main}`,
+            border: `1px dashed ${darkMode ? 'rgba(255, 149, 0, 0.4)' : 'rgba(255, 149, 0, 0.5)'}`,
             cursor: 'pointer',
             transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
             position: 'relative',
             overflow: 'hidden',
             '&:hover': {
-              borderColor: 'primary.main',
-              bgcolor: (theme) => darkMode 
+              borderColor: darkMode ? 'rgba(255, 149, 0, 0.6)' : 'rgba(255, 149, 0, 0.7)',
+              bgcolor: darkMode 
                 ? 'rgba(255, 149, 0, 0.05)' 
                 : 'rgba(255, 149, 0, 0.03)',
               transform: 'translateY(-1px)',
@@ -479,30 +475,38 @@ export default function DiscoverAppsSection({
               justifyContent: 'center',
               flexShrink: 0,
               transition: 'all 0.25s ease',
-              fontSize: 24,
             }}
           >
-            📦
+            <Box
+              component="img"
+              src={ReachyBox}
+              alt="Reachy Box"
+              sx={{
+                width: 24,
+                height: 24,
+                opacity: darkMode ? 0.6 : 0.7,
+            }}
+            />
           </Box>
           
           {/* Text content */}
           <Box sx={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
             <Typography
-              color="primary"
               sx={{
                 fontSize: 13,
                 fontWeight: 700,
+                color: darkMode ? 'rgba(255, 149, 0, 0.6)' : 'rgba(255, 149, 0, 0.7)',
                 mb: 0.3,
                 letterSpacing: '-0.2px',
                 textAlign: 'left',
               }}
             >
-              Build your own app
+              Build your own
             </Typography>
             <Typography
               sx={{
                 fontSize: 10,
-                color: darkMode ? '#888' : '#999',
+                color: darkMode ? '#666' : '#888',
                 lineHeight: 1.4,
                 textAlign: 'left',
               }}
