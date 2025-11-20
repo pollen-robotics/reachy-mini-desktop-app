@@ -16,7 +16,7 @@ jobs:
     permissions:
       contents: write
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include:
           - os: macos-latest
@@ -70,85 +70,85 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           if [ -z "$APPLE_CERTIFICATE" ] || [ -z "$APPLE_SIGNING_IDENTITY" ] || [ -z "$APPLE_CERTIFICATE_PASSWORD" ]; then
-            echo "❌ Secrets Apple non configurés - APPLE_CERTIFICATE, APPLE_SIGNING_IDENTITY et APPLE_CERTIFICATE_PASSWORD sont requis"
+            echo "❌ Apple secrets not configured - APPLE_CERTIFICATE, APPLE_SIGNING_IDENTITY and APPLE_CERTIFICATE_PASSWORD are required"
             exit 1
           fi
           
-          echo "✅ Variables Apple configurées"
+          echo "✅ Apple variables configured"
           if [ -z "$APPLE_TEAM_ID" ]; then
             APPLE_TEAM_ID=$(echo "$APPLE_SIGNING_IDENTITY" | sed -n 's/.*(\([A-Z0-9]\{10\}\)).*/\1/p')
             export APPLE_TEAM_ID
           fi
           
-          # Importer le certificat .p12 dans le keychain
-          echo "📦 Import du certificat .p12 dans le keychain..."
+          # Import the .p12 certificate into the keychain
+          echo "📦 Importing .p12 certificate into keychain..."
           KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
           KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
           
-          # Créer un keychain temporaire
+          # Create a temporary keychain
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           
-          # Nettoyer le base64 (supprimer espaces, retours à la ligne) puis décoder
+          # Clean base64 (remove spaces, newlines) then decode
           CLEANED_CERT=$(echo "$APPLE_CERTIFICATE" | tr -d ' \n\r\t')
           
-          # Debug: vérifier la longueur et les premiers caractères du base64
+          # Debug: check base64 length and first characters
           echo "🔍 Debug base64:"
-          echo "  Longueur: ${#CLEANED_CERT}"
-          echo "  Premiers 50 caractères: ${CLEANED_CERT:0:50}"
-          echo "  Derniers 50 caractères: ${CLEANED_CERT: -50}"
+          echo "  Length: ${#CLEANED_CERT}"
+          echo "  First 50 characters: ${CLEANED_CERT:0:50}"
+          echo "  Last 50 characters: ${CLEANED_CERT: -50}"
           
-          # Décoder le base64
+          # Decode base64
           echo "$CLEANED_CERT" | base64 --decode > /tmp/certificate.p12
           
-          # Vérifier que le fichier est valide avant l'import
-          echo "🔍 Vérification du fichier .p12..."
+          # Verify file is valid before import
+          echo "🔍 Verifying .p12 file..."
           file /tmp/certificate.p12 || true
           ls -lh /tmp/certificate.p12 || true
           
-          # Vérifier avec openssl que le .p12 est valide
+          # Verify .p12 is valid with openssl
           openssl pkcs12 -in /tmp/certificate.p12 -passin pass:"$APPLE_CERTIFICATE_PASSWORD" -noout -info 2>&1 | head -5 || {
-            echo "⚠️  Le fichier .p12 semble invalide ou le mot de passe est incorrect"
+            echo "⚠️  The .p12 file seems invalid or password is incorrect"
           }
           
-          # Importer le .p12 dans le keychain
-          # Note: security import détecte automatiquement le format PKCS12
+          # Import .p12 into keychain
+          # Note: security import automatically detects PKCS12 format
           security import /tmp/certificate.p12 -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security || {
-            echo "❌ Erreur lors de l'import du .p12"
-            echo "🔍 Tentative alternative avec openssl..."
-            # Alternative: convertir en PEM puis importer
+            echo "❌ Error importing .p12"
+            echo "🔍 Trying alternative with openssl..."
+            # Alternative: convert to PEM then import
             openssl pkcs12 -in /tmp/certificate.p12 -passin pass:"$APPLE_CERTIFICATE_PASSWORD" -nodes -out /tmp/certificate.pem 2>/dev/null || {
-              echo "❌ Impossible de convertir le .p12"
+              echo "❌ Unable to convert .p12"
               exit 1
             }
-            # Cette méthode ne fonctionne pas car on perd la clé privée dans le keychain
-            # Il faut utiliser security import directement avec le .p12
+            # This method doesn't work because we lose the private key in the keychain
+            # Must use security import directly with .p12
             exit 1
           }
           rm -f /tmp/certificate.p12
           
-          # Configurer le keychain pour codesign
+          # Configure keychain for codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" || true
           
-          # Ajouter le keychain temporaire en PREMIER dans la liste de recherche (priorité)
+          # Add temporary keychain FIRST in search list (priority)
           EXISTING_KEYCHAINS=$(security list-keychains -d user | sed 's/^[[:space:]]*//' | tr '\n' ' ')
           security list-keychains -d user -s "$KEYCHAIN_PATH" $EXISTING_KEYCHAINS
           
-          # Vérifier que l'identité est disponible dans TOUS les keychains
-          echo "🔍 Identités disponibles dans tous les keychains:"
+          # Verify identity is available in ALL keychains
+          echo "🔍 Available identities in all keychains:"
           security find-identity -v -p codesigning || true
           
-          # Vérifier spécifiquement dans notre keychain
-          echo "🔍 Identités dans le keychain temporaire:"
+          # Verify specifically in our keychain
+          echo "🔍 Identities in temporary keychain:"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH" || true
           
-          # Exporter les variables pour les étapes suivantes
+          # Export variables for next steps
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
           echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
           
-          echo "✅ Certificat importé dans le keychain temporaire"
-          echo "✅ Keychain ajouté à la liste de recherche"
+          echo "✅ Certificate imported into temporary keychain"
+          echo "✅ Keychain added to search list"
 
       - name: Setup Tauri Signing Key
         shell: bash
@@ -203,60 +203,102 @@ jobs:
         if: matrix.os == 'macos-latest'
         shell: bash
         run: |
-          # Vérifier que toutes les variables de notarisation sont définies et valides
+          # Verify all notarization variables are defined and valid
           if [ -z "${{ secrets.APPLE_API_KEY_CONTENT }}" ]; then
-            echo "❌ APPLE_API_KEY_CONTENT n'est pas défini"
+            echo "❌ APPLE_API_KEY_CONTENT is not defined"
             exit 1
           fi
           if [ -z "${{ secrets.APPLE_API_ISSUER }}" ]; then
-            echo "❌ APPLE_API_ISSUER n'est pas défini"
+            echo "❌ APPLE_API_ISSUER is not defined"
             exit 1
           fi
           if [ -z "${{ secrets.APPLE_API_KEY }}" ]; then
-            echo "❌ APPLE_API_KEY n'est pas défini"
+            echo "❌ APPLE_API_KEY is not defined"
             exit 1
           fi
           
-          # Nettoyer APPLE_API_ISSUER (supprimer espaces, retours à la ligne, etc.)
+          # Clean APPLE_API_ISSUER (remove spaces, newlines, etc.)
           CLEANED_ISSUER=$(echo -n "${{ secrets.APPLE_API_ISSUER }}" | tr -d ' \n\r\t')
           
-          # Vérifier que APPLE_API_ISSUER est un UUID valide
+          # Verify APPLE_API_ISSUER is a valid UUID
           if ! echo "$CLEANED_ISSUER" | grep -qE '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'; then
-            echo "❌ APPLE_API_ISSUER n'est pas un UUID valide"
-            echo "   Valeur reçue (longueur: ${#CLEANED_ISSUER}): '${CLEANED_ISSUER}'"
-            echo "   Format attendu: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+            echo "❌ APPLE_API_ISSUER is not a valid UUID"
+            echo "   Received value (length: ${#CLEANED_ISSUER}): '${CLEANED_ISSUER}'"
+            echo "   Expected format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
             exit 1
           fi
           
-          echo "📦 Configuration de la clé API App Store Connect pour notarisation manuelle..."
+          echo "📦 Configuring App Store Connect API key for manual notarization..."
           mkdir -p ~/.appstoreconnect
           
-          # Nettoyer aussi APPLE_API_KEY_CONTENT
-          CLEANED_KEY_CONTENT=$(echo -n "${{ secrets.APPLE_API_KEY_CONTENT }}" | tr -d '\n\r')
-          echo "$CLEANED_KEY_CONTENT" > ~/.appstoreconnect/private_key.p8
+          # IMPORTANT: Preserve PEM format of .p8 file exactly as stored in GitHub Secrets
+          # Best practice: GitHub Secrets can be stored as raw PEM or base64-encoded
+          # We handle both cases to be robust
+          # Expected PEM format:
+          # -----BEGIN PRIVATE KEY-----
+          # (base64 content on multiple lines)
+          # -----END PRIVATE KEY-----
+          KEY_CONTENT="${{ secrets.APPLE_API_KEY_CONTENT }}"
+          
+          # Try to detect if content is base64-encoded (doesn't start with -----BEGIN)
+          if echo "$KEY_CONTENT" | head -c 20 | grep -q "^-----BEGIN"; then
+            # Raw PEM format - write directly, normalize line endings
+            echo "$KEY_CONTENT" | tr -d '\r' > ~/.appstoreconnect/private_key.p8
+          else
+            # Likely base64-encoded - decode first
+            echo "🔍 Detected base64-encoded key, decoding..."
+            echo "$KEY_CONTENT" | tr -d ' \n\r\t' | base64 --decode > ~/.appstoreconnect/private_key.p8
+          fi
+          
           chmod 600 ~/.appstoreconnect/private_key.p8
           
-          # Nettoyer APPLE_API_KEY aussi
+          # Verify .p8 file is in valid PEM format
+          echo "🔍 Verifying .p8 file format..."
+          if grep -q "^-----BEGIN" ~/.appstoreconnect/private_key.p8 && grep -q "-----END" ~/.appstoreconnect/private_key.p8; then
+            echo "✅ Valid PEM format detected"
+            echo "   File size: $(wc -c < ~/.appstoreconnect/private_key.p8) bytes"
+            echo "   Line count: $(wc -l < ~/.appstoreconnect/private_key.p8) lines"
+            
+            # Additional validation: try to parse with openssl (best practice)
+            echo "🔍 Validating key with openssl..."
+            if openssl rsa -in ~/.appstoreconnect/private_key.p8 -check -noout 2>/dev/null || \
+               openssl ec -in ~/.appstoreconnect/private_key.p8 -check -noout 2>/dev/null; then
+              echo "✅ Key is valid and parseable by openssl"
+            else
+              echo "⚠️  Warning: openssl could not parse the key (may still work with notarytool)"
+            fi
+            
+            # Show structure for debugging (first and last lines only)
+            echo "   First line: $(head -1 ~/.appstoreconnect/private_key.p8)"
+            echo "   Last line: $(tail -1 ~/.appstoreconnect/private_key.p8)"
+          else
+            echo "❌ The .p8 file is not in valid PEM format"
+            echo "   First 100 chars: $(head -c 100 ~/.appstoreconnect/private_key.p8)..."
+            echo "   Last 100 chars: $(tail -c 100 ~/.appstoreconnect/private_key.p8)..."
+            exit 1
+          fi
+          
+          # Clean APPLE_API_KEY as well
           CLEANED_API_KEY=$(echo -n "${{ secrets.APPLE_API_KEY }}" | tr -d ' \n\r\t')
           
-          # Stocker dans GITHUB_ENV pour utilisation dans les étapes suivantes
+          # Store in GITHUB_ENV for use in next steps
           echo "APPLE_API_KEY_PATH=$HOME/.appstoreconnect/private_key.p8" >> $GITHUB_ENV
           echo "APPLE_API_ISSUER=$CLEANED_ISSUER" >> $GITHUB_ENV
           echo "APPLE_API_KEY=$CLEANED_API_KEY" >> $GITHUB_ENV
-          echo "✅ Clé API configurée pour notarisation manuelle"
-          echo "   APPLE_API_ISSUER: ${CLEANED_ISSUER:0:8}... (UUID valide)"
+          echo "✅ API key configured for manual notarization"
+          echo "   APPLE_API_ISSUER: ${CLEANED_ISSUER:0:8}... (valid UUID)"
 
       - name: Build Tauri app (macOS)
         if: matrix.os == 'macos-latest'
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # Ne pas passer les variables de notarisation pour éviter la notarisation automatique
-          # On la fera manuellement après avoir signé tous les binaires
+          # Don't pass notarization variables to avoid automatic notarization
+          # We'll do it manually after signing all binaries
         shell: bash
         working-directory: src-tauri
         run: |
-          # Builder sans notarisation automatique
+          # Build without automatic notarization
           yarn tauri build --target ${{ matrix.target }}
 
       - name: Build Tauri app (Windows)
@@ -280,7 +322,7 @@ jobs:
           chmod +x scripts/sign-all-binaries.sh
           bash scripts/sign-all-binaries.sh "$APP_BUNDLE" "$APPLE_SIGNING_IDENTITY"
           
-          # Vérifier que tous les binaires sont signés
+          # Verify all binaries are signed
           echo "🔍 Verifying all binaries are signed..."
           codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE" || {
             echo "❌ Some binaries are not properly signed"
@@ -297,7 +339,7 @@ jobs:
         run: |
           APP_BUNDLE="src-tauri/target/${{ matrix.target }}/release/bundle/macos/Reachy Mini Control.app"
           
-          # Créer un ZIP pour la notarisation
+          # Create ZIP for notarization
           ZIP_PATH="src-tauri/target/${{ matrix.target }}/release/bundle/macos/Reachy Mini Control.zip"
           cd "$(dirname "$APP_BUNDLE")"
           ditto -c -k --keepParent "$(basename "$APP_BUNDLE")" "$(basename "$ZIP_PATH")"
