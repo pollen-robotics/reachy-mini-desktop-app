@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import useAppStore from '../store/useAppStore';
-import { DAEMON_CONFIG, fetchWithTimeout, buildApiUrl } from '../config/daemon';
+import { DAEMON_CONFIG, fetchWithTimeoutSkipInstall, buildApiUrl } from '../config/daemon';
 
 /**
  * Hook to fetch complete robot state from daemon API
@@ -9,7 +9,7 @@ import { DAEMON_CONFIG, fetchWithTimeout, buildApiUrl } from '../config/daemon';
  * ⚠️ Does NOT handle crash detection (delegated to useDaemonHealthCheck)
  */
 export function useRobotState(isActive) {
-  const { isDaemonCrashed, isInstalling } = useAppStore();
+  const { isDaemonCrashed } = useAppStore();
   const [robotState, setRobotState] = useState({
     isOn: null,           // Motors powered (control_mode === 'enabled')
     isMoving: false,      // Motors moving (detected)
@@ -24,15 +24,11 @@ export function useRobotState(isActive) {
       return;
     }
 
-    // ✅ Don't poll during installation (daemon may be slow/unavailable)
-    if (isInstalling) {
-      return;
-    }
-
     const fetchState = async () => {
       try {
         // ✅ Fetch state with standardized timeout (silent because polling)
-        const stateResponse = await fetchWithTimeout(
+        // Use skip-install wrapper to avoid checking during installations
+        const stateResponse = await fetchWithTimeoutSkipInstall(
           buildApiUrl('/api/state/full?with_control_mode=true&with_head_joints=true&with_body_yaw=true&with_antenna_positions=true'),
           {},
           DAEMON_CONFIG.TIMEOUTS.STATE_FULL,
@@ -92,6 +88,11 @@ export function useRobotState(isActive) {
           // ✅ No resetTimeouts() here, handled by useDaemonHealthCheck
         }
       } catch (error) {
+        // Skip during installation (expected)
+        if (error.name === 'SkippedError') {
+          return;
+        }
+        
         // ✅ No incrementTimeouts() here, handled by useDaemonHealthCheck
         // Just log error if it's not a timeout (already handled elsewhere)
         if (error.name !== 'TimeoutError' && !error.message?.includes('timed out')) {
@@ -118,7 +119,7 @@ export function useRobotState(isActive) {
         clearTimeout(movementTimeoutRef.current);
       }
     };
-  }, [isActive, isDaemonCrashed, isInstalling]);
+  }, [isActive, isDaemonCrashed]);
 
   return robotState;
 }

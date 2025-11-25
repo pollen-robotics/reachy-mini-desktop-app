@@ -1,11 +1,11 @@
 import { useEffect } from 'react';
 import useAppStore from '../store/useAppStore';
-import { DAEMON_CONFIG, fetchWithTimeout, buildApiUrl } from '../config/daemon';
+import { DAEMON_CONFIG, fetchWithTimeoutSkipInstall, buildApiUrl } from '../config/daemon';
 
 /**
  * 🏥 Centralized hook for daemon health detection
  * 
- * ONE SINGLE place to increment timeout counter
+ * ONE SINGLE place to increment timeout counter AND update isActive state
  * Replaces scattered calls in useDaemon and useRobotState
  * 
  * ⚠️ SKIP during installations (daemon may be overloaded)
@@ -13,8 +13,8 @@ import { DAEMON_CONFIG, fetchWithTimeout, buildApiUrl } from '../config/daemon';
 export function useDaemonHealthCheck() {
   const { 
     isDaemonCrashed, 
-    isInstalling,
     isActive,
+    setIsActive,
     incrementTimeouts, 
     resetTimeouts 
   } = useAppStore();
@@ -32,13 +32,8 @@ export function useDaemonHealthCheck() {
     }
     
     const checkHealth = async () => {
-      // ⚠️ SKIP during installations (daemon may be overloaded by pip install)
-      if (isInstalling) {
-        return;
-      }
-      
       try {
-        const response = await fetchWithTimeout(
+        const response = await fetchWithTimeoutSkipInstall(
           buildApiUrl(DAEMON_CONFIG.ENDPOINTS.STATE_FULL),
           {},
           DAEMON_CONFIG.TIMEOUTS.HEALTHCHECK,
@@ -47,15 +42,22 @@ export function useDaemonHealthCheck() {
         
         if (response.ok) {
           resetTimeouts(); // ✅ Success → reset counter
+          setIsActive(true); // ✅ Also update isActive state
         } else {
           // Response but not OK → not a timeout, don't increment
           console.warn('⚠️ Daemon responded but not OK:', response.status);
         }
       } catch (error) {
+        // Skip during installation (expected)
+        if (error.name === 'SkippedError') {
+          return;
+        }
+        
         // ❌ Timeout → increment counter
         if (error.name === 'TimeoutError' || error.message?.includes('timed out')) {
           console.warn('⚠️ Health check timeout, incrementing counter');
           incrementTimeouts();
+          // Don't set isActive to false immediately - let crash detection handle it
         }
       }
     };
@@ -67,6 +69,6 @@ export function useDaemonHealthCheck() {
     const interval = setInterval(checkHealth, DAEMON_CONFIG.TIMEOUTS.HEALTHCHECK);
     
     return () => clearInterval(interval);
-  }, [isDaemonCrashed, isInstalling, isActive, incrementTimeouts, resetTimeouts]);
+  }, [isDaemonCrashed, isActive, setIsActive, incrementTimeouts, resetTimeouts]);
 }
 

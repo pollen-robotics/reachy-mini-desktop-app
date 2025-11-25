@@ -20,7 +20,6 @@ struct DaemonState {
 #[cfg(target_os = "macos")]
 fn fix_mjpython_shebang() -> Result<(), String> {
     use std::fs;
-    use std::path::PathBuf;
     use std::env;
     
     // Find the current working directory (where uv-trampoline runs)
@@ -66,32 +65,29 @@ fn fix_mjpython_shebang() -> Result<(), String> {
 
 // Helper to build daemon arguments
 // On macOS with simulation mode, we need to use mjpython (required by MuJoCo)
-fn build_daemon_args(sim_mode: bool) -> Vec<String> {
-    let python_cmd = if sim_mode {
-        #[cfg(target_os = "macos")]
-        {
+fn build_daemon_args(sim_mode: bool) -> Result<Vec<String>, String> {
+    let python_cmd = if sim_mode && cfg!(target_os = "macos") {
             // Fix mjpython shebang before using it
-            if let Err(e) = fix_mjpython_shebang() {
-                eprintln!("[tauri] ⚠️ Warning: Failed to fix mjpython shebang: {}", e);
-            }
-            "mjpython".to_string()
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            "python".to_string()
-        }
+        fix_mjpython_shebang()?;
+        "mjpython"
     } else {
-        "python".to_string()
+        "python"
     };
     
-    vec![
+    let mut args = vec![
         "run".to_string(),
-        python_cmd,
+        python_cmd.to_string(),
         "-m".to_string(),
         "reachy_mini.daemon.app.main".to_string(),
         "--kinematics-engine".to_string(),
         "Placo".to_string(),
-    ]
+    ];
+    
+    if sim_mode {
+        args.push("--sim".to_string());
+    }
+    
+    Ok(args)
 }
 
 const MAX_LOGS: usize = 50;
@@ -112,6 +108,31 @@ fn add_log(state: &State<DaemonState>, message: String) {
 // DAEMON LIFECYCLE MANAGEMENT
 // ============================================================================
 
+/// Kill processes listening on a specific port
+#[cfg(not(target_os = "windows"))]
+fn kill_processes_on_port(port: u16, signal: Option<&str>) {
+    use std::process::Command;
+    
+    let output = Command::new("lsof")
+        .arg(&format!("-ti:{}", port))
+        .output();
+    
+    if let Ok(output) = output {
+        let pids = String::from_utf8_lossy(&output.stdout);
+        for pid in pids.lines() {
+            let pid = pid.trim();
+            if !pid.is_empty() {
+                let mut cmd = Command::new("kill");
+                if let Some(sig) = signal {
+                    cmd.arg(sig);
+                }
+                cmd.arg(pid);
+                let _ = cmd.output();
+            }
+        }
+    }
+}
+
 /// Clean up all daemon processes running on the system (via port 8000)
 fn cleanup_system_daemons() {
     #[cfg(not(target_os = "windows"))]
@@ -119,39 +140,14 @@ fn cleanup_system_daemons() {
         use std::process::Command;
         
         // Method 1: Kill via port 8000 (more reliable)
-        let output = Command::new("lsof")
-            .arg("-ti:8000")
-            .output();
-        
-        if let Ok(output) = output {
-            let pids = String::from_utf8_lossy(&output.stdout);
-            for pid in pids.lines() {
-                let pid = pid.trim();
-                if !pid.is_empty() {
-                    // Try SIGTERM first
-                    let _ = Command::new("kill").arg(pid).output();
-                }
-            }
-        }
-        
+        // Try SIGTERM first (graceful shutdown)
+        kill_processes_on_port(8000, None);
         std::thread::sleep(std::time::Duration::from_millis(500));
         
-        // Force kill via port if still there
-        let output = Command::new("lsof")
-            .arg("-ti:8000")
-            .output();
+        // Force kill if still there
+        kill_processes_on_port(8000, Some("-9"));
         
-        if let Ok(output) = output {
-            let pids = String::from_utf8_lossy(&output.stdout);
-            for pid in pids.lines() {
-                let pid = pid.trim();
-                if !pid.is_empty() {
-                    let _ = Command::new("kill").arg("-9").arg(pid).output();
-                }
-            }
-        }
-        
-        // Method 2: Kill by process name
+        // Method 2: Kill by process name (fallback)
         let _ = Command::new("pkill")
             .arg("-9")
             .arg("-f")
@@ -164,26 +160,69 @@ fn cleanup_system_daemons() {
 
 /// Kill daemon completely (local sidecar process + system)
 fn kill_daemon(state: &State<DaemonState>) {
+    // Clear the stored process reference
+    // Note: CommandChild doesn't expose kill() method, so we rely on cleanup_system_daemons()
+    // which kills processes via port 8000 (more reliable)
     let mut process_lock = state.process.lock().unwrap();
+    process_lock.take();
+    drop(process_lock);
     
-    // Kill local sidecar process if present
-    if let Some(mut process) = process_lock.take() {
-        // Try graceful shutdown first
-        let command = "sidecar shutdown\n";
-        if let Err(_) = process.write(command.as_bytes()) {
-            // If write fails, process might already be dead
-            println!("⚠️ Failed to send shutdown command to sidecar");
-        }
-        // Note: CommandChild doesn't have a kill method, but the process will be cleaned up
-    }
-    
-    // Clean up system processes
+    // Clean up system processes (kills via port 8000 and process name)
     cleanup_system_daemons();
 }
 
 // ============================================================================
 // SIDECAR MANAGEMENT
 // ============================================================================
+
+/// Macro helper to spawn sidecar monitoring task
+/// Avoids duplication while working around private Receiver type
+macro_rules! spawn_sidecar_monitor {
+    ($rx:ident, $app_handle:ident, $prefix:expr) => {
+        {
+            let prefix = $prefix;
+            let app_handle_clone = $app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Some(ref p) = prefix {
+                    println!("[tauri] Starting sidecar output monitoring ({})...", p);
+                } else {
+                    println!("[tauri] Starting sidecar output monitoring...");
+                }
+                
+                while let Some(event) = $rx.recv().await {
+                    match event {
+                        CommandEvent::Stdout(line_bytes) => {
+                            let line = String::from_utf8_lossy(&line_bytes);
+                            let prefixed_line = prefix
+                                .as_ref()
+                                .map(|p| format!("[{}] {}", p, line))
+                                .unwrap_or_else(|| line.to_string());
+                            println!("Sidecar stdout: {}", prefixed_line);
+                            let _ = app_handle_clone.emit("sidecar-stdout", prefixed_line.clone());
+                        }
+                        CommandEvent::Stderr(line_bytes) => {
+                            let line = String::from_utf8_lossy(&line_bytes);
+                            let prefixed_line = prefix
+                                .as_ref()
+                                .map(|p| format!("[{}] {}", p, line))
+                                .unwrap_or_else(|| line.to_string());
+                            eprintln!("Sidecar stderr: {}", prefixed_line);
+                            let _ = app_handle_clone.emit("sidecar-stderr", prefixed_line.clone());
+                        }
+                        CommandEvent::Terminated(status) => {
+                            if let Some(ref p) = prefix {
+                                println!("[tauri] [{}] Process terminated with status: {:?}", p, status);
+                            } else {
+                                println!("[tauri] Sidecar process terminated with status: {:?}", status);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            });
+        }
+    };
+}
 
 /// Spawn and monitor the embedded daemon sidecar
 /// 
@@ -201,7 +240,8 @@ fn spawn_and_monitor_sidecar(app_handle: tauri::AppHandle, state: &State<DaemonS
     drop(process_lock);
     
     // Build daemon arguments dynamically
-    let mut daemon_args = build_daemon_args(sim_mode);
+    let daemon_args = build_daemon_args(sim_mode)?;
+    
     if sim_mode {
         #[cfg(target_os = "macos")]
         {
@@ -211,7 +251,6 @@ fn spawn_and_monitor_sidecar(app_handle: tauri::AppHandle, state: &State<DaemonS
         {
             println!("[tauri] 🎭 Launching daemon in simulation mode (MuJoCo)");
         }
-        daemon_args.push("--sim".to_string());
     }
     
     // Convert Vec<String> to Vec<&str> for args()
@@ -230,28 +269,8 @@ fn spawn_and_monitor_sidecar(app_handle: tauri::AppHandle, state: &State<DaemonS
     *process_lock = Some(child);
     drop(process_lock);
 
-    // Spawn an async task to handle sidecar communication
-    let app_handle_clone = app_handle.clone();
-    tauri::async_runtime::spawn(async move {
-        println!("[tauri] Starting sidecar output monitoring...");
-        while let Some(event) = rx.recv().await {
-            match event {
-                CommandEvent::Stdout(line_bytes) => {
-                    let line = String::from_utf8_lossy(&line_bytes);
-                    println!("Sidecar stdout: {}", line);
-                    // Emit the line to the frontend
-                    let _ = app_handle_clone.emit("sidecar-stdout", line.to_string());
-                }
-                CommandEvent::Stderr(line_bytes) => {
-                    let line = String::from_utf8_lossy(&line_bytes);
-                    eprintln!("Sidecar stderr: {}", line);
-                    // Emit the error line to the frontend
-                    let _ = app_handle_clone.emit("sidecar-stderr", line.to_string());
-                }
-                _ => {}
-            }
-        }
-    });
+    // Spawn async task to monitor sidecar output
+    spawn_sidecar_monitor!(rx, app_handle, None::<String>);
 
     Ok(())
 }
@@ -265,8 +284,6 @@ fn spawn_and_monitor_sidecar(app_handle: tauri::AppHandle, state: &State<DaemonS
 /// Monitors installation in background
 #[tauri::command]
 fn install_mujoco(app_handle: tauri::AppHandle) -> Result<String, String> {
-    use tauri_plugin_shell::process::CommandEvent;
-    
     println!("[tauri] 🎭 Installing MuJoCo dependencies for simulation mode...");
     
     // Use uv-trampoline to run: uv pip install mujoco reachy-mini[mujoco]
@@ -280,27 +297,12 @@ fn install_mujoco(app_handle: tauri::AppHandle) -> Result<String, String> {
         .spawn()
         .map_err(|e| format!("Failed to spawn uv-trampoline: {}", e))?;
     
-    // Monitor output in background
-    tauri::async_runtime::spawn(async move {
-        while let Some(event) = rx.recv().await {
-            match event {
-                CommandEvent::Stdout(line_bytes) => {
-                    let line = String::from_utf8_lossy(&line_bytes);
-                    println!("[mujoco-install] {}", line);
-                }
-                CommandEvent::Stderr(line_bytes) => {
-                    let line = String::from_utf8_lossy(&line_bytes);
-                    eprintln!("[mujoco-install] {}", line);
-                }
-                CommandEvent::Terminated(_) => {
-                    println!("[tauri] ✅ MuJoCo installation completed");
-                }
-                _ => {}
-            }
-        }
-    });
+    // Monitor output in background using shared helper
+    spawn_sidecar_monitor!(rx, app_handle, Some("mujoco-install".to_string()));
     
     // Wait a bit for installation to start (it runs async)
+    // Note: We can't easily wait for completion without blocking, so we rely on
+    // the frontend to detect when MuJoCo is available via health checks
     std::thread::sleep(std::time::Duration::from_secs(3));
     
     Ok("MuJoCo installation started".to_string())
@@ -329,22 +331,24 @@ fn start_daemon(app_handle: tauri::AppHandle, state: State<DaemonState>, sim_mod
     }
     
     // 1. ⚡ Aggressive cleanup of all existing daemons (including zombies)
-    if sim_mode {
-        add_log(&state, "🧹 Cleaning up existing daemons (simulation mode)...".to_string());
+    let cleanup_msg = if sim_mode {
+        "🧹 Cleaning up existing daemons (simulation mode)..."
     } else {
-    add_log(&state, "🧹 Cleaning up existing daemons...".to_string());
-    }
+        "🧹 Cleaning up existing daemons..."
+    };
+    add_log(&state, cleanup_msg.to_string());
     kill_daemon(&state);
     
     // 2. Spawn embedded daemon sidecar
     spawn_and_monitor_sidecar(app_handle, &state, sim_mode)?;
     
     // 3. Log success
-    if sim_mode {
-        add_log(&state, "✓ Daemon started in simulation mode (MuJoCo) via embedded sidecar".to_string());
+    let success_msg = if sim_mode {
+        "✓ Daemon started in simulation mode (MuJoCo) via embedded sidecar"
     } else {
-    add_log(&state, "✓ Daemon started via embedded sidecar".to_string());
-    }
+        "✓ Daemon started via embedded sidecar"
+    };
+    add_log(&state, success_msg.to_string());
     
     Ok("Daemon started successfully".to_string())
 }

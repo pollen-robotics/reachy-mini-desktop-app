@@ -2,7 +2,7 @@ import { useCallback, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import useAppStore from '../store/useAppStore';
-import { DAEMON_CONFIG, fetchWithTimeout, buildApiUrl, transitionToActiveView } from '../config/daemon';
+import { DAEMON_CONFIG, fetchWithTimeout, fetchWithTimeoutSkipInstall, buildApiUrl } from '../config/daemon';
 import { isSimulationMode } from '../utils/simulationMode';
 import { findErrorConfig, createErrorFromConfig } from '../utils/hardwareErrors';
 
@@ -23,44 +23,14 @@ export const useDaemon = () => {
     addFrontendLog
   } = useAppStore();
 
-  const checkStatus = useCallback(async () => {
-    // Don't check if already detected as crashed
-    if (isDaemonCrashed) return;
-    
-    // ⚠️ SKIP during installations (daemon may be overloaded by pip install)
-    const { isInstalling } = useAppStore.getState();
-    if (isInstalling) {
-      return;
-    }
-    
-    try {
-      const response = await fetchWithTimeout(
-        buildApiUrl(DAEMON_CONFIG.ENDPOINTS.STATE_FULL),
-        {},
-        DAEMON_CONFIG.TIMEOUTS.HEALTHCHECK,
-        { silent: true } // ⚡ Don't log healthchecks
-      );
-      const isRunning = response.ok;
-      setIsActive(isRunning);
-      // ✅ No incrementTimeouts() here, handled by useDaemonHealthCheck
-    } catch (error) {
-      // ✅ Don't immediately set isActive to false on error
-      // Let health check handle crash detection with its timeout counter
-      // This avoids setting isActive to false during temporary timeouts (e.g., after stopping app)
-      // Health check will detect a real crash after 3 consecutive timeouts
-      // ✅ No incrementTimeouts() here, handled by useDaemonHealthCheck
-    }
-  }, [setIsActive, isDaemonCrashed]);
+  // ✅ checkStatus removed - useDaemonHealthCheck handles all status checking
+  // It polls every 1.33s, updates isActive, and handles crash detection
+  // No need for duplicate functionality
 
   const fetchDaemonVersion = useCallback(async () => {
-    // ⚠️ SKIP during installations (daemon may be overloaded by pip install)
-    const { isInstalling } = useAppStore.getState();
-    if (isInstalling) {
-      return; // Skip silently
-    }
-    
     try {
-      const response = await fetchWithTimeout(
+      // Use skip-install wrapper to avoid checking during installations
+      const response = await fetchWithTimeoutSkipInstall(
         buildApiUrl(DAEMON_CONFIG.ENDPOINTS.DAEMON_STATUS),
         {},
         DAEMON_CONFIG.TIMEOUTS.VERSION,
@@ -73,6 +43,10 @@ export const useDaemon = () => {
         // ✅ No resetTimeouts() here, handled by useDaemonHealthCheck
       }
     } catch (error) {
+      // Skip during installation (expected)
+      if (error.name === 'SkippedError') {
+        return;
+      }
       // ✅ No incrementTimeouts() here, handled by useDaemonHealthCheck
     }
   }, [setDaemonVersion]);
@@ -139,7 +113,7 @@ export const useDaemon = () => {
     setHardwareError(null);
     
     // Wait a moment for React to render the spinner
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise(resolve => setTimeout(resolve, DAEMON_CONFIG.ANIMATIONS.SPINNER_RENDER_DELAY));
     
     try {
       // Check if daemon already running
@@ -151,8 +125,8 @@ export const useDaemon = () => {
           { label: 'Check existing daemon' }
         );
         if (response.ok) {
-          // Wait 500ms to see the spinner in the button
-          await new Promise(resolve => setTimeout(resolve, 500));
+          // Wait to see the spinner in the button
+          await new Promise(resolve => setTimeout(resolve, DAEMON_CONFIG.ANIMATIONS.BUTTON_SPINNER_DELAY));
           setIsStarting(true);
           return;
         }
@@ -176,35 +150,19 @@ export const useDaemon = () => {
         setIsStarting(false);
       });
       
-      // Wait 500ms to see the spinner in the button, then switch to scan view
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Wait to see the spinner in the button, then switch to scan view
+      await new Promise(resolve => setTimeout(resolve, DAEMON_CONFIG.ANIMATIONS.BUTTON_SPINNER_DELAY));
       setIsStarting(true);
       
-      // Periodically check that daemon has started (but don't block)
-      const checkInterval = setInterval(async () => {
-        try {
-          // Check if daemon is ready by testing the API
-          const response = await fetchWithTimeout(
-            buildApiUrl(DAEMON_CONFIG.ENDPOINTS.STATE_FULL),
-            {},
-            DAEMON_CONFIG.TIMEOUTS.STARTUP_CHECK,
-            { silent: true }
-          );
-          
-          if (response.ok) {
-            await checkStatus(); // Update state
-            clearInterval(checkInterval);
-          }
-        } catch (e) {
-          // Daemon not ready yet, checking again...
-        }
-      }, 1000);
+      // ✅ useDaemonHealthCheck will detect when daemon is ready automatically
+      // It polls every 1.33s and updates isActive when daemon responds
+      // No need for manual polling or checkStatus calls
     } catch (e) {
       console.error('❌ Daemon startup error:', e);
       setStartupError(e.message || 'Error starting the daemon');
       setIsStarting(false);
     }
-  }, [setIsStarting, setIsActive, checkStatus, setStartupError, setHardwareError, setIsTransitioning]);
+  }, [setIsStarting, setIsActive, setStartupError, setHardwareError, setIsTransitioning, addFrontendLog]);
 
   const stopDaemon = useCallback(async () => {
     setIsStopping(true);
@@ -225,22 +183,21 @@ export const useDaemon = () => {
       
       // Then kill the daemon
       await invoke('stop_daemon');
-      setTimeout(async () => {
-        await checkStatus();
+      // ✅ No need to manually checkStatus - useDaemonHealthCheck will detect the change automatically
+      setTimeout(() => {
         setIsStopping(false);
-      }, 2000);
+      }, DAEMON_CONFIG.ANIMATIONS.STOP_DAEMON_DELAY);
     } catch (e) {
       console.error(e);
       setIsStopping(false);
     }
-  }, [setIsStopping, checkStatus]);
+  }, [setIsStopping]);
 
   return {
     isActive,
     isStarting,
     isStopping,
     startupError,
-    checkStatus,
     startDaemon,
     stopDaemon,
     fetchDaemonVersion,

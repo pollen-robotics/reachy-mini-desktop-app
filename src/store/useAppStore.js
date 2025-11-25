@@ -54,6 +54,14 @@ const useAppStore = create((set) => ({
   usbPortName: null,
   isFirstCheck: true,
   
+  // 🎯 Centralized robot state (polled by useRobotStateFull)
+  // All components should consume this instead of polling separately
+  robotStateFull: {
+    data: null,        // Full state data from /api/state/full
+    lastUpdate: null,  // Timestamp of last successful update
+    error: null,       // Error message if any
+  },
+  
   // Logs
   logs: [],
   frontendLogs: [],
@@ -317,6 +325,13 @@ const useAppStore = create((set) => ({
   
   setUsbPortName: (value) => set({ usbPortName: value }),
   setIsFirstCheck: (value) => set({ isFirstCheck: value }),
+  setRobotStateFull: (value) => set((state) => {
+    // If value is a function, call it with previous state
+    if (typeof value === 'function') {
+      return { robotStateFull: value(state.robotStateFull) };
+    }
+    return { robotStateFull: value };
+  }),
   setLogs: (logs) => set({ logs }),
   
   setIsCommandRunning: (value) => {

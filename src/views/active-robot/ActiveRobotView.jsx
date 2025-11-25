@@ -47,7 +47,7 @@ function ActiveRobotView({
   const isReady = useAppStore(state => state.isReady());
   
   // Get complete robot state from daemon API
-  const { isOn, isMoving } = useRobotState(isActive);
+  const { isOn, isMoving } = useRobotState(); // ✅ No params: consumes centralized robotStateFull
   
   // Toast notifications
   const [toast, setToast] = useState({ open: false, message: '', severity: 'info' });

@@ -22,7 +22,7 @@ export const DAEMON_CONFIG = {
   
   // Polling intervals (in milliseconds)
   INTERVALS: {
-    STATUS_CHECK: 3000,       // Check daemon status every 3s
+    // ✅ STATUS_CHECK removed - useDaemonHealthCheck handles status checking automatically (every 1.33s)
     LOGS_FETCH: 1000,         // Logs every 1s
     USB_CHECK: 1000,          // USB every 1s
     VERSION_FETCH: 10000,     // Version every 10s
@@ -51,6 +51,9 @@ export const DAEMON_CONFIG = {
     VIEW_FADE_DELAY: 100,        // Delay between hide StartingView and show TransitionView
     SLEEP_DURATION: 4000,        // goto_sleep duration before kill
     STARTUP_MIN_DELAY: 2000,     // Delay before first check on startup
+    SPINNER_RENDER_DELAY: 100,   // Delay to render spinner before starting daemon
+    BUTTON_SPINNER_DELAY: 500,   // Delay to see spinner in button before view switch
+    STOP_DAEMON_DELAY: 2000,     // Delay after stopping daemon before resetting state
   },
   
   // API endpoints
@@ -215,6 +218,32 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions 
  */
 export function buildApiUrl(endpoint) {
   return `${DAEMON_CONFIG.ENDPOINTS.BASE_URL}${endpoint}`;
+}
+
+/**
+ * Helper to check if installation is in progress (skip API calls during install)
+ * @returns {boolean} True if installation is in progress
+ */
+export function isInstalling() {
+  if (!appStoreInstance) return false;
+  return appStoreInstance.getState().isInstalling;
+}
+
+/**
+ * Helper wrapper for fetchWithTimeout that skips during installation
+ * @param {string} url - Full URL
+ * @param {object} options - Fetch options
+ * @param {number} timeoutMs - Timeout in ms
+ * @param {object} logOptions - Logging options
+ * @returns {Promise<Response>} Fetch response or throws error
+ */
+export async function fetchWithTimeoutSkipInstall(url, options = {}, timeoutMs, logOptions = {}) {
+  if (isInstalling()) {
+    const skipError = new Error('Skipped during installation');
+    skipError.name = 'SkippedError';
+    throw skipError;
+  }
+  return fetchWithTimeout(url, options, timeoutMs, logOptions);
 }
 
 /**

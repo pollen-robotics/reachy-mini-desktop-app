@@ -20,7 +20,7 @@ function App() {
     setAppStoreInstance(useAppStore);
   }, []);
   const { daemonVersion, hardwareError, isTransitioning, setIsTransitioning, setHardwareError } = useAppStore();
-  const { isActive, isStarting, isStopping, startupError, checkStatus, startDaemon, stopDaemon, fetchDaemonVersion } = useDaemon();
+  const { isActive, isStarting, isStopping, startupError, startDaemon, stopDaemon, fetchDaemonVersion } = useDaemon();
   const { isUsbConnected, usbPortName, checkUsbRobot } = useUsbDetection();
   const { sendCommand, playRecordedMove, isCommandRunning } = useRobotCommands();
   const { logs, fetchLogs } = useLogs();
@@ -72,21 +72,20 @@ function App() {
   useWindowResize(currentView);
 
   useEffect(() => {
-    checkStatus();
+    // ✅ checkStatus removed - useDaemonHealthCheck handles status checking automatically
+    // It polls every 1.33s and updates isActive, so no need for separate 3s polling
     fetchLogs();
     checkUsbRobot();
     fetchDaemonVersion();
-    const statusInterval = setInterval(checkStatus, DAEMON_CONFIG.INTERVALS.STATUS_CHECK);
     const logsInterval = setInterval(fetchLogs, DAEMON_CONFIG.INTERVALS.LOGS_FETCH);
     const usbInterval = setInterval(checkUsbRobot, DAEMON_CONFIG.INTERVALS.USB_CHECK);
     const versionInterval = setInterval(fetchDaemonVersion, DAEMON_CONFIG.INTERVALS.VERSION_FETCH);
     return () => {
-      clearInterval(statusInterval);
       clearInterval(logsInterval);
       clearInterval(usbInterval);
       clearInterval(versionInterval);
     };
-  }, [checkStatus, fetchLogs, checkUsbRobot, fetchDaemonVersion]);
+  }, [fetchLogs, checkUsbRobot, fetchDaemonVersion]);
 
   // Stop daemon automatically if robot gets disconnected
   useEffect(() => {

@@ -3,6 +3,7 @@ import { Box, Typography, IconButton, Tooltip, Slider, Chip } from '@mui/materia
 import RefreshIcon from '@mui/icons-material/Refresh';
 import ApiIcon from '@mui/icons-material/Api';
 import { buildApiUrl, fetchWithTimeout, DAEMON_CONFIG } from '../../config/daemon';
+import useAppStore from '../../store/useAppStore';
 
 /**
  * 2D Joystick Component - Compact
@@ -330,6 +331,8 @@ const SimpleSlider = ({ label, value, onChange, onReset, min = -1, max = 1, unit
  * Robot Position Control - Simple 5 controls layout
  */
 export default function RobotPositionControl({ isActive, darkMode }) {
+  const { robotStateFull } = useAppStore(); // ✅ Consume centralized data
+  
   const [robotState, setRobotState] = useState({
     headPose: { x: 0, y: 0, z: 0, pitch: 0, yaw: 0, roll: 0 },
     bodyYaw: 0,
@@ -348,24 +351,15 @@ export default function RobotPositionControl({ isActive, darkMode }) {
   const isDraggingRef = useRef(false); // ✅ Use ref to track dragging state without causing re-renders
   const lastDragEndTimeRef = useRef(0); // ✅ Track when drag ended to prevent immediate updates
 
-  // Fetch current robot state
-  const fetchRobotState = useCallback(async () => {
-    if (!isActive) return;
+  // ✅ Update robotState from centralized data (NO POLLING)
+  useEffect(() => {
+    if (!isActive || !robotStateFull.data) return;
+
+    const data = robotStateFull.data;
 
     // ✅ Don't update localValues if user is dragging or just finished dragging (within 500ms)
     const timeSinceDragEnd = Date.now() - lastDragEndTimeRef.current;
-    if (isDraggingRef.current || timeSinceDragEnd < 500) {
-      // Still update robotState for reference, but don't update localValues to prevent flicker
-      try {
-        const response = await fetchWithTimeout(
-          buildApiUrl('/api/state/full?with_head_pose=true&with_body_yaw=true&with_antenna_positions=true&use_pose_matrix=false'),
-          {},
-          DAEMON_CONFIG.TIMEOUTS.STATE_FULL,
-          { silent: true }
-        );
-
-        if (response.ok) {
-          const data = await response.json();
+    
           if (data.head_pose) {
             const newState = {
               headPose: {
@@ -377,63 +371,20 @@ export default function RobotPositionControl({ isActive, darkMode }) {
                 roll: data.head_pose.roll || 0,
               },
               bodyYaw: typeof data.body_yaw === 'number' ? data.body_yaw : 0,
-              antennas: data.antennas_position || [0, 0],
-            };
-            setRobotState(newState); // Update robotState but not localValues
-          }
-        }
-      } catch (error) {
-        // Silent
-      }
-      return;
-    }
-
-    try {
-      const response = await fetchWithTimeout(
-        buildApiUrl('/api/state/full?with_head_pose=true&with_body_yaw=true&with_antenna_positions=true&use_pose_matrix=false'),
-        {},
-        DAEMON_CONFIG.TIMEOUTS.STATE_FULL,
-        { silent: true }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        
-        if (data.head_pose) {
-          const newState = {
-            headPose: {
-              x: data.head_pose.x || 0,
-              y: data.head_pose.y || 0,
-              z: data.head_pose.z || 0,
-              pitch: data.head_pose.pitch || 0,
-              yaw: data.head_pose.yaw || 0,
-              roll: data.head_pose.roll || 0,
-            },
-            bodyYaw: typeof data.body_yaw === 'number' ? data.body_yaw : 0, // Ensure it's a number (radians from API)
             antennas: data.antennas_position || [0, 0],
           };
           
           setRobotState(newState);
+      
           // ✅ Only update localValues if user is not dragging (checked via ref)
-          if (!isDraggingRef.current) {
+      if (!isDraggingRef.current && timeSinceDragEnd >= 500) {
             setLocalValues({
               headPose: newState.headPose,
               bodyYaw: newState.bodyYaw,
             });
           }
         }
-      }
-    } catch (error) {
-      // Silent
-    }
-  }, [isActive, robotState.bodyYaw]);
-
-  useEffect(() => {
-    if (!isActive) return;
-    fetchRobotState();
-    const interval = setInterval(fetchRobotState, 1000);
-    return () => clearInterval(interval);
-  }, [isActive, fetchRobotState]);
+  }, [isActive, robotStateFull]);
 
   // Continuous update loop
   const startContinuousUpdates = useCallback(() => {
