@@ -159,8 +159,17 @@ BUNDLE_FILE=""
 if [[ "$PLATFORM" == darwin-* ]]; then
     APP_NAME="Reachy Mini Control.app"
     APP_PATH="$BUNDLE_DIR/macos/$APP_NAME"
+    
+    # Always use absolute path from PROJECT_DIR
+    if [[ "$APP_PATH" != /* ]]; then
+        # Relative path - make it absolute
+        APP_PATH="$PROJECT_DIR/$APP_PATH"
+    fi
+    
     if [ ! -d "$APP_PATH" ]; then
         echo -e "${RED}❌ Bundle not found: ${APP_PATH}${NC}"
+        echo -e "${YELLOW}   PROJECT_DIR: ${PROJECT_DIR}${NC}"
+        echo -e "${YELLOW}   BUNDLE_DIR: ${BUNDLE_DIR}${NC}"
         exit 1
     fi
     # Create tar.gz
@@ -268,10 +277,29 @@ elif [[ "$PLATFORM" == windows-* ]]; then
 elif [[ "$PLATFORM" == linux-* ]]; then
     # Find AppImage file - try multiple methods for robustness
     APPIMAGE_DIR="$BUNDLE_DIR/appimage"
+    
+    # Always use absolute path from PROJECT_DIR
+    if [[ "$APPIMAGE_DIR" != /* ]]; then
+        # Relative path - make it absolute
+        APPIMAGE_DIR="$PROJECT_DIR/$APPIMAGE_DIR"
+    fi
+    
+    # Verify the directory exists
     if [ ! -d "$APPIMAGE_DIR" ]; then
         echo -e "${RED}❌ AppImage directory not found: ${APPIMAGE_DIR}${NC}"
-        echo -e "${YELLOW}   Looking for AppImage files in: ${BUNDLE_DIR}${NC}"
-        ls -la "$BUNDLE_DIR" || true
+        echo -e "${YELLOW}   PROJECT_DIR: ${PROJECT_DIR}${NC}"
+        echo -e "${YELLOW}   BUNDLE_DIR: ${BUNDLE_DIR}${NC}"
+        echo -e "${YELLOW}   Looking for AppImage files in bundle directory:${NC}"
+        ABS_BUNDLE_DIR="$PROJECT_DIR/$BUNDLE_DIR"
+        if [ -d "$ABS_BUNDLE_DIR" ]; then
+            echo -e "${YELLOW}   Contents of: ${ABS_BUNDLE_DIR}${NC}"
+            ls -la "$ABS_BUNDLE_DIR" || true
+        elif [ -d "$BUNDLE_DIR" ]; then
+            echo -e "${YELLOW}   Contents of: ${BUNDLE_DIR}${NC}"
+            ls -la "$BUNDLE_DIR" || true
+        else
+            echo -e "${YELLOW}   Bundle directory not found at all${NC}"
+        fi
         exit 1
     fi
     
