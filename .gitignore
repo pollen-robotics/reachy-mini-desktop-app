@@ -43,6 +43,7 @@ keys/
 *.sign
 *.cer
 *.p12
+*.p8
 *.pem
 test-updates/
 mock-updates/
