@@ -234,124 +234,40 @@ jobs:
           echo "📦 Configuring App Store Connect API key for manual notarization..."
           mkdir -p ~/.appstoreconnect
           
-          # IMPORTANT: Preserve PEM format of .p8 file exactly as stored in GitHub Secrets
-          # Best practice: GitHub Secrets can be stored as raw PEM or base64-encoded
-          # We handle both cases to be robust
-          # Expected PEM format:
-          # -----BEGIN PRIVATE KEY-----
-          # (base64 content on multiple lines)
-          # -----END PRIVATE KEY-----
+          # Get the secret content
           KEY_CONTENT="${{ secrets.APPLE_API_KEY_CONTENT }}"
           
-          # Debug: Check what we received (first 50 chars only for security)
-          echo "🔍 Debug: Key content preview (first 50 chars):"
-          echo "$KEY_CONTENT" | head -c 50
-          echo ""
-          echo "🔍 Debug: Key content length: $(echo -n "$KEY_CONTENT" | wc -c) characters"
+          # Detect if content is base64-encoded or raw PEM
+          # Base64 typically doesn't start with -----BEGIN
+          FIRST_CHARS=$(echo "$KEY_CONTENT" | head -c 20 | tr -d ' \n\r\t')
           
-          # Clean the key content (remove leading/trailing whitespace but preserve internal structure)
-          KEY_CONTENT_TRIMMED=$(echo "$KEY_CONTENT" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-          
-          # Try to detect if content is base64-encoded (doesn't start with -----BEGIN)
-          FIRST_CHARS=$(echo "$KEY_CONTENT_TRIMMED" | head -c 20)
           if echo "$FIRST_CHARS" | grep -q "^-----BEGIN"; then
             echo "✅ Detected raw PEM format"
-            # Raw PEM format - write directly, normalize line endings (preserve newlines)
-            echo "$KEY_CONTENT_TRIMMED" | tr -d '\r' > ~/.appstoreconnect/private_key.p8
+            # Raw PEM format - write directly
+            printf '%s' "$KEY_CONTENT" > ~/.appstoreconnect/private_key.p8
           else
-            echo "🔍 Detected base64-encoded key, attempting decode..."
-            # Try multiple base64 decode strategies
-            DECODE_SUCCESS=false
-            
-            # Strategy 1: Clean base64 (remove all whitespace, single line)
-            CLEAN_B64=$(echo "$KEY_CONTENT_TRIMMED" | tr -d ' \n\r\t')
-            if echo "$CLEAN_B64" | base64 --decode > ~/.appstoreconnect/private_key.p8 2>/dev/null; then
-              # Verify the decoded content is valid PEM
-              if grep -q "^-----BEGIN" ~/.appstoreconnect/private_key.p8 2>/dev/null; then
-                echo "✅ Base64 decode successful (single line, cleaned)"
-                DECODE_SUCCESS=true
-              fi
-            fi
-            
-            # Strategy 2: If strategy 1 failed, try with preserved newlines
-            if [ "$DECODE_SUCCESS" = false ]; then
-              if echo "$KEY_CONTENT_TRIMMED" | base64 --decode > ~/.appstoreconnect/private_key.p8 2>/dev/null; then
-                if grep -q "^-----BEGIN" ~/.appstoreconnect/private_key.p8 2>/dev/null; then
-                  echo "✅ Base64 decode successful (multi-line)"
-                  DECODE_SUCCESS=true
-                fi
-              fi
-            fi
-            
-            # Strategy 3: If still failed, try adding padding if needed
-            if [ "$DECODE_SUCCESS" = false ]; then
-              CLEAN_B64=$(echo "$KEY_CONTENT_TRIMMED" | tr -d ' \n\r\t')
-              # Add padding if needed (base64 requires length to be multiple of 4)
-              PADDING=$((4 - ${#CLEAN_B64} % 4))
-              if [ $PADDING -ne 4 ]; then
-                CLEAN_B64="${CLEAN_B64}$(printf '=%.0s' $(seq 1 $PADDING))"
-              fi
-              if echo "$CLEAN_B64" | base64 --decode > ~/.appstoreconnect/private_key.p8 2>/dev/null; then
-                if grep -q "^-----BEGIN" ~/.appstoreconnect/private_key.p8 2>/dev/null; then
-                  echo "✅ Base64 decode successful (with padding fix)"
-                  DECODE_SUCCESS=true
-                fi
-              fi
-            fi
-            
-            # If all strategies failed, error out with helpful message
-            if [ "$DECODE_SUCCESS" = false ]; then
-              echo "❌ Failed to decode base64 key with all strategies"
-              echo "🔍 The secret APPLE_API_KEY_CONTENT appears to be invalid or corrupted"
-              echo ""
-              echo "💡 To fix this, ensure the secret is stored correctly:"
-              echo "   1. If storing as raw PEM: Copy the entire .p8 file content (including -----BEGIN/-----END lines)"
-              echo "   2. If storing as base64: Encode the .p8 file with: base64 -i AuthKey_XXX.p8"
-              exit 1
-            fi
+            echo "✅ Detected base64-encoded format"
+            # Base64 format - decode first
+            echo "$KEY_CONTENT" | tr -d ' \n\r\t' | base64 --decode > ~/.appstoreconnect/private_key.p8
           fi
           
           chmod 600 ~/.appstoreconnect/private_key.p8
           
-          # Verify .p8 file is in valid PEM format
-          echo "🔍 Verifying .p8 file format..."
-          echo "   File size: $(wc -c < ~/.appstoreconnect/private_key.p8) bytes"
-          echo "   Line count: $(wc -l < ~/.appstoreconnect/private_key.p8) lines"
-          echo "   First 50 chars: $(head -c 50 ~/.appstoreconnect/private_key.p8)"
-          echo "   Last 50 chars: $(tail -c 50 ~/.appstoreconnect/private_key.p8)"
-          
-          # Use grep -E to avoid issues with BSD grep on macOS interpreting dashes as options
-          if grep -E "^-----BEGIN" ~/.appstoreconnect/private_key.p8 >/dev/null 2>&1 && grep -E "-----END" ~/.appstoreconnect/private_key.p8 >/dev/null 2>&1; then
-            echo "✅ Valid PEM format detected"
-            
-            # Additional validation: try to parse with openssl (best practice)
-            echo "🔍 Validating key with openssl..."
-            if openssl rsa -in ~/.appstoreconnect/private_key.p8 -check -noout 2>/dev/null || \
-               openssl ec -in ~/.appstoreconnect/private_key.p8 -check -noout 2>/dev/null; then
-              echo "✅ Key is valid and parseable by openssl"
-            else
-              echo "⚠️  Warning: openssl could not parse the key (may still work with notarytool)"
-            fi
-            
-            # Show structure for debugging (first and last lines only)
+          # Validate the key file using openssl (standard practice)
+          echo "🔍 Validating private key with openssl..."
+          if openssl pkey -in ~/.appstoreconnect/private_key.p8 -noout > /dev/null 2>&1; then
+            echo "✅ Private key is valid and parseable by openssl"
+          else
+            echo "❌ Invalid private key file - openssl validation failed"
+            echo ""
+            echo "🔍 Debug info:"
+            echo "   File size: $(wc -c < ~/.appstoreconnect/private_key.p8) bytes"
             echo "   First line: $(head -1 ~/.appstoreconnect/private_key.p8)"
             echo "   Last line: $(tail -1 ~/.appstoreconnect/private_key.p8)"
-          else
-            echo "❌ The .p8 file is not in valid PEM format"
             echo ""
-            echo "🔍 Debugging information:"
-            echo "   File exists: $([ -f ~/.appstoreconnect/private_key.p8 ] && echo 'yes' || echo 'no')"
-            echo "   File is readable: $([ -r ~/.appstoreconnect/private_key.p8 ] && echo 'yes' || echo 'no')"
-            echo "   First 100 chars (hex): $(head -c 100 ~/.appstoreconnect/private_key.p8 | xxd -l 100 | head -5)"
-            echo ""
-            echo "💡 Possible issues:"
-            echo "   1. The secret APPLE_API_KEY_CONTENT might be stored incorrectly in GitHub Secrets"
-            echo "   2. The key might need to be base64-encoded before storing in GitHub Secrets"
-            echo "   3. The key might have extra characters or be corrupted"
-            echo ""
-            echo "💡 Solution: Store the .p8 file content in GitHub Secrets as:"
-            echo "   - Either: Raw PEM format (starts with -----BEGIN PRIVATE KEY-----)"
-            echo "   - Or: Base64-encoded (encode the entire PEM file with: base64 -i AuthKey_XXX.p8)"
+            echo "💡 APPLE_API_KEY_CONTENT can be stored in two formats:"
+            echo "   1. Raw PEM: Copy the entire .p8 file content (including BEGIN/END lines)"
+            echo "   2. Base64: Encode the .p8 file with: base64 -i Certificates.p8"
             exit 1
           fi
           
