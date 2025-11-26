@@ -72,3 +72,7 @@ target/
 # These are built by build-sidecar scripts
 src-tauri/binaries/
 **/binaries/
+
+# Rust build artifacts in uv-wrapper
+uv-wrapper/target/
+uv-wrapper/target/**/*
