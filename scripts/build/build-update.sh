@@ -211,28 +211,30 @@ elif [[ "$PLATFORM" == windows-* ]]; then
     # Try to find MSI with multiple path strategies
     BUNDLE_FILE=""
     
-    # Strategy 1: Relative path from PROJECT_DIR
-    if [ -d "$PROJECT_DIR/$MSI_DIR" ]; then
+    # Always use absolute path from PROJECT_DIR
+    # On Windows in CI, paths can be tricky, so use absolute path
+    if [[ "$MSI_DIR" != /* ]] && [[ "$MSI_DIR" != [A-Za-z]:* ]]; then
+        # Relative path - make it absolute
         MSI_DIR="$PROJECT_DIR/$MSI_DIR"
     fi
     
-    # Strategy 2: Check if MSI_DIR exists (might already be absolute on Windows)
+    # Verify the directory exists
     if [ ! -d "$MSI_DIR" ]; then
-        # Try with PROJECT_DIR prefix
-        if [ -d "$PROJECT_DIR/$MSI_DIR" ]; then
-            MSI_DIR="$PROJECT_DIR/$MSI_DIR"
+        echo -e "${RED}❌ MSI directory not found: ${MSI_DIR}${NC}"
+        echo -e "${YELLOW}   PROJECT_DIR: ${PROJECT_DIR}${NC}"
+        echo -e "${YELLOW}   BUNDLE_DIR: ${BUNDLE_DIR}${NC}"
+        echo -e "${YELLOW}   Looking for MSI files in bundle directory:${NC}"
+        ABS_BUNDLE_DIR="$PROJECT_DIR/$BUNDLE_DIR"
+        if [ -d "$ABS_BUNDLE_DIR" ]; then
+            echo -e "${YELLOW}   Contents of: ${ABS_BUNDLE_DIR}${NC}"
+            ls -la "$ABS_BUNDLE_DIR" || true
+        elif [ -d "$BUNDLE_DIR" ]; then
+            echo -e "${YELLOW}   Contents of: ${BUNDLE_DIR}${NC}"
+            ls -la "$BUNDLE_DIR" || true
         else
-            echo -e "${RED}❌ MSI directory not found: ${MSI_DIR}${NC}"
-            echo -e "${YELLOW}   Tried: ${MSI_DIR}${NC}"
-            echo -e "${YELLOW}   Tried: ${PROJECT_DIR}/${MSI_DIR}${NC}"
-            echo -e "${YELLOW}   Looking for MSI files in bundle directory: ${BUNDLE_DIR}${NC}"
-            if [ -d "$PROJECT_DIR/$BUNDLE_DIR" ]; then
-                ls -la "$PROJECT_DIR/$BUNDLE_DIR" || true
-            elif [ -d "$BUNDLE_DIR" ]; then
-                ls -la "$BUNDLE_DIR" || true
-            fi
-            exit 1
+            echo -e "${YELLOW}   Bundle directory not found at all${NC}"
         fi
+        exit 1
     fi
     
     # Try find first (works on Unix-like systems and Git Bash on Windows)
