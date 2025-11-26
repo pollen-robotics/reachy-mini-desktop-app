@@ -159,11 +159,31 @@ if [[ "$PLATFORM" == darwin-* ]]; then
     fi
     cd "$PROJECT_DIR"
 elif [[ "$PLATFORM" == windows-* ]]; then
-    BUNDLE_FILE=$(find "$BUNDLE_DIR/msi" -name "*.msi" | head -1)
-    if [ -z "$BUNDLE_FILE" ]; then
-        echo -e "${RED}❌ MSI bundle not found${NC}"
+    # Find MSI file - try multiple methods for cross-platform compatibility
+    MSI_DIR="$BUNDLE_DIR/msi"
+    if [ ! -d "$MSI_DIR" ]; then
+        echo -e "${RED}❌ MSI directory not found: ${MSI_DIR}${NC}"
+        echo -e "${YELLOW}   Looking for MSI files in: ${BUNDLE_DIR}${NC}"
+        ls -la "$BUNDLE_DIR" || true
         exit 1
     fi
+    
+    # Try find first (works on Unix-like systems)
+    BUNDLE_FILE=$(find "$MSI_DIR" -name "*.msi" 2>/dev/null | head -1)
+    
+    # If find failed, try ls (works on Windows with Git Bash)
+    if [ -z "$BUNDLE_FILE" ]; then
+        BUNDLE_FILE=$(ls "$MSI_DIR"/*.msi 2>/dev/null | head -1)
+    fi
+    
+    if [ -z "$BUNDLE_FILE" ] || [ ! -f "$BUNDLE_FILE" ]; then
+        echo -e "${RED}❌ MSI bundle not found in: ${MSI_DIR}${NC}"
+        echo -e "${YELLOW}   Contents of MSI directory:${NC}"
+        ls -la "$MSI_DIR" || true
+        exit 1
+    fi
+    
+    echo -e "${BLUE}📦 Found MSI: ${BUNDLE_FILE}${NC}"
     cp "$BUNDLE_FILE" "$OUTPUT_DIR/"
     BUNDLE_FILE="$OUTPUT_DIR/$(basename "$BUNDLE_FILE")"
 elif [[ "$PLATFORM" == linux-* ]]; then
