@@ -59,6 +59,28 @@ export default function UpdateView({
     }
   };
 
+  // Check if error is network-related
+  const isNetworkError = (error) => {
+    if (!error) return false;
+    
+    const errorLower = error.toLowerCase();
+    const networkKeywords = [
+      'network',
+      'connection',
+      'internet',
+      'timeout',
+      'fetch',
+      'could not fetch',
+      'failed to fetch',
+      'unable to check',
+      'check your internet',
+      'no internet',
+      'offline',
+    ];
+    
+    return networkKeywords.some(keyword => errorLower.includes(keyword));
+  };
+
   return (
     <Box
       sx={{
@@ -217,29 +239,82 @@ export default function UpdateView({
             )}
           </>
         ) : updateError ? (
-          // État: Erreur (non-bloquant, continue après minimum time)
-          // En dev, on affiche juste "Looking for updates..." même en cas d'erreur
+          // État: Erreur - afficher message d'erreur clair, surtout pour erreurs réseau
           <>
-            <CircularProgress
-              size={28}
-              thickness={2.5}
+            <Box
               sx={{
-                color: darkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.12)',
-                mb: 1.5,
-              }}
-            />
-
-            <Typography
-              sx={{
-                fontSize: 12,
-                fontWeight: 400,
-                color: darkMode ? 'rgba(255, 255, 255, 0.35)' : 'rgba(0, 0, 0, 0.35)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                maxWidth: 360,
                 textAlign: 'center',
-                letterSpacing: '0.2px',
               }}
             >
-              Looking for updates...
-            </Typography>
+              {/* Icon or visual indicator for error */}
+              <Box
+                sx={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: '50%',
+                  bgcolor: darkMode ? 'rgba(239, 68, 68, 0.1)' : 'rgba(239, 68, 68, 0.08)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  mb: 2,
+                }}
+              >
+                <Typography
+                  sx={{
+                    fontSize: 32,
+                    color: '#ef4444',
+                  }}
+                >
+                  ⚠️
+                </Typography>
+              </Box>
+
+              {/* Error title */}
+              <Typography
+                sx={{
+                  fontSize: 18,
+                  fontWeight: 600,
+                  color: darkMode ? '#f5f5f5' : '#333',
+                  mb: 1,
+                }}
+              >
+                {isNetworkError(updateError) ? 'No Internet Connection' : 'Update Check Failed'}
+              </Typography>
+
+              {/* Error message */}
+              <Typography
+                sx={{
+                  fontSize: 13,
+                  color: darkMode ? '#aaa' : '#666',
+                  lineHeight: 1.6,
+                  mb: 2,
+                }}
+              >
+                {isNetworkError(updateError) 
+                  ? 'Unable to check for updates. Please check your internet connection and try again.'
+                  : updateError
+                }
+              </Typography>
+
+              {/* Helpful hint for network errors */}
+              {isNetworkError(updateError) && (
+                <Typography
+                  sx={{
+                    fontSize: 11,
+                    color: darkMode ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
+                    fontStyle: 'italic',
+                    mt: 1,
+                  }}
+                >
+                  The app will continue checking automatically once your connection is restored.
+                </Typography>
+              )}
+            </Box>
           </>
         ) : null}
       </Box>
