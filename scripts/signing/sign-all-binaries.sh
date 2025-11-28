@@ -96,6 +96,12 @@ if [ -d "$RESOURCES_DIR" ]; then
             done
         fi
         
+        # Sign all executable binaries in .venv/lib (including subdirectories like cmeel.prefix/bin)
+        # This catches binaries in packages like cmeel.prefix/bin, etc.
+        find "$RESOURCES_DIR/.venv/lib" -type f -perm +111 | while read -r binary; do
+            sign_binary "$binary"
+        done
+        
     fi
     
     # Sign binaries in cpython (for all architectures)
