@@ -413,24 +413,32 @@ jobs:
           
           # Create ZIP for notarization
           BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
-          ZIP_PATH="$BUNDLE_DIR/Reachy Mini Control.zip"
+          ZIP_NAME="Reachy Mini Control.zip"
+          ZIP_PATH="$BUNDLE_DIR/$ZIP_NAME"
           
           echo "📦 Creating ZIP for notarization..."
           echo "   Bundle: $APP_BUNDLE"
           echo "   ZIP: $ZIP_PATH"
           
+          # Change to bundle directory and create ZIP
           cd "$BUNDLE_DIR"
-          ditto -c -k --keepParent "Reachy Mini Control.app" "Reachy Mini Control.zip"
+          ditto -c -k --keepParent "Reachy Mini Control.app" "$ZIP_NAME"
           
-          if [ ! -f "$ZIP_PATH" ]; then
-            echo "❌ Failed to create ZIP file: $ZIP_PATH"
+          # Verify ZIP was created (check in current directory after cd)
+          if [ ! -f "$ZIP_NAME" ]; then
+            echo "❌ Failed to create ZIP file: $ZIP_NAME"
+            echo "   Current directory: $(pwd)"
+            echo "   Files in directory:"
+            ls -la || true
             exit 1
           fi
           
-          echo "✅ ZIP created: $ZIP_PATH ($(du -h "$ZIP_PATH" | cut -f1))"
+          # Get absolute path for notarytool
+          ABS_ZIP_PATH="$(pwd)/$ZIP_NAME"
+          echo "✅ ZIP created: $ABS_ZIP_PATH ($(du -h "$ZIP_NAME" | cut -f1))"
           
           echo "📦 Submitting app for notarization..."
-          xcrun notarytool submit "$ZIP_PATH" \
+          xcrun notarytool submit "$ABS_ZIP_PATH" \
             --key "$APPLE_API_KEY_PATH" \
             --key-id "$APPLE_API_KEY" \
             --issuer "$APPLE_API_ISSUER" \
