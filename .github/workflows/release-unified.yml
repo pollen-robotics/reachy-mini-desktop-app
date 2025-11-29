@@ -491,8 +491,18 @@ jobs:
             
             # Staple the notarization ticket
             echo "📎 Stapling notarization ticket..."
-            xcrun stapler staple "$APP_BUNDLE"
-            xcrun stapler validate "$APP_BUNDLE"
+            if ! xcrun stapler staple "$APP_BUNDLE"; then
+              echo "❌ Failed to staple notarization ticket"
+              exit 1
+            fi
+            
+            # Validate that the ticket was stapled correctly
+            echo "🔍 Validating stapled ticket..."
+            if ! xcrun stapler validate "$APP_BUNDLE"; then
+              echo "❌ Ticket validation failed - ticket may not be stapled correctly"
+              exit 1
+            fi
+            echo "✅ Ticket successfully stapled and validated"
             
             # Clean up notarization ZIP (no longer needed)
             echo "🧹 Cleaning up notarization ZIP..."
@@ -506,7 +516,16 @@ jobs:
             # Remove old ZIP if exists
             rm -f "$RELEASE_ZIP_NAME"
             # Create new ZIP with the notarized and stapled app
-            ditto -c -k --keepParent "Reachy Mini Control.app" "$RELEASE_ZIP_NAME"
+            # Use ditto with --norsrc to avoid resource forks that might interfere with ticket
+            ditto -c -k --norsrc --keepParent "Reachy Mini Control.app" "$RELEASE_ZIP_NAME"
+            
+            # Verify the ticket is still present in the app before ZIP (should still be valid)
+            echo "🔍 Verifying ticket is still present in app bundle..."
+            if ! xcrun stapler validate "Reachy Mini Control.app"; then
+              echo "❌ Ticket validation failed after ZIP creation - ticket may have been lost"
+              exit 1
+            fi
+            echo "✅ Ticket is still valid in app bundle"
             
             if [ ! -f "$RELEASE_ZIP_NAME" ]; then
               echo "❌ Failed to create release ZIP file"
