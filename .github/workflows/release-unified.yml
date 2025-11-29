@@ -494,10 +494,15 @@ jobs:
             xcrun stapler staple "$APP_BUNDLE"
             xcrun stapler validate "$APP_BUNDLE"
             
+            # Clean up notarization ZIP (no longer needed)
+            echo "🧹 Cleaning up notarization ZIP..."
+            cd "$BUNDLE_DIR"
+            rm -f "Reachy Mini Control.zip"
+            
             # Create a ZIP file for GitHub release upload (after notarization)
             echo "📦 Creating ZIP file for GitHub release..."
-            cd "$BUNDLE_DIR"
-            RELEASE_ZIP_NAME="Reachy Mini Control_${{ steps.version.outputs.version }}_${{ matrix.target == 'aarch64-apple-darwin' && 'arm64' || 'x64' }}.zip"
+            ARCH_SUFFIX="${{ matrix.target == 'aarch64-apple-darwin' && 'arm64' || 'x64' }}"
+            RELEASE_ZIP_NAME="Reachy.Mini.Control_${{ steps.version.outputs.version }}_${ARCH_SUFFIX}.zip"
             # Remove old ZIP if exists
             rm -f "$RELEASE_ZIP_NAME"
             # Create new ZIP with the notarized and stapled app
