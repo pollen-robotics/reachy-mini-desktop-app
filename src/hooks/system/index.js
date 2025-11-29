@@ -7,4 +7,5 @@ export { useUsbDetection } from './useUsbDetection';
 export { useWindowResize } from './useWindowResize';
 export { useAudioControls } from './useAudioControls';
 export { useAppLogs } from './useAppLogs';
+export { useNetworkStatus } from './useNetworkStatus';
 

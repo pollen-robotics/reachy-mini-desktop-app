@@ -18,10 +18,10 @@ import { smoothValue, getDeltaTime } from './inputSmoothing';
  * Higher values = faster response (ghost is caught up quickly)
  */
 const SMOOTHING_FACTORS = {
-  POSITION: 0.04,     // Position (X, Y, Z) - very slow, ghost takes much longer to catch up
-  ROTATION: 0.04,     // Rotation (pitch, yaw, roll) - very slow, ghost takes much longer to catch up
-  BODY_YAW: 0.075,    // Body yaw - very slow for precision
-  ANTENNA: 0.06,      // Antennas - very slow, ghost takes much longer to catch up
+  POSITION: 0.02,     // Position (X, Y, Z) - very slow, ghost takes much longer to catch up (divided by 2)
+  ROTATION: 0.02,     // Rotation (pitch, yaw, roll) - very slow, ghost takes much longer to catch up (divided by 2)
+  BODY_YAW: 0.0375,   // Body yaw - very slow for precision (divided by 2)
+  ANTENNA: 0.03,      // Antennas - very slow, ghost takes much longer to catch up (divided by 2)
 };
 
 /**

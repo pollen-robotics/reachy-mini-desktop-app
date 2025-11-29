@@ -363,13 +363,13 @@ function HardwareScanView({
             }}
           >
             <Typography
-              sx={{
+                  sx={{
                 fontSize: 11,
                 fontWeight: 600,
                 color: darkMode ? '#666' : '#999',
                 letterSpacing: '1px',
                 textTransform: 'uppercase',
-              }}
+                  }}
             >
               {scanComplete ? 'Scan Complete' : 'Scanning Hardware'}
             </Typography>
@@ -380,7 +380,7 @@ function HardwareScanView({
                   <LinearProgress 
                     variant="determinate"
                     value={scanProgress.total > 0 ? (scanProgress.current / scanProgress.total) * 100 : 0}
-                    sx={{
+                  sx={{ 
                       height: 4,
                       borderRadius: 2,
                       backgroundColor: darkMode 
@@ -390,14 +390,14 @@ function HardwareScanView({
                         backgroundColor: theme.palette.primary.main,
                         borderRadius: 2,
                       },
-                    }}
-                  />
+                  }} 
+                />
                 </Box>
                 
                 <Box sx={{ textAlign: 'center' }}>
-                  <Typography
+              <Typography
                     component="span"
-                    sx={{
+                sx={{
                       fontSize: 14,
                       fontWeight: 500,
                       color: darkMode ? '#f5f5f5' : '#333',
@@ -411,7 +411,7 @@ function HardwareScanView({
                     ) : (
                       'Initializing scan...'
                     )}
-                  </Typography>
+              </Typography>
                 </Box>
               </>
             )}
@@ -430,7 +430,7 @@ function HardwareScanView({
                   <Box component="span" sx={{ fontWeight: 700 }}>Hardware scan</Box> completed successfully
                 </Typography>
               </Box>
-            )}
+              )}
           </Box>
         )}
       </Box>

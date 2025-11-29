@@ -317,7 +317,7 @@ export default function DevPlayground() {
                         />
                         <Typography
                           sx={{
-                            fontSize: 11,
+                  fontSize: 11,
                             fontWeight: 500,
                             color: darkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.65)',
                             opacity: 1,
@@ -329,7 +329,7 @@ export default function DevPlayground() {
                           }}
                         >
                           {currentPart ? currentPart.part : 'Initializing scan...'}
-                        </Typography>
+                </Typography>
                       </Box>
                     )}
                   </>

@@ -85,6 +85,9 @@ export function isRecoverableError(err) {
     'failed to fetch',
     'networkerror',
     'err_network',
+    'no internet',
+    'offline',
+    'networkerror',
   ];
   
   // Check all error representations

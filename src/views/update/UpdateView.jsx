@@ -299,19 +299,6 @@ export default function UpdateView({
                 }
               </Typography>
 
-              {/* Helpful hint for network errors */}
-              {isNetworkError(updateError) && (
-                <Typography
-                  sx={{
-                    fontSize: 11,
-                    color: darkMode ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
-                    fontStyle: 'italic',
-                    mt: 1,
-                  }}
-                >
-                  The app will continue checking automatically once your connection is restored.
-                </Typography>
-              )}
             </Box>
           </>
         ) : null}

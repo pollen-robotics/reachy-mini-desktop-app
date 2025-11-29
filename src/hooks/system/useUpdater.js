@@ -3,7 +3,7 @@ import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { extractErrorMessage, formatUserErrorMessage, isRecoverableError as checkRecoverableError } from '../../utils/errorUtils';
 import { isDevMode } from '../../utils/devMode';
-import { DAEMON_CONFIG } from '../../config/daemon';
+import { DAEMON_CONFIG, isOnline } from '../../config/daemon';
 
 /**
  * Hook to manage automatic application updates
@@ -58,6 +58,16 @@ export const useUpdater = ({
     // Prevent multiple simultaneous checks
     if (isCheckingRef.current && retryCount === 0) {
       console.warn('⚠️ Update check already in progress, skipping');
+      return null;
+    }
+
+    // ✅ Check internet connectivity BEFORE making network request
+    // Uses centralized isOnline() helper (DRY)
+    if (!isOnline()) {
+      console.warn('⚠️ navigator.onLine reports offline, skipping update check');
+      setIsChecking(false);
+      isCheckingRef.current = false;
+      setError('No internet connection. Please check your network settings.');
       return null;
     }
 
@@ -297,6 +307,47 @@ export const useUpdater = ({
   const dismissUpdate = useCallback(() => {
     setUpdateAvailable(null);
   }, []);
+
+  // Listen for online/offline events to retry when connection is restored
+  useEffect(() => {
+    const handleOnline = () => {
+      console.log('✅ Internet connection restored');
+      // Clear error if we were offline
+      setError((prevError) => {
+        if (prevError && prevError.includes('No internet connection')) {
+          return null;
+        }
+        return prevError;
+      });
+      // Retry update check if autoCheck is enabled and not already checking
+      if (autoCheck && !isCheckingRef.current) {
+        // Use a small delay to ensure state is updated
+        setTimeout(() => {
+          if (!isCheckingRef.current && isOnline()) {
+            checkForUpdates();
+          }
+        }, 500);
+      }
+    };
+
+    const handleOffline = () => {
+      console.warn('⚠️ Internet connection lost');
+      // If we're checking, stop and show error
+      if (isCheckingRef.current) {
+        isCheckingRef.current = false;
+        setIsChecking(false);
+        setError('No internet connection. Please check your network settings.');
+      }
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [autoCheck, checkForUpdates]);
 
   // Automatic check on startup (with delay to avoid blocking startup)
   useEffect(() => {

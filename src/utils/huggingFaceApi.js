@@ -1,3 +1,5 @@
+import { fetchExternal } from '../config/daemon';
+
 // Hugging Face dataset URL for app list
 export const HUGGINGFACE_APP_LIST_URL = 'https://huggingface.co/datasets/pollen-robotics/reachy-mini-application-store/raw/main/app-list.json';
 
@@ -44,11 +46,11 @@ async function fetchSpaceLikes(spaceId) {
     // Method 1: Try the API endpoint (may require auth, but worth trying)
     try {
       const apiUrl = `https://huggingface.co/api/spaces/${fullPath}`;
-      const response = await fetch(apiUrl, {
+      const response = await fetchExternal(apiUrl, {
         headers: {
           'Accept': 'application/json',
         },
-      });
+      }, 10000, { silent: true });
       
       if (response.ok) {
         const data = await response.json();
@@ -63,11 +65,11 @@ async function fetchSpaceLikes(spaceId) {
     // Method 2: Try scraping from the HTML page
     try {
       const pageUrl = `https://huggingface.co/spaces/${fullPath}`;
-      const response = await fetch(pageUrl, {
+      const response = await fetchExternal(pageUrl, {
         headers: {
           'Accept': 'text/html',
         },
-      });
+      }, 10000, { silent: true });
       
       if (response.ok) {
         const html = await response.text();
@@ -135,11 +137,11 @@ async function fetchSpacesLikes(spaceIds) {
  */
 export async function fetchHuggingFaceAppList() {
   try {
-    const response = await fetch(HUGGINGFACE_APP_LIST_URL, {
+    const response = await fetchExternal(HUGGINGFACE_APP_LIST_URL, {
       headers: {
         'Accept': 'application/json, text/plain, */*',
       },
-    });
+    }, 10000, { silent: true });
     
     if (!response.ok) {
       // Silently return empty array for 401/404 errors (dataset may not exist or be private)
@@ -210,9 +212,15 @@ export async function fetchHuggingFaceAppList() {
     
     return enrichedApps || [];
   } catch (error) {
+    // Handle network errors gracefully
+    if (error.name === 'NetworkError' || error.isOffline || error.message?.includes('No internet connection')) {
+      console.warn('⚠️ No internet connection, skipping Hugging Face app list fetch');
+      return [];
+    }
+    
     // Silently return empty array on error - backend already provides all necessary data
     // Only log non-network errors (parsing errors, etc.)
-    if (!error.message.includes('Failed to fetch') && !error.message.includes('401') && !error.message.includes('404')) {
+    if (!error.message?.includes('Failed to fetch') && !error.message?.includes('401') && !error.message?.includes('404')) {
       console.warn('⚠️ Failed to fetch Hugging Face app list:', error.message);
     }
     // Return empty array on error to prevent breaking the app

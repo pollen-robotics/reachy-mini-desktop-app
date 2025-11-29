@@ -215,7 +215,7 @@ export default function Joystick2D({ label, valueX, valueY, onChange, onDragEnd,
           {/* Boundary circle - primary color */}
           <circle cx={centerX} cy={centerY} r={maxRadius} fill="none" stroke="rgba(255, 149, 0, 0.3)" strokeWidth={1.5} strokeDasharray="2 2" />
           {/* Ghost position (smoothed/interpolated value) - shows where we're heading */}
-          {smoothedValueX !== undefined && smoothedValueY !== undefined && (
+          {(smoothedValueX != null && smoothedValueY != null) && (
             <>
               {/* Ghost connection line - semi-transparent */}
               {(() => {

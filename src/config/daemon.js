@@ -267,6 +267,18 @@ export function isInstalling() {
 }
 
 /**
+ * Check if device is online
+ * @returns {boolean} True if online, false if offline
+ */
+export function isOnline() {
+  if (typeof navigator !== 'undefined' && 'onLine' in navigator) {
+    return navigator.onLine;
+  }
+  // Default to online if navigator not available
+  return true;
+}
+
+/**
  * Helper wrapper for fetchWithTimeout that skips during installation
  * @param {string} url - Full URL
  * @param {object} options - Fetch options
@@ -280,6 +292,18 @@ export async function fetchWithTimeoutSkipInstall(url, options = {}, timeoutMs, 
     skipError.name = 'SkippedError';
     throw skipError;
   }
+  return fetchWithTimeout(url, options, timeoutMs, logOptions);
+}
+
+/**
+ * Alias for fetchWithTimeout for external URLs (non-daemon endpoints)
+ * @param {string} url - Full external URL
+ * @param {object} options - Fetch options
+ * @param {number} timeoutMs - Timeout in ms
+ * @param {object} logOptions - Logging options
+ * @returns {Promise<Response>} Fetch response or throws error
+ */
+export async function fetchExternal(url, options = {}, timeoutMs, logOptions = {}) {
   return fetchWithTimeout(url, options, timeoutMs, logOptions);
 }
 

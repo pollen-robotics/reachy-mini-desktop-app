@@ -48,3 +48,25 @@ export const EXTENDED_ROBOT_RANGES = {
   YAW: { min: -3.6, max: 3.6 },       // Yaw in radians (3x original range)
 };
 
+/**
+ * Input smoothing factors for intermediate smoothing layer
+ * Applied before TargetSmoothingManager for additional fluidity
+ * Note: These are used in smoothInputs() before values reach TargetSmoothingManager
+ */
+export const INPUT_SMOOTHING_FACTORS = {
+  POSITION: 0.2,      // Position (X, Y): more responsive
+  POSITION_Z: 0.25,   // Z position: slightly smoother
+  ROTATION: 0.15,     // Rotation (pitch, yaw, roll): very responsive
+  BODY_YAW: 0.3,      // Body yaw: smoother for precision
+  ANTENNA: 0.2,       // Antennas: balanced
+};
+
+/**
+ * Sensitivity factors for mapping inputs to robot ranges
+ */
+export const INPUT_MAPPING_FACTORS = {
+  POSITION: 1.0,      // Full range for position
+  ROTATION: 1.0,      // Full range for rotation
+  BODY_YAW: 0.3,      // Reduced sensitivity for body yaw (30%)
+};
+

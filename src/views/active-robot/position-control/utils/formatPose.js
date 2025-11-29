@@ -9,18 +9,18 @@ export const formatPoseForLog = (headPose, bodyYaw) => {
     parts.push(`pos(${headPose.x.toFixed(3)}, ${headPose.y.toFixed(3)}, ${headPose.z.toFixed(3)})`);
   }
   
-  // Rotation (only if non-zero)
+  // Rotation (only if non-zero) - in radians
   if (Math.abs(headPose.pitch) > 0.01 || Math.abs(headPose.yaw) > 0.01 || Math.abs(headPose.roll) > 0.01) {
-    const pitchDeg = (headPose.pitch * 180 / Math.PI).toFixed(1);
-    const yawDeg = (headPose.yaw * 180 / Math.PI).toFixed(1);
-    const rollDeg = (headPose.roll * 180 / Math.PI).toFixed(1);
-    parts.push(`rot(p:${pitchDeg}°, y:${yawDeg}°, r:${rollDeg}°)`);
+    const pitchRad = headPose.pitch.toFixed(3);
+    const yawRad = headPose.yaw.toFixed(3);
+    const rollRad = headPose.roll.toFixed(3);
+    parts.push(`rot(p:${pitchRad}rad, y:${yawRad}rad, r:${rollRad}rad)`);
   }
   
-  // Body yaw (only if non-zero)
+  // Body yaw (only if non-zero) - in radians
   if (Math.abs(bodyYaw) > 0.01) {
-    const bodyYawDeg = (bodyYaw * 180 / Math.PI).toFixed(1);
-    parts.push(`body:${bodyYawDeg}°`);
+    const bodyYawRad = bodyYaw.toFixed(3);
+    parts.push(`body:${bodyYawRad}rad`);
   }
   
   return parts.length > 0 ? parts.join(', ') : 'reset';

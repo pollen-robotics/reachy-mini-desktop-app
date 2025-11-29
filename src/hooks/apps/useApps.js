@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import useAppStore from '../../store/useAppStore';
-import { DAEMON_CONFIG, fetchWithTimeout, buildApiUrl } from '../../config/daemon';
+import { DAEMON_CONFIG, fetchWithTimeout, buildApiUrl, fetchExternal } from '../../config/daemon';
 import { fetchHuggingFaceAppList } from '../../utils/huggingFaceApi';
 
 /**
@@ -30,7 +30,7 @@ export function useApps(isActive, official = true) {
     
     try {
       // 1. Fetch the list of official app IDs (authorized list)
-      const listResponse = await fetch(OFFICIAL_APP_LIST_URL);
+      const listResponse = await fetchExternal(OFFICIAL_APP_LIST_URL, {}, DAEMON_CONFIG.TIMEOUTS.APPS_LIST, { silent: true });
       if (!listResponse.ok) {
         throw new Error(`Failed to fetch official app list: ${listResponse.status}`);
       }
@@ -136,6 +136,11 @@ export function useApps(isActive, official = true) {
       
       return apps;
     } catch (error) {
+      // Handle network errors gracefully
+      if (error.name === 'NetworkError' || error.isOffline || error.message?.includes('No internet connection')) {
+        console.warn('⚠️ No internet connection, skipping official apps fetch');
+        return [];
+      }
       console.error('❌ Failed to fetch official apps:', error);
       return [];
     }
@@ -217,7 +222,7 @@ export function useApps(isActive, official = true) {
                 // Build space ID (might be full path or just name)
                 const fullSpaceId = spaceId.includes('/') ? spaceId : `pollen-robotics/${spaceId}`;
                 console.log(`🔄 Fetching runtime for ${fullSpaceId}`);
-                const spaceResponse = await fetch(`${HF_SPACES_API_URL}/${fullSpaceId}`);
+                const spaceResponse = await fetchExternal(`${HF_SPACES_API_URL}/${fullSpaceId}`, {}, DAEMON_CONFIG.TIMEOUTS.APPS_LIST, { silent: true });
                 if (spaceResponse.ok) {
                   const spaceData = await spaceResponse.json();
                   if (spaceData.runtime) {

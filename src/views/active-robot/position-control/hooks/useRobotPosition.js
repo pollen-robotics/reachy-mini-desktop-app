@@ -9,6 +9,8 @@ import {
   INPUT_THRESHOLDS,
   TIMING,
   EXTENDED_ROBOT_RANGES,
+  INPUT_SMOOTHING_FACTORS,
+  INPUT_MAPPING_FACTORS,
 } from '../../../../utils/inputConstants';
 import {
   hasActiveInput,
@@ -22,7 +24,10 @@ import {
   smoothInputs,
   getDeltaTime,
 } from '../../../../utils/inputSmoothing';
-import { TargetSmoothingManager } from '../../../../utils/targetSmoothing';
+import { useRobotAPI } from './useRobotAPI';
+import { useRobotSmoothing } from './useRobotSmoothing';
+import { useRobotSync } from './useRobotSync';
+import { mapInputToRobot } from '../../../../utils/inputMappings';
 
 /**
  * Hook to manage robot position control logic
@@ -52,9 +57,6 @@ export function useRobotPosition(isActive) {
 
   // Removed interpolation - only using set_target (no interpolation needed)
   const [isDragging, setIsDragging] = useState(false);
-  const rafRef = useRef(null);
-  const pendingPoseRef = useRef(null);
-  const lastSentPoseRef = useRef(null);
   const isDraggingRef = useRef(false);
   const lastDragEndTimeRef = useRef(0);
   const lastLoggedPoseRef = useRef(null);
@@ -78,220 +80,51 @@ export function useRobotPosition(isActive) {
   });
   const lastFrameTimeRef = useRef(performance.now());
   
-  // Unified target smoothing manager - applies smoothing to ALL input sources (mouse, gamepad, keyboard)
-  const targetSmoothingRef = useRef(new TargetSmoothingManager());
-  const smoothingRafRef = useRef(null);
+  // Use extracted hooks for better organization
+  // API management hook
+  const {
+    sendCommand,
+    sendSingleCommand,
+    startContinuousUpdates,
+    stopContinuousUpdates,
+    rafRef,
+    pendingPoseRef,
+    lastSentPoseRef,
+  } = useRobotAPI(isActive, robotState, isDraggingRef);
 
-  // Start continuous smoothing loop (runs every frame)
-  // This applies smoothing to ALL input sources (mouse, gamepad, keyboard)
+  // Ref to store sendCommand to avoid dependency issues
+  const sendCommandRef = useRef(sendCommand);
   useEffect(() => {
-    if (!isActive) return;
-
-    const smoothingLoop = () => {
-      // Update smoothed values towards targets
-      const smoothedValues = targetSmoothingRef.current.update();
+    sendCommandRef.current = sendCommand;
+  }, [sendCommand]);
       
-      // Send smoothed values to robot if we're in dragging mode
-      if (isDraggingRef.current) {
-        // Clamp to actual robot limits before sending
-        const apiClampedHeadPose = {
-          x: clamp(smoothedValues.headPose.x, ROBOT_POSITION_RANGES.POSITION.min, ROBOT_POSITION_RANGES.POSITION.max),
-          y: clamp(smoothedValues.headPose.y, ROBOT_POSITION_RANGES.POSITION.min, ROBOT_POSITION_RANGES.POSITION.max),
-          z: clamp(smoothedValues.headPose.z, ROBOT_POSITION_RANGES.POSITION.min, ROBOT_POSITION_RANGES.POSITION.max),
-          pitch: clamp(smoothedValues.headPose.pitch, ROBOT_POSITION_RANGES.PITCH.min, ROBOT_POSITION_RANGES.PITCH.max),
-          yaw: clamp(smoothedValues.headPose.yaw, ROBOT_POSITION_RANGES.YAW.min, ROBOT_POSITION_RANGES.YAW.max),
-          roll: clamp(smoothedValues.headPose.roll, ROBOT_POSITION_RANGES.ROLL.min, ROBOT_POSITION_RANGES.ROLL.max),
-        };
-        
-        sendCommandRef.current(
-          apiClampedHeadPose,
-          smoothedValues.antennas,
-          smoothedValues.bodyYaw
-        );
-      }
-      
-      // Update local values for display (smoothed values, can use extended ranges for UI)
-      setLocalValues(prev => ({
-        ...prev,
-        headPose: {
-          x: clamp(smoothedValues.headPose.x, EXTENDED_ROBOT_RANGES.POSITION.min, EXTENDED_ROBOT_RANGES.POSITION.max),
-          y: clamp(smoothedValues.headPose.y, EXTENDED_ROBOT_RANGES.POSITION.min, EXTENDED_ROBOT_RANGES.POSITION.max),
-          z: clamp(smoothedValues.headPose.z, ROBOT_POSITION_RANGES.POSITION.min, ROBOT_POSITION_RANGES.POSITION.max),
-          pitch: clamp(smoothedValues.headPose.pitch, EXTENDED_ROBOT_RANGES.PITCH.min, EXTENDED_ROBOT_RANGES.PITCH.max),
-          yaw: clamp(smoothedValues.headPose.yaw, EXTENDED_ROBOT_RANGES.YAW.min, EXTENDED_ROBOT_RANGES.YAW.max),
-          roll: clamp(smoothedValues.headPose.roll, ROBOT_POSITION_RANGES.ROLL.min, ROBOT_POSITION_RANGES.ROLL.max),
-        },
-        bodyYaw: smoothedValues.bodyYaw,
-        antennas: smoothedValues.antennas,
-      }));
-      
-      smoothingRafRef.current = requestAnimationFrame(smoothingLoop);
-    };
+  // Smoothing hook
+  const { targetSmoothingRef, smoothingRafRef, smoothedValues: smoothedValuesFromHook } = useRobotSmoothing(
+    isActive,
+    isDraggingRef,
+    sendCommandRef,
+    setLocalValues
+  );
 
-    smoothingRafRef.current = requestAnimationFrame(smoothingLoop);
+  // Sync hook
+  useRobotSync(
+    isActive,
+    robotStateFull,
+    robotState,
+    setRobotState,
+    localValues,
+    setLocalValues,
+    isDraggingRef,
+    isUsingGamepadKeyboardRef,
+    lastDragEndTimeRef,
+    lastGamepadKeyboardReleaseRef,
+    antennasRef,
+    targetSmoothingRef
+  );
 
-    return () => {
-      if (smoothingRafRef.current) {
-        cancelAnimationFrame(smoothingRafRef.current);
-        smoothingRafRef.current = null;
-      }
-    };
-  }, [isActive]);
 
-  // ✅ Update robotState from centralized data (NO POLLING)
-  useEffect(() => {
-    if (!isActive || !robotStateFull.data) return;
-
-    const data = robotStateFull.data;
-    const timeSinceDragEnd = Date.now() - lastDragEndTimeRef.current;
-    
-    if (data.head_pose) {
-      const newState = {
-        headPose: {
-          x: data.head_pose.x || 0,
-          y: data.head_pose.y || 0,
-          z: data.head_pose.z || 0,
-          pitch: data.head_pose.pitch || 0,
-          yaw: data.head_pose.yaw || 0,
-          roll: data.head_pose.roll || 0,
-        },
-        bodyYaw: typeof data.body_yaw === 'number' ? data.body_yaw : 0,
-        antennas: data.antennas_position || [0, 0],
-      };
-      
-      setRobotState(newState);
-      
-      // ✅ Only update localValues if user is not dragging AND not using gamepad/keyboard
-      // Also wait a bit after gamepad/keyboard release to allow robot to return to zero
-      const timeSinceGamepadRelease = Date.now() - lastGamepadKeyboardReleaseRef.current;
-      const canSyncFromRobot = 
-        !isDraggingRef.current && 
-        !isUsingGamepadKeyboardRef.current && 
-        timeSinceDragEnd >= TIMING.DRAG_END_SYNC_DELAY &&
-        timeSinceGamepadRelease >= TIMING.GAMEPAD_RELEASE_SYNC_DELAY;
-      
-      if (canSyncFromRobot) {
-        // Only update if values changed significantly (tolerance to avoid micro-adjustments)
-        // Increased tolerance to prevent "magnet" effect - only sync if there's a real significant change
-        const tolerance = INPUT_THRESHOLDS.SYNC_TOLERANCE * 10; // 10x tolerance to prevent unwanted snapping
-        const headPoseChanged = 
-          Math.abs(newState.headPose.x - localValues.headPose.x) > tolerance ||
-          Math.abs(newState.headPose.y - localValues.headPose.y) > tolerance ||
-          Math.abs(newState.headPose.z - localValues.headPose.z) > tolerance ||
-          Math.abs(newState.headPose.pitch - localValues.headPose.pitch) > tolerance ||
-          Math.abs(newState.headPose.yaw - localValues.headPose.yaw) > tolerance ||
-          Math.abs(newState.headPose.roll - localValues.headPose.roll) > tolerance;
-        const bodyYawChanged = Math.abs(newState.bodyYaw - localValues.bodyYaw) > tolerance;
-        
-        const antennasChanged = 
-          !localValues.antennas ||
-          Math.abs(newState.antennas[0] - (localValues.antennas[0] || 0)) > tolerance ||
-          Math.abs(newState.antennas[1] - (localValues.antennas[1] || 0)) > tolerance;
-        
-        // Only sync if change is significant enough to avoid "magnet" effect
-        // Use smoothing manager to sync smoothly instead of direct assignment (prevents snap)
-        if (headPoseChanged || bodyYawChanged || antennasChanged) {
-          antennasRef.current = newState.antennas;
-          // Sync smoothing manager smoothly instead of directly setting localValues
-          // This prevents sudden snaps when robot state changes
-          targetSmoothingRef.current.sync({
-            headPose: newState.headPose,
-            bodyYaw: newState.bodyYaw,
-            antennas: newState.antennas,
-          });
-          // Update localValues to reflect the sync (but smoothing will handle the transition)
-          setLocalValues({
-            headPose: newState.headPose,
-            bodyYaw: newState.bodyYaw,
-            antennas: newState.antennas,
-          });
-        }
-      }
-    }
-  }, [isActive, robotStateFull]);
-
-  // Stop continuous updates
-  const stopContinuousUpdates = useCallback(() => {
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
-    pendingPoseRef.current = null;
-  }, []);
-
-  // Continuous update loop
-  const startContinuousUpdates = useCallback(() => {
-    if (rafRef.current) return;
-    
-    const updateLoop = () => {
-      if (pendingPoseRef.current && isDraggingRef.current) {
-        const { headPose, antennas, bodyYaw } = pendingPoseRef.current;
-        // Include antennas in poseKey to detect changes properly
-        const poseKey = JSON.stringify({ headPose, antennas, bodyYaw });
-        
-        if (lastSentPoseRef.current !== poseKey) {
-          const validBodyYaw = typeof bodyYaw === 'number' ? bodyYaw : 0;
-          
-          // ✅ If only body_yaw is changing, send body_yaw with current values for others
-          // The API needs the current state to properly calculate body yaw movement
-          if (headPose === null && antennas === null) {
-            // Send current values so API can preserve them and calculate body yaw correctly
-            const requestBody = {
-              target_body_yaw: validBodyYaw,
-              target_head_pose: robotState.headPose, // Send current head pose
-              target_antennas: robotState.antennas || [0, 0], // Send current antennas
-            };
-            fetchWithTimeout(
-              buildApiUrl('/api/move/set_target'),
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestBody),
-              },
-              DAEMON_CONFIG.MOVEMENT.CONTINUOUS_MOVE_TIMEOUT,
-              { label: 'Continuous move (body_yaw)', silent: true }
-            ).catch((error) => {
-              console.error('❌ set_target (body_yaw only) error:', error);
-            });
-          } else {
-            // Normal case: send everything
-            const requestBody = {
-              target_head_pose: headPose,
-              target_antennas: antennas,
-              target_body_yaw: validBodyYaw,
-            };
-            fetchWithTimeout(
-              buildApiUrl('/api/move/set_target'),
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestBody),
-              },
-              DAEMON_CONFIG.MOVEMENT.CONTINUOUS_MOVE_TIMEOUT,
-              { label: 'Continuous move', silent: true }
-            ).catch((error) => {
-              console.error('❌ set_target error:', error);
-            });
-          }
-          
-          lastSentPoseRef.current = poseKey;
-        }
-        // Keep pendingPoseRef.current during drag - it will be updated by sendCommand calls
-        // Only clear it when drag ends (handled by stopContinuousUpdates)
-      }
-      
-      // Continue loop if still dragging
-      if (isDraggingRef.current) {
-        rafRef.current = requestAnimationFrame(updateLoop);
-      } else {
-        rafRef.current = null;
-        stopContinuousUpdates();
-      }
-    };
-    
-    rafRef.current = requestAnimationFrame(updateLoop);
-  }, [robotState, stopContinuousUpdates]);
-
+  // Note: stopContinuousUpdates is no longer needed since smoothing loop handles all updates
+  // But keeping it for backward compatibility and cleanup
   useEffect(() => {
     if (!isDragging) {
       stopContinuousUpdates();
@@ -304,24 +137,6 @@ export function useRobotPosition(isActive) {
   useEffect(() => {
     localValuesRef.current = localValues;
   }, [localValues]);
-
-  // Send command using set_target (always continuous mode)
-  const sendCommand = useCallback((headPose, antennas, bodyYaw) => {
-    if (!isActive) return;
-    const validBodyYaw = typeof bodyYaw === 'number' ? bodyYaw : (robotState.bodyYaw || 0);
-
-    // Always use set_target (continuous mode)
-    pendingPoseRef.current = { headPose, antennas, bodyYaw: validBodyYaw };
-    if (!rafRef.current) {
-      startContinuousUpdates();
-    }
-  }, [isActive, startContinuousUpdates, robotState.bodyYaw]);
-
-  // Ref to store sendCommand to avoid dependency issues
-  const sendCommandRef = useRef(sendCommand);
-  useEffect(() => {
-    sendCommandRef.current = sendCommand;
-  }, [sendCommand]);
 
   // Function to process inputs and update robot
   // Defined outside useEffect to comply with Rules of Hooks
@@ -337,15 +152,15 @@ export function useRobotPosition(isActive) {
         rawInputs,
         {
           // Different smoothing factors for different inputs
-          moveForward: 0.2,      // Position: more responsive
-          moveRight: 0.2,
-          moveUp: 0.25,          // Z position: slightly smoother
-          lookHorizontal: 0.15,  // Camera: very responsive
-          lookVertical: 0.15,
-          roll: 0.2,
-          bodyYaw: 0.3,         // Body yaw: smoother for precision
-          antennaLeft: 0.2,
-          antennaRight: 0.2,
+          moveForward: INPUT_SMOOTHING_FACTORS.POSITION,
+          moveRight: INPUT_SMOOTHING_FACTORS.POSITION,
+          moveUp: INPUT_SMOOTHING_FACTORS.POSITION_Z,
+          lookHorizontal: INPUT_SMOOTHING_FACTORS.ROTATION,
+          lookVertical: INPUT_SMOOTHING_FACTORS.ROTATION,
+          roll: INPUT_SMOOTHING_FACTORS.POSITION,
+          bodyYaw: INPUT_SMOOTHING_FACTORS.BODY_YAW,
+          antennaLeft: INPUT_SMOOTHING_FACTORS.ANTENNA,
+          antennaRight: INPUT_SMOOTHING_FACTORS.ANTENNA,
         }
       );
       
@@ -398,16 +213,18 @@ export function useRobotPosition(isActive) {
 
       // Use direct mapping approach with extended range support
       // Joysticks now have 3x the range to allow finer control
-      // Left stick (moveRight, moveForward) → Position XY
-      // Note: in RobotPositionControl, x and y are inverted (valueX={localValues.headPose.y}, valueY={localValues.headPose.x})
-      // Use full range: joystick max maps to extended range with sensitivity
-      const POSITION_SENSITIVITY_FACTOR = 1.0; // Use full range now that joystick range is extended
-      const ROTATION_SENSITIVITY_FACTOR = 1.0; // Use full range now that joystick range is extended
-      const BODY_YAW_SENSITIVITY_FACTOR = 0.3; // Reduce body yaw sensitivity to 30%
+      // Left stick mapping:
+      // - Horizontal (moveRight): droite = +1 → robot avance (Y positif)
+      // - Vertical (moveForward): haut = +1 → robot droite (X positif)
+      // This matches user expectation: joystick right = robot forward
+      const POSITION_SENSITIVITY_FACTOR = INPUT_MAPPING_FACTORS.POSITION;
+      const ROTATION_SENSITIVITY_FACTOR = INPUT_MAPPING_FACTORS.ROTATION;
+      const BODY_YAW_SENSITIVITY_FACTOR = INPUT_MAPPING_FACTORS.BODY_YAW;
       
       // Map joystick values (-1 to 1) to extended position ranges
-      const newX = inputs.moveRight * EXTENDED_ROBOT_RANGES.POSITION.max * POSITION_SENSITIVITY_FACTOR;
-      const newY = inputs.moveForward * EXTENDED_ROBOT_RANGES.POSITION.max * POSITION_SENSITIVITY_FACTOR;
+      // Inverted mapping: moveRight (horizontal) → Y (forward), moveForward (vertical) → X (right)
+      const newX = inputs.moveForward * EXTENDED_ROBOT_RANGES.POSITION.max * POSITION_SENSITIVITY_FACTOR;
+      const newY = inputs.moveRight * EXTENDED_ROBOT_RANGES.POSITION.max * POSITION_SENSITIVITY_FACTOR;
       
       // Z position - progressive increment (same logic as body yaw)
       // inputs.moveUp is a progressive value: 0.2 on first press, then increases linearly to 1.0
@@ -416,18 +233,16 @@ export function useRobotPosition(isActive) {
       const newZ = currentHeadPose.z + zIncrement;
 
       // Right stick (lookHorizontal, lookVertical) → Pitch/Yaw (head rotation)
-      // Map joystick values to extended rotation ranges
-      // Pitch: stick up = pitch positive (look up), stick down = pitch negative (look down)
-      // lookVertical is already inverted in InputManager (up = +1), so use directly
-      const newPitch = inputs.lookVertical * EXTENDED_ROBOT_RANGES.PITCH.max * ROTATION_SENSITIVITY_FACTOR;
-      // Yaw: stick right = yaw positive (turn right), stick left = yaw negative (turn left)
-      // Inverted to match intuition (right stick right = head turns right)
-      const newYaw = -inputs.lookHorizontal * EXTENDED_ROBOT_RANGES.YAW.max * ROTATION_SENSITIVITY_FACTOR;
+      // Use centralized mappings for transformations
+      const mappedPitch = mapInputToRobot(inputs.lookVertical, 'pitch');
+      const mappedYaw = mapInputToRobot(inputs.lookHorizontal, 'yaw');
+      const newPitch = mappedPitch * EXTENDED_ROBOT_RANGES.PITCH.max * ROTATION_SENSITIVITY_FACTOR;
+      const newYaw = mappedYaw * EXTENDED_ROBOT_RANGES.YAW.max * ROTATION_SENSITIVITY_FACTOR;
       const newRoll = inputs.roll * ROBOT_POSITION_RANGES.ROLL.max * ROTATION_SENSITIVITY_FACTOR;
 
       // Body yaw - progressive increment (inputs.bodyYaw is already progressive from InputManager)
       // Increment current body yaw instead of direct mapping
-      // Body yaw range: -160° to 160° (same as antennas)
+      // Body yaw range: -160° to 160° in radians (same as antennas)
       const BODY_YAW_RANGE = { min: -160 * Math.PI / 180, max: 160 * Math.PI / 180 };
       const bodyYawRange = BODY_YAW_RANGE.max - BODY_YAW_RANGE.min;
       const bodyYawIncrement = inputs.bodyYaw * bodyYawRange * BODY_YAW_SENSITIVITY_FACTOR;
@@ -435,17 +250,17 @@ export function useRobotPosition(isActive) {
       const clampedBodyYaw = clamp(newBodyYaw, BODY_YAW_RANGE.min, BODY_YAW_RANGE.max);
 
       // Antennas control (triggers) - direct mapping to full range
-      // Map trigger values (0 to 1) to antenna position (-160° to 160°)
+      // Map trigger values (0 to 1) to antenna position in radians
       // Left trigger → Left antenna, Right trigger → Right antenna
       // More pressure = more rotation
-      // Full range mapping: 0 (not pressed) = min (-160°), 1 (fully pressed) = max (+160°)
+      // Full range mapping: 0 (not pressed) = min, 1 (fully pressed) = max
       // Input values are now guaranteed to be 0-1 from InputManager.combineInputs()
       const antennaRange = ROBOT_POSITION_RANGES.ANTENNA.max - ROBOT_POSITION_RANGES.ANTENNA.min;
       // Direct mapping: 0 → min, 1 → max
       const newAntennaLeft = ROBOT_POSITION_RANGES.ANTENNA.min + (inputs.antennaLeft * antennaRange);
       const newAntennaRight = ROBOT_POSITION_RANGES.ANTENNA.min + (inputs.antennaRight * antennaRange);
       
-      // Clamp antennas to valid range (-160° to 160°)
+      // Clamp antennas to valid range (in radians)
       const clampedAntennaLeft = clamp(newAntennaLeft, ROBOT_POSITION_RANGES.ANTENNA.min, ROBOT_POSITION_RANGES.ANTENNA.max);
       const clampedAntennaRight = clamp(newAntennaRight, ROBOT_POSITION_RANGES.ANTENNA.min, ROBOT_POSITION_RANGES.ANTENNA.max);
       const newAntennas = [clampedAntennaLeft, clampedAntennaRight];
@@ -476,6 +291,14 @@ export function useRobotPosition(isActive) {
         yaw: apiClampedYaw,
         roll: clampedRoll,
       };
+
+      // Update localValues to reflect the target (what user wants)
+      setLocalValues(prev => ({
+        ...prev,
+        headPose: targetHeadPose,
+        bodyYaw: clampedBodyYaw,
+        antennas: newAntennas,
+      }));
 
       // Set targets in smoothing manager (smoothing will be applied automatically)
       targetSmoothingRef.current.setTargets({
@@ -557,6 +380,12 @@ export function useRobotPosition(isActive) {
         addFrontendLog(`▶️ Moving head...`);
       }
       
+      // Update localValues to reflect the target (what user wants)
+      setLocalValues(prev => ({
+        ...prev,
+        headPose: clampedHeadPose,
+      }));
+      
       // Set targets in smoothing manager (smoothing will be applied automatically)
       const antennas = robotState.antennas || [0, 0];
       targetSmoothingRef.current.setTargets({
@@ -602,25 +431,25 @@ export function useRobotPosition(isActive) {
           yaw: clamp(smoothed.headPose.yaw, ROBOT_POSITION_RANGES.YAW.min, ROBOT_POSITION_RANGES.YAW.max),
           roll: clamp(smoothed.headPose.roll, ROBOT_POSITION_RANGES.ROLL.min, ROBOT_POSITION_RANGES.ROLL.max),
         };
-        
-        const requestBody = {
+      
+      const requestBody = {
           target_head_pose: apiClampedHeadPose,
           target_antennas: smoothed.antennas,
           target_body_yaw: smoothed.bodyYaw,
-        };
-        
-        fetchWithTimeout(
-          buildApiUrl('/api/move/set_target'),
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody),
-          },
-          DAEMON_CONFIG.MOVEMENT.CONTINUOUS_MOVE_TIMEOUT,
-          { label: 'Set target', silent: true }
-        ).catch((error) => {
-          console.error('❌ set_target error:', error);
-        });
+      };
+      
+      fetchWithTimeout(
+        buildApiUrl('/api/move/set_target'),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        },
+        DAEMON_CONFIG.MOVEMENT.CONTINUOUS_MOVE_TIMEOUT,
+        { label: 'Set target', silent: true }
+      ).catch((error) => {
+        console.error('❌ set_target error:', error);
+      });
       }, 50); // Small delay to allow smoothing to apply
     }
   }, [localValues, robotState.antennas, addFrontendLog]);
@@ -638,6 +467,12 @@ export function useRobotPosition(isActive) {
         addFrontendLog(`▶️ Rotating body...`);
       }
       
+      // Update localValues to reflect the target (what user wants)
+      setLocalValues(prev => ({
+        ...prev,
+        bodyYaw: clampedValue,
+      }));
+      
       // Set target in smoothing manager
       targetSmoothingRef.current.setTargets({
         bodyYaw: clampedValue,
@@ -653,9 +488,9 @@ export function useRobotPosition(isActive) {
       });
       
       const now = Date.now();
-      const bodyYawDeg = (clampedValue * 180 / Math.PI).toFixed(1);
+      const bodyYawRad = clampedValue.toFixed(3);
       if (now - lastLogTimeRef.current > 500) {
-        addFrontendLog(`→ Body Yaw: ${bodyYawDeg}°`);
+        addFrontendLog(`→ Body Yaw: ${bodyYawRad}rad`);
         lastLogTimeRef.current = now;
         lastLoggedPoseRef.current = {
           headPose: localValues.headPose,
@@ -669,27 +504,27 @@ export function useRobotPosition(isActive) {
       
       // Wait for smoothing, then send final value
       setTimeout(() => {
-        if (!isActive) return;
-        
+      if (!isActive) return;
+      
         const smoothed = targetSmoothingRef.current.getCurrentValues();
-        const requestBody = {
+      const requestBody = {
           target_body_yaw: smoothed.bodyYaw,
-          target_head_pose: robotState.headPose, // Send current head pose
-          target_antennas: robotState.antennas || [0, 0], // Send current antennas
-        };
+        target_head_pose: robotState.headPose, // Send current head pose
+        target_antennas: robotState.antennas || [0, 0], // Send current antennas
+      };
 
-        fetchWithTimeout(
-          buildApiUrl('/api/move/set_target'),
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody),
-          },
-          DAEMON_CONFIG.MOVEMENT.CONTINUOUS_MOVE_TIMEOUT,
-          { label: 'Set target (body_yaw)', silent: true }
-        ).catch((error) => {
-          console.error('❌ set_target (body_yaw) error:', error);
-        });
+      fetchWithTimeout(
+        buildApiUrl('/api/move/set_target'),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        },
+        DAEMON_CONFIG.MOVEMENT.CONTINUOUS_MOVE_TIMEOUT,
+        { label: 'Set target (body_yaw)', silent: true }
+      ).catch((error) => {
+        console.error('❌ set_target (body_yaw) error:', error);
+      });
       }, 50); // Small delay to allow smoothing to apply
     }
   }, [robotState.bodyYaw, robotState.headPose, robotState.antennas, localValues.headPose, addFrontendLog, isActive]);
@@ -719,6 +554,12 @@ export function useRobotPosition(isActive) {
         addFrontendLog(`▶️ Moving antennas...`);
       }
       
+      // Update localValues to reflect the target (what user wants)
+      setLocalValues(prev => ({
+        ...prev,
+        antennas: clampedAntennas,
+      }));
+      
       // Set targets in smoothing manager
       targetSmoothingRef.current.setTargets({
         antennas: clampedAntennas,
@@ -734,10 +575,10 @@ export function useRobotPosition(isActive) {
       });
       
       const now = Date.now();
-      const leftDeg = (clampedAntennas[0] * 180 / Math.PI).toFixed(1);
-      const rightDeg = (clampedAntennas[1] * 180 / Math.PI).toFixed(1);
+      const leftRad = clampedAntennas[0].toFixed(3);
+      const rightRad = clampedAntennas[1].toFixed(3);
       if (now - lastLogTimeRef.current > 500) {
-        addFrontendLog(`→ Antennas: L:${leftDeg}° R:${rightDeg}°`);
+        addFrontendLog(`→ Antennas: L:${leftRad}rad R:${rightRad}rad`);
         lastLogTimeRef.current = now;
       }
       
@@ -747,27 +588,27 @@ export function useRobotPosition(isActive) {
       
       // Wait for smoothing, then send final value
       setTimeout(() => {
-        if (!isActive) return;
-        
+      if (!isActive) return;
+      
         const smoothed = targetSmoothingRef.current.getCurrentValues();
-        const requestBody = {
-          target_head_pose: robotState.headPose,
+      const requestBody = {
+        target_head_pose: robotState.headPose,
           target_antennas: smoothed.antennas,
-          target_body_yaw: robotState.bodyYaw || 0,
-        };
+        target_body_yaw: robotState.bodyYaw || 0,
+      };
 
-        fetchWithTimeout(
-          buildApiUrl('/api/move/set_target'),
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody),
-          },
-          DAEMON_CONFIG.MOVEMENT.CONTINUOUS_MOVE_TIMEOUT,
-          { label: 'Set target (antennas)', silent: true }
-        ).catch((error) => {
-          console.error('❌ set_target (antennas) error:', error);
-        });
+      fetchWithTimeout(
+        buildApiUrl('/api/move/set_target'),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        },
+        DAEMON_CONFIG.MOVEMENT.CONTINUOUS_MOVE_TIMEOUT,
+        { label: 'Set target (antennas)', silent: true }
+      ).catch((error) => {
+        console.error('❌ set_target (antennas) error:', error);
+      });
       }, 50); // Small delay to allow smoothing to apply
     }
   }, [robotState.headPose, robotState.bodyYaw, localValues.antennas, addFrontendLog, isActive]);
@@ -787,34 +628,16 @@ export function useRobotPosition(isActive) {
     antennasRef.current = [0, 0];
     
     // Send single API call with all values at zero
-    const resetPose = {
-      target_head_pose: resetValues.headPose,
-      target_antennas: resetValues.antennas,
-      target_body_yaw: resetValues.bodyYaw,
-    };
-    
-    fetchWithTimeout(
-      buildApiUrl('/api/move/set_target'),
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(resetPose),
-      },
-      DAEMON_CONFIG.MOVEMENT.CONTINUOUS_MOVE_TIMEOUT,
-      { label: 'Reset all positions', silent: true }
-    ).catch((error) => {
-      console.error('❌ Reset error:', error);
-    });
-  }, []);
+    sendSingleCommand(resetValues.headPose, resetValues.antennas, resetValues.bodyYaw);
+  }, [sendSingleCommand]);
 
-  // Get target values for ghost visualization (from target smoothing manager)
-  // These represent where we're heading (targets), not the smoothed values
-  const targetValues = targetSmoothingRef.current.getTargetValues();
-  
-  const smoothedValues = {
-    headPose: targetValues.headPose, // Show targets as "ghost" (where we're going)
-    bodyYaw: targetValues.bodyYaw,
-    antennas: targetValues.antennas,
+  // Use smoothed values from useRobotSmoothing hook (updated every frame)
+  // These represent the current smoothed/interpolated values (where we actually are)
+  // The ghost shows the smoothed position that follows the target
+  const smoothedValues = smoothedValuesFromHook || {
+    headPose: { x: 0, y: 0, z: 0, pitch: 0, yaw: 0, roll: 0 },
+    bodyYaw: 0,
+    antennas: [0, 0],
   };
 
   return {

@@ -352,28 +352,10 @@ export default function ScanEffect({
       const allMeshesFinished = currentTime >= lastMeshEndTime;
       
       if (allMeshesComplete && allMeshesFinished) {
-        // ✅ Restore original materials after scan completes
-        scanStateRef.current.meshes.forEach((meshData) => {
-          const mesh = meshData.mesh;
-          if (mesh && mesh.userData.originalMaterial) {
-            // Restore original material (X-ray material from URDFRobot)
-            mesh.material = mesh.userData.originalMaterial;
-            // Clean up scan materials
-            if (mesh.userData.scanMaterial) {
-              mesh.userData.scanMaterial.dispose?.();
-              mesh.userData.scanMaterial = null;
-            }
-            if (mesh.userData.finalMaterial) {
-              mesh.userData.finalMaterial.dispose?.();
-              mesh.userData.finalMaterial = null;
-            }
-          }
-        });
-        
         isScanningRef.current = false;
-        if (onCompleteRef.current) {
-          onCompleteRef.current();
-        }
+              if (onCompleteRef.current) {
+                onCompleteRef.current();
+              }
         return; // Stop animation loop
       }
 

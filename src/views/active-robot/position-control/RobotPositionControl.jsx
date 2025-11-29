@@ -4,6 +4,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import { Joystick2D, VerticalSlider, SimpleSlider, CircularSlider } from './components';
 import { useRobotPosition } from './hooks';
 import { EXTENDED_ROBOT_RANGES } from '../../../utils/inputConstants';
+import { mapRobotToDisplay, mapDisplayToRobot } from '../../../utils/inputMappings';
 import antennasIcon from '../../../assets/reachy-antennas-icon.svg';
 import headIcon from '../../../assets/reachy-head-icon.svg';
 import bodyIcon from '../../../assets/reachy-body-icon.svg';
@@ -108,7 +109,7 @@ export default function RobotPositionControl({ isActive, darkMode, onResetReady,
 
       {/* ANTENNAS - Left and Right Cards on same line */}
       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
-        {/* ANTENNAS - Left Card */}
+        {/* ANTENNAS - Left Card (controls Left antenna) */}
         <Box sx={{
           px: 1.5,
           py: 0.75,
@@ -119,20 +120,19 @@ export default function RobotPositionControl({ isActive, darkMode, onResetReady,
         }}>
           <CircularSlider
             label="Left"
-            value={(localValues.antennas?.[0] || 0) * (180 / Math.PI)} // Convert rad to deg for display
-            smoothedValue={smoothedValues?.antennas?.[0] !== undefined ? smoothedValues.antennas[0] * (180 / Math.PI) : undefined}
-            onChange={(valueDeg, continuous) => {
-              const valueRad = valueDeg * (Math.PI / 180); // Convert deg to rad for API
+            value={localValues.antennas?.[0] || 0}
+            smoothedValue={smoothedValues?.antennas?.[0]}
+            onChange={(valueRad, continuous) => {
               handleAntennasChange('left', valueRad, continuous);
             }}
-            min={-180} // Degrees: -180° to 180°
-            max={180}
-            unit="deg" // Display in degrees
+            min={-Math.PI}
+            max={Math.PI}
+            unit="rad"
             darkMode={darkMode}
           />
         </Box>
 
-        {/* ANTENNAS - Right Card */}
+        {/* ANTENNAS - Right Card (controls Right antenna) */}
         <Box sx={{
           px: 1.5,
           py: 0.75,
@@ -147,15 +147,14 @@ export default function RobotPositionControl({ isActive, darkMode, onResetReady,
         }}>
           <CircularSlider
             label="Right"
-            value={(localValues.antennas?.[1] || 0) * (180 / Math.PI)} // Convert rad to deg for display
-            smoothedValue={smoothedValues?.antennas?.[1] !== undefined ? smoothedValues.antennas[1] * (180 / Math.PI) : undefined}
-            onChange={(valueDeg, continuous) => {
-              const valueRad = valueDeg * (Math.PI / 180); // Convert deg to rad for API
+            value={localValues.antennas?.[1] || 0}
+            smoothedValue={smoothedValues?.antennas?.[1]}
+            onChange={(valueRad, continuous) => {
               handleAntennasChange('right', valueRad, continuous);
             }}
-            min={-180} // Degrees: -180° to 180°
-            max={180}
-            unit="deg" // Display in degrees
+            min={-Math.PI}
+            max={Math.PI}
+            unit="rad"
             darkMode={darkMode}
             alignRight={true}
           />
@@ -222,11 +221,18 @@ export default function RobotPositionControl({ isActive, darkMode, onResetReady,
             }}>
               <Joystick2D
                 label="Position X/Y"
-                valueX={localValues.headPose.x}
-                valueY={localValues.headPose.y}
-                smoothedValueX={smoothedValues?.headPose?.x}
-                smoothedValueY={smoothedValues?.headPose?.y}
-                onChange={(x, y, continuous) => handleChange({ x, y }, continuous)}
+                valueX={mapRobotToDisplay(localValues.headPose.y, 'positionY')}
+                valueY={mapRobotToDisplay(localValues.headPose.x, 'positionX')}
+                smoothedValueX={smoothedValues?.headPose?.y != null ? mapRobotToDisplay(smoothedValues.headPose.y, 'positionY') : undefined}
+                smoothedValueY={smoothedValues?.headPose?.x != null ? mapRobotToDisplay(smoothedValues.headPose.x, 'positionX') : undefined}
+                onChange={(x, y, continuous) => {
+                  // Reverse the display mapping to get back to robot coordinates
+                  // Note: x and y are swapped in onChange (x is actually robot Y, y is actually robot X)
+                  // mapDisplayToRobot applies the same transformation (its own inverse for -value)
+                  const robotY = mapDisplayToRobot(x, 'positionY');
+                  const robotX = mapDisplayToRobot(y, 'positionX');
+                  handleChange({ x: robotX, y: robotY }, continuous);
+                }}
                 onDragEnd={handleDragEnd}
                 minX={EXTENDED_ROBOT_RANGES.POSITION.min}
                 maxX={EXTENDED_ROBOT_RANGES.POSITION.max}
@@ -297,11 +303,16 @@ export default function RobotPositionControl({ isActive, darkMode, onResetReady,
             }}>
               <Joystick2D
                 label="Pitch / Yaw"
-                valueX={localValues.headPose.yaw}
-                valueY={localValues.headPose.pitch}
-                smoothedValueX={smoothedValues?.headPose?.yaw}
-                smoothedValueY={smoothedValues?.headPose?.pitch}
-                onChange={(yaw, pitch, continuous) => handleChange({ yaw, pitch }, continuous)}
+                valueX={mapRobotToDisplay(localValues.headPose.yaw, 'yaw')}
+                valueY={mapRobotToDisplay(localValues.headPose.pitch, 'pitch')}
+                smoothedValueX={smoothedValues?.headPose?.yaw != null ? mapRobotToDisplay(smoothedValues.headPose.yaw, 'yaw') : undefined}
+                smoothedValueY={smoothedValues?.headPose?.pitch != null ? mapRobotToDisplay(smoothedValues.headPose.pitch, 'pitch') : undefined}
+                onChange={(yaw, pitch, continuous) => {
+                  // Reverse the display mapping to get back to robot coordinates
+                  const robotYaw = mapDisplayToRobot(yaw, 'yaw');
+                  const robotPitch = mapDisplayToRobot(pitch, 'pitch');
+                  handleChange({ yaw: robotYaw, pitch: robotPitch }, continuous);
+                }}
                 onDragEnd={handleDragEnd}
                 minX={EXTENDED_ROBOT_RANGES.YAW.min}
                 maxX={EXTENDED_ROBOT_RANGES.YAW.max}
@@ -376,15 +387,14 @@ export default function RobotPositionControl({ isActive, darkMode, onResetReady,
       }}>
         <CircularSlider
           label="Yaw"
-          value={localValues.bodyYaw * (180 / Math.PI)} // Convert rad to deg for display
-          smoothedValue={smoothedValues?.bodyYaw !== undefined ? smoothedValues.bodyYaw * (180 / Math.PI) : undefined}
-          onChange={(valueDeg, continuous) => {
-            const valueRad = valueDeg * (Math.PI / 180); // Convert deg to rad for API
+          value={localValues.bodyYaw}
+          smoothedValue={smoothedValues?.bodyYaw}
+          onChange={(valueRad, continuous) => {
             handleBodyYawChange(valueRad, continuous);
           }}
-          min={-160} // Degrees: -160° to 160°
-          max={160}
-          unit="deg" // Display in degrees
+          min={-160 * Math.PI / 180}
+          max={160 * Math.PI / 180}
+          unit="rad"
           darkMode={darkMode}
           inverted={true} // Circle cut at top
           reverse={true} // Arc starts from opposite side (inverted direction)

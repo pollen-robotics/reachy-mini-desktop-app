@@ -13,9 +13,9 @@ export default function CircularSlider({
   label, 
   value, 
   onChange, 
-  min = -180, 
-  max = 180, 
-  unit = 'deg',
+  min = -Math.PI, 
+  max = Math.PI, 
+  unit = 'rad',
   darkMode, 
   disabled = false,
   inverted = false, // If true, circle cut at top instead of bottom
