@@ -182,25 +182,60 @@ jobs:
         id: version
         shell: bash
         run: |
+          echo "🔍 Extracting version..."
+          echo "   GITHUB_REF: $GITHUB_REF"
+          echo "   github.event.inputs.version: ${{ github.event.inputs.version }}"
+          
+          # Try to extract from tag (format: refs/tags/v0.2.15)
           VERSION=${GITHUB_REF#refs/tags/v}
           if [ "$VERSION" = "$GITHUB_REF" ]; then
+            echo "   No 'v' prefix in tag, trying input..."
             VERSION=${{ github.event.inputs.version }}
           fi
-          if [ -z "$VERSION" ]; then
-            VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
+          
+          # If still empty, try to extract from tag without 'v' prefix
+          if [ -z "$VERSION" ] || [ "$VERSION" = "$GITHUB_REF" ]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+            if [ "$VERSION" = "$GITHUB_REF" ]; then
+              echo "   No tag found, trying tauri.conf.json..."
+              VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
+            fi
           fi
+          
+          if [ -z "$VERSION" ]; then
+            echo "❌ Could not determine version!"
+            exit 1
+          fi
+          
+          echo "✅ Version extracted: $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
 
       - name: Update version in tauri.conf.json
         shell: bash
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          echo "📝 Updating version in tauri.conf.json to: $VERSION"
+          
+          # Show current version before update
+          CURRENT_VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
+          echo "   Current version: $CURRENT_VERSION"
+          
           if [[ "$RUNNER_OS" == "macOS" ]]; then
             sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
           else
             sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json && rm -f src-tauri/tauri.conf.json.bak
           fi
+          
+          # Verify update
+          UPDATED_VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
+          echo "   Updated version: $UPDATED_VERSION"
+          
+          if [ "$UPDATED_VERSION" != "$VERSION" ]; then
+            echo "❌ Version update failed! Expected: $VERSION, Got: $UPDATED_VERSION"
+            exit 1
+          fi
+          
+          echo "✅ Version updated successfully"
 
       - name: Setup App Store Connect API Key (macOS only)
         if: matrix.os == 'macos-latest'
@@ -490,7 +525,7 @@ jobs:
           files: |
             src-tauri/target/*/release/bundle/appimage/*.AppImage
             src-tauri/target/*/release/bundle/msi/*.msi
-            src-tauri/target/*/release/bundle/macos/*.app
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Reachy Mini Control.app
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -502,7 +537,7 @@ jobs:
           files: |
             ${{ matrix.os == 'windows-latest' && format('src-tauri/target/{0}/release/bundle/msi/*.msi', matrix.target) || '' }}
             ${{ matrix.os == 'ubuntu-latest' && format('src-tauri/target/{0}/release/bundle/appimage/*.AppImage', matrix.target) || '' }}
-            ${{ matrix.os == 'macos-latest' && format('src-tauri/target/{0}/release/bundle/macos/*.app', matrix.target) || '' }}
+            ${{ matrix.os == 'macos-latest' && format('src-tauri/target/{0}/release/bundle/macos/Reachy Mini Control.app', matrix.target) || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
