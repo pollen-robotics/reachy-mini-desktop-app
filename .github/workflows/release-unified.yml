@@ -493,6 +493,23 @@ jobs:
             echo "📎 Stapling notarization ticket..."
             xcrun stapler staple "$APP_BUNDLE"
             xcrun stapler validate "$APP_BUNDLE"
+            
+            # Create a ZIP file for GitHub release upload (after notarization)
+            echo "📦 Creating ZIP file for GitHub release..."
+            cd "$BUNDLE_DIR"
+            RELEASE_ZIP_NAME="Reachy Mini Control_${{ steps.version.outputs.version }}_${{ matrix.target == 'aarch64-apple-darwin' && 'arm64' || 'x64' }}.zip"
+            # Remove old ZIP if exists
+            rm -f "$RELEASE_ZIP_NAME"
+            # Create new ZIP with the notarized and stapled app
+            ditto -c -k --keepParent "Reachy Mini Control.app" "$RELEASE_ZIP_NAME"
+            
+            if [ ! -f "$RELEASE_ZIP_NAME" ]; then
+              echo "❌ Failed to create release ZIP file"
+              exit 1
+            fi
+            
+            echo "✅ Release ZIP created: $RELEASE_ZIP_NAME ($(du -h "$RELEASE_ZIP_NAME" | cut -f1))"
+            echo "RELEASE_ZIP_PATH=$BUNDLE_DIR/$RELEASE_ZIP_NAME" >> $GITHUB_ENV
           else
             echo "❌ Notarization failed!"
             echo ""
@@ -525,7 +542,7 @@ jobs:
           files: |
             src-tauri/target/*/release/bundle/appimage/*.AppImage
             src-tauri/target/*/release/bundle/msi/*.msi
-            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Reachy Mini Control.app
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -537,7 +554,7 @@ jobs:
           files: |
             ${{ matrix.os == 'windows-latest' && format('src-tauri/target/{0}/release/bundle/msi/*.msi', matrix.target) || '' }}
             ${{ matrix.os == 'ubuntu-latest' && format('src-tauri/target/{0}/release/bundle/appimage/*.AppImage', matrix.target) || '' }}
-            ${{ matrix.os == 'macos-latest' && format('src-tauri/target/{0}/release/bundle/macos/Reachy Mini Control.app', matrix.target) || '' }}
+            ${{ matrix.os == 'macos-latest' && format('src-tauri/target/{0}/release/bundle/macos/*.zip', matrix.target) || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
