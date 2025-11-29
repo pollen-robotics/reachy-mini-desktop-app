@@ -31,7 +31,7 @@ const CAMERA_PRESETS = {
     maxDistance: 0.6,
   },
   scan: {
-    position: [0, 0.22, 0.62], // Zoomed out: Z = 0.42 + 0.20
+    position: [0, 0.22, 0.50], // Closer: Z reduced from 0.62 to 0.50
     fov: 55,
     target: [0, 0.12, 0],
     minDistance: 0.15,
@@ -71,6 +71,10 @@ export default function RobotViewer3D({
   busyReason = null, // ✨ Reason if busy
   // Effect props
   hideEffects = false, // Hide particle effects (for small viewer)
+  // Canvas transform props
+  canvasScale = 1, // Scale for canvas (default 1)
+  canvasTranslateX = 0, // TranslateX for canvas (default 0)
+  canvasTranslateY = 0, // TranslateY for canvas (default 0)
 }) {
   // ✅ Get camera config
   const cameraConfig = typeof cameraPreset === 'string' 
@@ -248,6 +252,8 @@ export default function RobotViewer3D({
                      ? '1px solid rgba(255, 255, 255, 0.08)' 
                      : '1px solid rgba(0, 0, 0, 0.08)',
           borderRadius: hideBorder ? '0' : '16px',
+          transform: `scale(${canvasScale}) translate(${canvasTranslateX}, ${canvasTranslateY})`,
+          transformOrigin: 'center center',
         }}
       >
         {effectiveBackgroundColor !== 'transparent' && (

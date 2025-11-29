@@ -1,12 +1,25 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { Box, Typography, CircularProgress, Button } from '@mui/material';
+import { Box, Typography, CircularProgress, Button, LinearProgress, useTheme } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
 import Viewer3D from '../../components/viewer3d';
-import { getShortComponentName } from '../../utils/componentNames';
 import useAppStore from '../../store/useAppStore';
 import { invoke } from '@tauri-apps/api/core';
 import { HARDWARE_ERROR_CONFIGS, getErrorMeshes } from '../../utils/hardwareErrors';
+import { getTotalScanParts, getCurrentScanPart, mapMeshToScanPart } from '../../utils/scanParts';
+
+/**
+ * Generate text shadow for better readability on transparent backgrounds
+ */
+const createTextShadow = (bgColor) => {
+  const offsets = [
+    [-4, -4], [4, -4], [-4, 4], [4, 4],
+    [-3, -3], [3, -3], [-3, 3], [3, 3],
+    [-2, -2], [2, -2], [-2, 2], [2, 2],
+    [-1, -1], [1, -1], [-1, 1], [1, 1]
+  ];
+  return offsets.map(([x, y]) => `${x}px ${y}px 0 ${bgColor}`).join(', ');
+};
 
 /**
  * Hardware Scan View Component
@@ -16,18 +29,25 @@ import { HARDWARE_ERROR_CONFIGS, getErrorMeshes } from '../../utils/hardwareErro
 function HardwareScanView({ 
   startupError,
   onScanComplete: onScanCompleteCallback,
-  showTitlebar = true,
   startDaemon,
 }) {
   const { setHardwareError, darkMode, setIsStarting } = useAppStore();
-  const [currentComponent, setCurrentComponent] = useState(null);
-  const [scanProgress, setScanProgress] = useState({ current: 0, total: 0 });
+  const theme = useTheme();
+  const totalScanParts = getTotalScanParts(); // Static total from scan parts list
+  const [scanProgress, setScanProgress] = useState({ current: 0, total: totalScanParts });
+  const [currentPart, setCurrentPart] = useState(null);
   const [scanError, setScanError] = useState(null);
   const [errorMesh, setErrorMesh] = useState(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [scanComplete, setScanComplete] = useState(false);
   const [allMeshes, setAllMeshes] = useState([]);
   const robotRefRef = useRef(null);
+  
+  // Memoize text shadow based on dark mode
+  const textShadow = useMemo(() => {
+    const bgColor = darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)';
+    return createTextShadow(bgColor);
+  }, [darkMode]);
   
   // Get error configuration from startupError
   const errorConfig = useMemo(() => {
@@ -71,10 +91,11 @@ function HardwareScanView({
       // Reset all error states
       setScanError(null);
       setErrorMesh(null);
-      setScanProgress({ current: 0, total: 0 });
-      setCurrentComponent(null);
+      setScanProgress({ current: 0, total: totalScanParts });
+      setCurrentPart(null);
       setScanComplete(false);
       setHardwareError(null);
+      scannedPartsRef.current.clear(); // Reset scanned parts tracking
       
       // If startDaemon is provided, use it instead of reloading
       if (startDaemon) {
@@ -97,7 +118,7 @@ function HardwareScanView({
   
   const handleScanComplete = useCallback(() => {
     setScanProgress(prev => ({ ...prev, current: prev.total }));
-    setCurrentComponent(null);
+    setCurrentPart(null);
     setScanComplete(true);
     
     if (onScanCompleteCallback) {
@@ -105,14 +126,62 @@ function HardwareScanView({
     }
   }, [onScanCompleteCallback]);
   
+  // Track which parts have been scanned to calculate progress
+  const scannedPartsRef = useRef(new Set());
+  const totalMeshesRef = useRef(0);
+  const lastProgressRef = useRef({ current: 0, total: 0 });
+  const lastPartRef = useRef(null);
+  const meshPartCacheRef = useRef(new WeakMap()); // Cache mesh -> part mapping
+  
   const handleScanMesh = useCallback((mesh, index, total) => {
-    const componentName = getShortComponentName(mesh, index, total);
-    setCurrentComponent(componentName);
-    setScanProgress(prev => ({
-      current: Math.max(prev.current, index),
-      total: total
-    }));
-  }, [setHardwareError]);
+    // Store total meshes count
+    totalMeshesRef.current = total;
+    
+    // ✅ Cache mesh-to-part mapping to avoid recalculating
+    let partInfo = meshPartCacheRef.current.get(mesh);
+    if (!partInfo) {
+      partInfo = mapMeshToScanPart(mesh);
+      if (partInfo) {
+        meshPartCacheRef.current.set(mesh, partInfo);
+      }
+    }
+    
+    if (partInfo) {
+      // Create a unique key for this part
+      const partKey = `${partInfo.family}:${partInfo.part}`;
+      
+      // Track if this is a new part
+      if (!scannedPartsRef.current.has(partKey)) {
+        scannedPartsRef.current.add(partKey);
+      }
+      
+      // ✅ Only update currentPart if it changed (avoid unnecessary re-renders)
+      if (!lastPartRef.current || 
+          lastPartRef.current.family !== partInfo.family || 
+          lastPartRef.current.part !== partInfo.part) {
+        setCurrentPart(partInfo);
+        lastPartRef.current = partInfo;
+      }
+    }
+    
+    // ✅ Only update progress if it actually changed (throttle updates)
+    const newProgress = { current: index, total: total };
+    if (lastProgressRef.current.current !== newProgress.current || 
+        lastProgressRef.current.total !== newProgress.total) {
+      setScanProgress(newProgress);
+      lastProgressRef.current = newProgress;
+    }
+  }, [totalScanParts]);
+  
+  // Initialize first part when scan starts
+  useEffect(() => {
+    const showScan = !startupError && !scanError && !scanComplete;
+    
+    if (showScan && scannedPartsRef.current.size === 0) {
+      // Show initializing message until first mesh is scanned
+      setCurrentPart(null);
+    }
+  }, [scanComplete, startupError, scanError]);
 
   return (
     <Box
@@ -143,6 +212,7 @@ function HardwareScanView({
           }}
         >
           <Viewer3D 
+            key="hardware-scan"
             isActive={false}
             antennas={[-10, -10]}
             headPose={null}
@@ -154,6 +224,7 @@ function HardwareScanView({
             hideGrid={true}
             hideBorder={true}
             showScanEffect={!startupError && !scanError}
+            usePremiumScan={false}
             onScanComplete={handleScanComplete}
             onScanMesh={handleScanMesh}
             onMeshesReady={handleMeshesReady}
@@ -161,6 +232,9 @@ function HardwareScanView({
             useCinematicCamera={true}
             errorFocusMesh={errorMesh}
             backgroundColor="transparent"
+            canvasScale={0.9}
+            canvasTranslateX="5%"
+            canvasTranslateY="10%"
           />
         </Box>
       </Box>
@@ -170,10 +244,10 @@ function HardwareScanView({
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          justifyContent: 'center',
+          justifyContent: 'flex-start',
           width: '100%',
           maxWidth: '450px',
-          height: '140px', // Fixed height to prevent vertical shifts between states
+          height: '100px', // Fixed height to prevent vertical shifts between states
         }}
       >
         {(startupError || scanError) ? (
@@ -282,87 +356,81 @@ function HardwareScanView({
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: 0.75,
-              width: '100%',
+              gap: 1,
+              py: 0.5,
+              maxWidth: '360px',
+              minHeight: '90px',
             }}
           >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-              {scanComplete ? (
-                <CheckCircleOutlinedIcon
-                  sx={{
-                    fontSize: 18,
-                    color: '#16a34a',
-                  }}
-                />
-              ) : (
-                <CircularProgress 
-                  size={16}
-                  thickness={4} 
-                  sx={{ 
-                    color: '#16a34a',
-                  }} 
-                />
-              )}
-              <Typography
-                sx={{
-                  fontSize: 16,
-                  fontWeight: 900,
-                  color: '#16a34a',
-                  letterSpacing: '0.3px',
-                  transition: 'color 0.3s ease',
-                  // ✅ Text shadow matching scene background color for better readability
-                  textShadow: `
-                    -4px -4px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                    4px -4px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                    -4px 4px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                    4px 4px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                    -3px -3px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                    3px -3px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                    -3px 3px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                    3px 3px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                    -2px -2px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                    2px -2px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                    -2px 2px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                    2px 2px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                    -1px -1px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                    1px -1px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                    -1px 1px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                    1px 1px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'}
-                  `,
-                }}
-              >
-                {scanComplete ? 'Scan complete' : 'Scanning hardware'}
-              </Typography>
-              {!scanComplete && (
+            <Typography
+              sx={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: darkMode ? '#666' : '#999',
+                letterSpacing: '1px',
+                textTransform: 'uppercase',
+              }}
+            >
+              {scanComplete ? 'Scan Complete' : 'Scanning Hardware'}
+            </Typography>
+            
+            {!scanComplete && scanProgress.total > 0 && (
+              <>
+                <Box sx={{ margin: "auto", width: '100%', maxWidth: '300px' }}>
+                  <LinearProgress 
+                    variant="determinate"
+                    value={scanProgress.total > 0 ? (scanProgress.current / scanProgress.total) * 100 : 0}
+                    sx={{
+                      height: 4,
+                      borderRadius: 2,
+                      backgroundColor: darkMode 
+                        ? `${theme.palette.primary.main}33` 
+                        : `${theme.palette.primary.main}1A`,
+                      '& .MuiLinearProgress-bar': {
+                        backgroundColor: theme.palette.primary.main,
+                        borderRadius: 2,
+                      },
+                    }}
+                  />
+                </Box>
+                
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography
+                    component="span"
+                    sx={{
+                      fontSize: 14,
+                      fontWeight: 500,
+                      color: darkMode ? '#f5f5f5' : '#333',
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {currentPart ? (
+                      <>
+                        Scanning <Box component="span" sx={{ fontWeight: 700 }}>{currentPart.part}</Box>
+                      </>
+                    ) : (
+                      'Initializing scan...'
+                    )}
+                  </Typography>
+                </Box>
+              </>
+            )}
+            
+            {scanComplete && (
+              <Box sx={{ textAlign: 'center' }}>
                 <Typography
+                  component="span"
                   sx={{
-                    fontSize: 12,
-                    fontWeight: 900,
-                    color: '#16a34a',
-                    opacity: 0.9,
-                    fontFamily: 'monospace',
-                    ml: 0.5,
-                    // ✅ Text shadow matching scene background color for the counter
-                    textShadow: `
-                      -3px -3px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                      3px -3px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                      -3px 3px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                      3px 3px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                      -2px -2px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                      2px -2px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                      -2px 2px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                      2px 2px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                      -1px -1px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                      1px -1px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                      -1px 1px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'},
-                      1px 1px 0 ${darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(253, 252, 250, 0.85)'}
-                    `,
+                    fontSize: 14,
+                    fontWeight: 500,
+                    color: darkMode ? '#f5f5f5' : '#333',
+                    lineHeight: 1.5,
                   }}
                 >
-                  {scanProgress.current}/{scanProgress.total}
+                  <Box component="span" sx={{ fontWeight: 700 }}>Hardware scan</Box> completed successfully
                 </Typography>
-              )}
-            </Box>
+              </Box>
+            )}
           </Box>
         )}
       </Box>

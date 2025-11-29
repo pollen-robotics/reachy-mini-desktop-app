@@ -159,12 +159,14 @@ export const QUICK_ACTIONS = [
   { name: 'confused1', emoji: '😕', label: 'Confused', type: 'emotion' },
   
   // Dances - dynamic movements
-  { name: 'dance1', emoji: '💃', label: 'Dance 1', type: 'dance' },
-  { name: 'dance2', emoji: '🕺', label: 'Dance 2', type: 'dance' },
-  { name: 'dance3', emoji: '🎭', label: 'Dance 3', type: 'dance' },
   { name: 'jackson_square', emoji: '🎵', label: 'Jackson', type: 'dance' },
   { name: 'headbanger_combo', emoji: '🤘', label: 'Headbang', type: 'dance' },
   { name: 'groovy_sway_and_roll', emoji: '🎶', label: 'Groovy', type: 'dance' },
+  { name: 'dizzy_spin', emoji: '🌀', label: 'Dizzy', type: 'dance' },
+  { name: 'polyrhythm_combo', emoji: '🎹', label: 'Polyrhythm', type: 'dance' },
+  { name: 'side_to_side_sway', emoji: '↔️', label: 'Sway', type: 'dance' },
+  { name: 'pendulum_swing', emoji: '⏰', label: 'Pendulum', type: 'dance' },
+  { name: 'stumble_and_recover', emoji: '🤸', label: 'Stumble', type: 'dance' },
   
   // Special actions
   { name: 'goto_sleep', emoji: '😴', label: 'Sleep', type: 'action' },

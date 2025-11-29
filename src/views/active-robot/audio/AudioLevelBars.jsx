@@ -1,138 +1,75 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Box } from '@mui/material';
 
 /**
  * Robot Vital Signs Audio Visualizer - Frame-rate independent, smooth animation
+ * Responsive dimensions based on container size
  */
 export default function AudioLevelBars({ isActive, color = '#FF9500', barCount = 8 }) {
-  const canvasRef = useRef(null);
   const containerRef = useRef(null);
+  const canvasRef = useRef(null);
   const animationRef = useRef(null);
-  const waveformRef = useRef([]); // Store waveform history for smooth line
+  const waveformRef = useRef([]);
   const isMountedRef = useRef(true);
-  const maxHistoryLength = 60; // ✅ More points for smoother waveform
+  const maxHistoryLength = 60;
   const lastUpdateTimeRef = useRef(0);
-  const updateInterval = 50; // Update every 50ms (20 Hz) - frame-rate independent
-  const containerSizeRef = useRef({ width: 0, height: 0 }); // ✅ Cache container size to avoid getBoundingClientRect() every frame
-  // ✅ Unique random seed per instance for unpredictable patterns
+  const updateInterval = 50; // Update every 50ms (20 Hz)
   const instanceSeedRef = useRef(Math.random() * 1000000 + Date.now());
-  // ✅ Store variation parameters in ref so they persist across renders
   const variationParamsRef = useRef(null);
-  // ✅ Store seed in ref so fastRandom persists across renders
   const seedRef = useRef(null);
   const fastRandomRef = useRef(null);
+  const ctxRef = useRef(null);
+  const [dimensions, setDimensions] = useState({ width: 191, height: 28 });
 
+  // Update dimensions from container
   useEffect(() => {
-    isMountedRef.current = true;
+    const updateDimensions = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          setDimensions({ width: rect.width, height: rect.height });
+        }
+      }
+    };
+
+    updateDimensions();
+    const resizeObserver = new ResizeObserver(updateDimensions);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+    return () => resizeObserver.disconnect();
+  }, []);
+
+  // Initialize canvas with responsive dimensions
+  useEffect(() => {
     const canvas = canvasRef.current;
-    const container = containerRef.current;
-    if (!canvas || !container) return;
-
-    // ✅ Get actual display size to avoid stretching/blur
-    const updateCanvasSize = () => {
-      const rect = container.getBoundingClientRect();
-      const displayWidth = Math.floor(rect.width);
-      const displayHeight = Math.floor(rect.height);
+    if (!canvas || dimensions.width === 0) return;
     
-    // Set canvas internal resolution (device pixel ratio for crisp rendering)
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = displayWidth * dpr;
-    canvas.height = displayHeight * dpr;
+    const scaledWidth = dimensions.width * dpr;
+    const scaledHeight = dimensions.height * dpr;
     
-    // Set CSS size to display size (prevents stretching)
-    canvas.style.width = `${displayWidth}px`;
-    canvas.style.height = `${displayHeight}px`;
+    canvas.width = scaledWidth;
+    canvas.height = scaledHeight;
+    canvas.style.width = `${dimensions.width}px`;
+    canvas.style.height = `${dimensions.height}px`;
     
-      return { displayWidth, displayHeight, dpr };
-    };
-
-    const { displayWidth, displayHeight, dpr } = updateCanvasSize();
     const ctx = canvas.getContext('2d');
-    ctx.scale(dpr, dpr); // Scale context to match device pixel ratio
-    
-    // ✅ Recalculate on resize - Function to handle resize
-    let currentDpr = dpr;
-    const handleResize = () => {
-      if (!isMountedRef.current || !canvas || !container) return;
-      
-      const rect = container.getBoundingClientRect();
-      const displayWidth = Math.floor(rect.width);
-      const displayHeight = Math.floor(rect.height);
-      
-      // ✅ Check that dimensions are valid before updating
-      if (displayWidth <= 0 || displayHeight <= 0) {
-        // Invalid dimensions, do not update (layout not yet calculated)
-        console.warn('⚠️ AudioLevelBars: Invalid dimensions', { displayWidth, displayHeight });
-        return;
+    if (ctx) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      if (dpr !== 1) {
+        ctx.scale(dpr, dpr);
       }
-      
-      const dpr = window.devicePixelRatio || 1;
-      
-      // Only update if size actually changed (avoid unnecessary redraws)
-      if (containerSizeRef.current.width === displayWidth && containerSizeRef.current.height === displayHeight) {
-        return; // Size hasn't changed
-      }
-      
-      canvas.width = displayWidth * dpr;
-      canvas.height = displayHeight * dpr;
-      canvas.style.width = `${displayWidth}px`;
-      canvas.style.height = `${displayHeight}px`;
-      
-      // ✅ Cache container size to avoid getBoundingClientRect() in draw loop
-      containerSizeRef.current = { width: displayWidth, height: displayHeight };
-      
-      if (dpr !== currentDpr) {
-        // Adjust scale if DPR changed
-        ctx.scale(dpr / currentDpr, dpr / currentDpr);
-        currentDpr = dpr;
-      }
-    };
+      ctxRef.current = ctx;
+    }
+  }, [dimensions]);
     
-    // ✅ Use ResizeObserver for container size changes
-    // Use a small debounce to avoid excessive updates during rapid resizes
-    let resizeTimeout = null;
-    const resizeObserver = new ResizeObserver(() => {
-      // Clear any pending resize
-      if (resizeTimeout) {
-        clearTimeout(resizeTimeout);
-      }
-      // Debounce resize handling
-      resizeTimeout = setTimeout(() => {
-        handleResize();
-      }, 10);
-    });
-    resizeObserver.observe(container, { box: 'border-box' }); // ✅ Observe border box for accurate sizing
-    
-    // ✅ Also listen to window resize as fallback (for window-level resizes)
-    const handleWindowResize = () => {
-      // Small delay to ensure DOM has updated
-      setTimeout(() => {
-        handleResize();
-      }, 0);
-    };
-    window.addEventListener('resize', handleWindowResize);
-    
-    // ✅ Initialize cached size
-    containerSizeRef.current = { width: displayWidth, height: displayHeight };
-    
-    // ✅ Force multiple resize checks to handle flexbox layout delays
-    // Sometimes flexbox needs multiple layout passes to settle
-    const initialResizeTimeout1 = setTimeout(() => {
-      handleResize();
-    }, 50);
-    const initialResizeTimeout2 = setTimeout(() => {
-      handleResize();
-    }, 150);
-    const initialResizeTimeout3 = setTimeout(() => {
-      handleResize();
-    }, 300);
-    
-    // ✅ OPTIMIZED: Use seeded random with unique instance seed for unpredictable patterns
+  // ✅ Initialiser les paramètres de variation et le random seed
+  useEffect(() => {
     if (!seedRef.current) {
       seedRef.current = instanceSeedRef.current;
     }
     
-    // ✅ Create fastRandom function that persists across renders
     if (!fastRandomRef.current) {
       fastRandomRef.current = () => {
         seedRef.current = (seedRef.current * 9301 + 49297) % 233280;
@@ -142,7 +79,6 @@ export default function AudioLevelBars({ isActive, color = '#FF9500', barCount =
     
     const fastRandom = fastRandomRef.current;
     
-    // ✅ Add variation parameters for more realistic/unpredictable patterns (store in ref)
     if (!variationParamsRef.current) {
       variationParamsRef.current = {
         amplitude: fastRandom() * 0.3 + 0.2, // 20-50% variation
@@ -150,35 +86,33 @@ export default function AudioLevelBars({ isActive, color = '#FF9500', barCount =
         baseLevel: fastRandom() * 0.2 + 0.3, // Base level 30-50%
       };
     }
-    
-    const { amplitude: variationAmplitude, speed: variationSpeed, baseLevel } = variationParamsRef.current;
 
     // Initialize waveform history with varied initial values
     if (waveformRef.current.length === 0) {
+      const { amplitude: variationAmplitude, speed: variationSpeed, baseLevel } = variationParamsRef.current;
       waveformRef.current = Array(maxHistoryLength).fill(0).map((_, i) => {
-        // Add some initial wave pattern for more natural start
         const wavePhase = (i / maxHistoryLength) * Math.PI * 2 * variationSpeed;
         return baseLevel + Math.sin(wavePhase) * variationAmplitude * fastRandom();
       });
     }
     
     lastUpdateTimeRef.current = performance.now();
+  }, []);
+
+  // Main drawing function
+  useEffect(() => {
+    if (dimensions.width === 0 || !ctxRef.current) return;
+    
+    isMountedRef.current = true;
+    const canvas = canvasRef.current;
+    const ctx = ctxRef.current;
+    
+    if (!canvas || !ctx) return;
 
     const draw = (currentTime) => {
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current || dimensions.width === 0) return;
       
-      // ✅ Use cached container size (updated by ResizeObserver)
-      const currentDisplayWidth = containerSizeRef.current.width;
-      const currentDisplayHeight = containerSizeRef.current.height;
-      
-      // Skip if container has no size
-      if (currentDisplayWidth === 0 || currentDisplayHeight === 0) {
-        animationRef.current = requestAnimationFrame(draw);
-        return;
-      }
-      
-      // Clear canvas (using display size, not scaled)
-      ctx.clearRect(0, 0, currentDisplayWidth, currentDisplayHeight);
+      ctx.clearRect(0, 0, dimensions.width, dimensions.height);
 
       if (isActive) {
         // ✅ Frame-rate independent: Update based on elapsed time, not frames
@@ -217,11 +151,10 @@ export default function AudioLevelBars({ isActive, color = '#FF9500', barCount =
           lastUpdateTimeRef.current = currentTime;
         }
 
-        // ✅ Draw crisp waveform line (medical monitoring style)
-        // ✅ Pre-calculate constants outside the loop
-        const padding = 0; // ✅ No padding - waveform touches edges
-        const usableWidth = currentDisplayWidth - padding * 2;
-        const usableHeight = currentDisplayHeight - padding * 2;
+        // Draw waveform line
+        const padding = 0;
+        const usableWidth = dimensions.width - padding * 2;
+        const usableHeight = dimensions.height - padding * 2;
         const waveformLength = waveformRef.current.length;
         
         if (waveformLength > 0 && usableWidth > 0 && usableHeight > 0) {
@@ -313,45 +246,31 @@ export default function AudioLevelBars({ isActive, color = '#FF9500', barCount =
 
     animationRef.current = requestAnimationFrame(draw);
 
-        return () => {
-          isMountedRef.current = false;
-          resizeObserver.disconnect();
-          window.removeEventListener('resize', handleWindowResize);
-          if (resizeTimeout) {
-            clearTimeout(resizeTimeout);
-          }
-          clearTimeout(initialResizeTimeout1);
-          clearTimeout(initialResizeTimeout2);
-          clearTimeout(initialResizeTimeout3);
-          if (animationRef.current) {
-            cancelAnimationFrame(animationRef.current);
-          }
-        };
-  }, [isActive, color]);
+    return () => {
+      isMountedRef.current = false;
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [isActive, color, dimensions]);
 
   return (
     <Box
       ref={containerRef}
       sx={{
         width: '100%',
-        height: '100%',
+        height: '28px',
         position: 'relative',
-        minWidth: 0, // ✅ Critical for flexbox: allows flex item to shrink below content size
-        minHeight: 0, // ✅ Critical for flexbox: allows flex item to shrink below content size
-        overflow: 'hidden', // ✅ Prevent overflow issues
+        overflow: 'hidden',
+        flexShrink: 0,
       }}
     >
       <canvas
         ref={canvasRef}
         style={{
           display: 'block',
-          position: 'absolute', // ✅ Use absolute positioning for better sizing in flex
-          top: 0,
-          left: 0,
           width: '100%',
           height: '100%',
-          minWidth: 0, // ✅ Ensure canvas can shrink in flexbox
-          minHeight: 0, // ✅ Ensure canvas can shrink in flexbox
         }}
       />
     </Box>

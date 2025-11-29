@@ -13,7 +13,7 @@
     "build:sidecar-macos": "bash ./scripts/build/build-sidecar-unix.sh",
     "build:sidecar-linux": "bash ./scripts/build/build-sidecar-unix.sh",
     "build:sidecar-macos:develop": "REACHY_MINI_SOURCE=develop bash ./scripts/build/build-sidecar-unix.sh",
-    "build:sidecar-linux:develop": "REACHY_MINI_SOURCE=develop bash ./scripts/build/build-sidecar-unix.sh",
+    "build:sidecar-linux:develop": " REACHY_MINI_SOURCE=develop bash ./scripts/build/build-sidecar-unix.sh",
     "build:update:dev": "bash ./scripts/build/build-update.sh dev",
     "build:update:prod": "bash ./scripts/build/build-update.sh prod",
     "serve:updates": "bash ./scripts/utils/serve-updates.sh",
@@ -47,7 +47,6 @@
     "postprocessing": "^6.37.8",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-use-measure": "^2.1.7",
     "three": "^0.181.0",
     "urdf-loader": "^0.12.6",
     "zustand": "^5.0.8"

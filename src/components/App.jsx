@@ -362,16 +362,6 @@ function App() {
     );
   }
 
-  // ⚠️ If hardware error detected, stay blocked on StartingView
-  if (hardwareError) {
-    return (
-      <>
-        <AppTopBar />
-        <StartingView startupError={hardwareError} />
-      </>
-    );
-  }
-
   // Full control view: Robot connected and daemon active
   return (
     <>

@@ -134,15 +134,16 @@ export default function CinematicCamera({
       // ✅ Camera stays on fixed circle, same radius and height as normal mode
       const radius = 0.35; // Same as normal mode
       const height = 0.15; // Same as normal mode
-      const robotCenter = new THREE.Vector3(0, height, 0);
       
       // Position camera on circle at interpolated angle
       const x = Math.sin(currentAngle) * radius;
       const z = Math.cos(currentAngle) * radius;
       cameraRef.current.position.set(x, height, z);
       
-      // ✅ Always look at robot center
-      cameraRef.current.lookAt(robotCenter);
+      // ✅ Look at error mesh position (not robot center)
+      const errorWorldPos = new THREE.Vector3();
+      errorFocusMesh.getWorldPosition(errorWorldPos);
+      cameraRef.current.lookAt(errorWorldPos);
       
       return;
     }
@@ -156,12 +157,12 @@ export default function CinematicCamera({
     const elapsed = (Date.now() - startTimeRef.current) / 1000;
 
     // ✅ WIDE SHOT: Fixed position at good distance to see entire robot
-    const radius = 0.35; // Fixed distance, zoom on robot
+    const radius = 0.30; // Closer: reduced from 0.35 to 0.30 for better view
     const height = 0.15;  // Fixed height, centered on robot with antennas folded
     
-    // ✅ SLOW ROTATION: Full turn over scan duration
-    // From 0° to 360° over total duration
-    const rotationSpeed = (2 * Math.PI) / animationDuration; // Radians per second
+    // ✅ SLOW ROTATION: Half turn over scan duration (slower)
+    // From 0° to 180° over total duration (much slower rotation)
+    const rotationSpeed = (Math.PI) / animationDuration; // Radians per second (half rotation)
     const angle = elapsed * rotationSpeed;
     
     // Circular position (X and Z) - rotates clockwise

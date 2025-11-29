@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Box, Typography, LinearProgress, CircularProgress } from '@mui/material';
-import { getAppWindow } from '../../utils/windowUtils';
 import reachyUpdateBoxSvg from '../../assets/reachy-update-box.svg';
 import useAppStore from '../../store/useAppStore';
 import { DAEMON_CONFIG } from '../../config/daemon';
@@ -18,7 +17,6 @@ export default function UpdateView({
   updateError,
   onInstallUpdate,
 }) {
-  const appWindow = getAppWindow();
   const { darkMode } = useAppStore();
   const [minDisplayTimeElapsed, setMinDisplayTimeElapsed] = useState(false);
   const checkStartTimeRef = useRef(Date.now());

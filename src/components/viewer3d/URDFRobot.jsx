@@ -240,11 +240,13 @@ function URDFRobot({
     
     const currentAntennas = [leftPos, rightPos];
     
+    // ✅ FIX: Inverted mapping AND inverted values - left_antenna joint is visually on the right, and vice versa
+    // The values also need to be negated to match the correct rotation direction
     if (robot.joints['left_antenna']) {
-      robot.setJointValue('left_antenna', leftPos);
+      robot.setJointValue('left_antenna', -rightPos); // Right data (negated) goes to left visual antenna
     }
     if (robot.joints['right_antenna']) {
-      robot.setJointValue('right_antenna', rightPos);
+      robot.setJointValue('right_antenna', -leftPos); // Left data (negated) goes to right visual antenna
     }
     
     // ✅ IMPORTANT: Initialize lastAntennasRef to prevent useFrame from reapplying antennas
@@ -393,11 +395,13 @@ function URDFRobot({
                              Math.abs(antennas[1] - lastAntennasRef.current[1]) > 0.005;
     
     if (antennasChanged) {
+      // ✅ FIX: Inverted mapping AND inverted values - left_antenna joint is visually on the right, and vice versa
+      // The values also need to be negated to match the correct rotation direction
       if (robot.joints['left_antenna']) {
-        robot.setJointValue('left_antenna', antennas[0]);
+        robot.setJointValue('left_antenna', -antennas[1]); // Right data (negated) goes to left visual antenna
       }
       if (robot.joints['right_antenna']) {
-        robot.setJointValue('right_antenna', antennas[1]);
+        robot.setJointValue('right_antenna', -antennas[0]); // Left data (negated) goes to right visual antenna
       }
       lastAntennasRef.current = antennas.slice(); // Copy for comparison
         // No need to update matrices for antennas (they are independent)
@@ -449,7 +453,7 @@ function URDFRobot({
   // Only render robot when EVERYTHING is ready (loaded + materials applied)
   return robot && isReady ? (
     <group position={[0, 0, 0]} rotation={[0, -Math.PI / 2, 0]}>
-      <primitive ref={groupRef} object={robot} scale={[-1, 1, 1]} rotation={[-Math.PI / 2, 0, Math.PI]} />
+      <primitive ref={groupRef} object={robot} scale={1} rotation={[-Math.PI / 2, 0, 0]} />
     </group>
   ) : null;
 }

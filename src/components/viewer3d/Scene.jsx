@@ -6,7 +6,6 @@ import URDFRobot from './URDFRobot';
 // Leva removed - using hardcoded default values
 import ScanEffect from './effects/ScanEffect';
 import PremiumScanEffect from './effects/PremiumScanEffect';
-import ScanAnnotations from './effects/ScanAnnotations';
 import ErrorHighlight from './effects/ErrorHighlight';
 import ParticleEffect from './effects/ParticleEffect';
 import CinematicCamera from './CinematicCamera';
@@ -45,7 +44,6 @@ function Scene({
   // State to store meshes to outline
   const [outlineMeshes, setOutlineMeshes] = useState([]);
   const [robotRef, setRobotRef] = useState(null); // Reference to robot for HeadFollowCamera
-  const [currentScannedMesh, setCurrentScannedMesh] = useState(null); // Mesh currently being scanned
   
   // ✅ Forward meshes to parent callback if provided
   useEffect(() => {
@@ -79,12 +77,6 @@ function Scene({
     }
   }, [headJoints, passiveJoints, headPose]);
   
-  // ✅ Reset currentScannedMesh when showScanEffect becomes false
-  useEffect(() => {
-    if (!showScanEffect) {
-      setCurrentScannedMesh(null);
-    }
-  }, [showScanEffect]);
   
   // ⚡ Scan duration read from central config
   const scanDuration = DAEMON_CONFIG.ANIMATIONS.SCAN_DURATION / 1000;
@@ -110,8 +102,9 @@ function Scene({
     fillIntensity: 0.3,
     rimIntensity: 0.8,
   };
+  // ✅ X-ray opacity: 4x more transparent in dark mode (0.2 -> 0.1 -> 0.05)
   const xraySettings = {
-    opacity: 0.5,
+    opacity: darkMode ? 0.05 : 0.2, // 4x more transparent in dark mode
   };
   const scene = {
     showGrid: true,
@@ -352,25 +345,16 @@ function Scene({
             scanColor="#16a34a"
             enabled={true}
             onScanMesh={(mesh, index, total) => {
-              // Update currently scanned mesh for annotations
-              setCurrentScannedMesh(mesh);
               // Call parent callback if provided
               if (onScanMesh) {
                 onScanMesh(mesh, index, total);
               }
             }}
             onComplete={() => {
-              // Reset scanned mesh at end to hide annotations
-              setCurrentScannedMesh(null);
               if (onScanComplete) {
                 onScanComplete();
               }
             }}
-          />
-          {/* SF annotations for scanned components (only for regular scan) */}
-          <ScanAnnotations 
-            enabled={showScanEffect}
-            currentScannedMesh={currentScannedMesh}
           />
           </>
         )}

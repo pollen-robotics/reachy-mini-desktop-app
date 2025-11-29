@@ -1,10 +1,93 @@
-import React, { useState } from 'react';
-import { Box, IconButton, Tooltip, Typography } from '@mui/material';
+import React, { useReducer, useMemo, useEffect, useRef } from 'react';
+import { Box, Typography, IconButton } from '@mui/material';
+import CasinoIcon from '@mui/icons-material/Casino';
 
 /**
- * Quick Actions iPod-style Component
- * Apple-inspired circular wheel design with central display
+ * Quick Actions Plutchik's Wheel of Emotions Component
+ * Represents the actual Plutchik's emotion wheel with 8 basic emotions
  */
+
+// Plutchik's 8 basic emotions in order (starting from top, clockwise)
+// Mapped to available choreography emotions
+const PLUTCHIK_EMOTIONS = [
+  { name: 'joy', label: 'Joy', emoji: '😊', choreographyName: 'cheerful1' },
+  { name: 'trust', label: 'Trust', emoji: '🤝', choreographyName: 'welcoming1' },
+  { name: 'fear', label: 'Fear', emoji: '😨', choreographyName: 'fear1' },
+  { name: 'surprise', label: 'Surprise', emoji: '😲', choreographyName: 'surprised1' },
+  { name: 'sadness', label: 'Sadness', emoji: '😢', choreographyName: 'sad1' },
+  { name: 'disgust', label: 'Disgust', emoji: '🤢', choreographyName: 'disgusted1' },
+  { name: 'anger', label: 'Anger', emoji: '😠', choreographyName: 'rage1' },
+  { name: 'anticipation', label: 'Anticipation', emoji: '🤔', choreographyName: 'thoughtful1' },
+];
+
+// Wheel dimensions configuration
+const WHEEL_CONFIG = {
+  size: 190,
+  outerRadius: 92.5,
+  innerRadius: 40,
+  emojiSize: 24,
+  emojiOffset: 12, // Half of emojiSize for centering
+};
+
+// State management with reducer
+const initialState = {
+  activeTab: 'emotions',
+  selectedIndex: 0,
+  wheelState: 'idle', // 'idle' | 'hovering' | 'spinning'
+  activeIndex: null, // Index currently active (hover or turning)
+};
+
+function wheelReducer(state, action) {
+  switch (action.type) {
+    case 'SET_TAB':
+      return {
+        ...state,
+        activeTab: action.tab,
+        selectedIndex: 0,
+        wheelState: 'idle',
+        activeIndex: null,
+      };
+    case 'HOVER_SEGMENT':
+      return {
+        ...state,
+        wheelState: 'hovering',
+        activeIndex: action.index,
+        selectedIndex: action.index,
+      };
+    case 'LEAVE_SEGMENT':
+      return {
+        ...state,
+        wheelState: state.wheelState === 'spinning' ? 'spinning' : 'idle',
+        activeIndex: state.wheelState === 'spinning' ? state.activeIndex : null,
+      };
+    case 'START_SPINNING':
+      return {
+        ...state,
+        wheelState: 'spinning',
+        activeIndex: null,
+      };
+    case 'UPDATE_SPINNING':
+      return {
+        ...state,
+        activeIndex: action.index,
+        selectedIndex: action.index,
+      };
+    case 'STOP_SPINNING':
+      return {
+        ...state,
+        wheelState: 'idle',
+        activeIndex: null,
+      };
+    case 'SELECT_INDEX':
+      return {
+        ...state,
+        selectedIndex: action.index,
+      };
+    default:
+      return state;
+  }
+}
+
 export default function QuickActionsDonut({
   actions = [],
   onActionClick = null,
@@ -13,250 +96,369 @@ export default function QuickActionsDonut({
   isBusy = false,
   darkMode = false,
 }) {
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [isHovered, setIsHovered] = useState(false);
+  const [state, dispatch] = useReducer(wheelReducer, initialState);
+  const spinIntervalRef = useRef(null);
+  const spinSpeedRef = useRef(0);
 
-  if (!actions || actions.length === 0) return null;
+  // Separate actions by type
+  const emotionsActions = useMemo(() => 
+    actions.filter(action => action.type === 'emotion'),
+    [actions]
+  );
+  
+  const dancesActions = useMemo(() => 
+    actions.filter(action => action.type === 'dance'),
+    [actions]
+  );
+
+  // Map Plutchik emotions to available actions from choreographies
+  const emotionsDisplayActions = useMemo(() => {
+    return PLUTCHIK_EMOTIONS.map((emotion) => {
+      const matchingAction = emotionsActions.find(action => 
+        action.name === emotion.choreographyName
+      );
+      
+      return {
+        ...emotion,
+        originalAction: matchingAction,
+        emoji: emotion.emoji,
+        label: emotion.label,
+        name: emotion.choreographyName,
+      };
+    });
+  }, [emotionsActions]);
+
+  // Map dances to display actions (take first 8 or all if less)
+  const dancesDisplayActions = useMemo(() => {
+    return dancesActions.slice(0, 8).map((dance) => ({
+      ...dance,
+      originalAction: dance,
+    }));
+  }, [dancesActions]);
+
+  // Current display actions based on active tab
+  const displayActions = useMemo(() => {
+    return state.activeTab === 'emotions' ? emotionsDisplayActions : dancesDisplayActions;
+  }, [state.activeTab, emotionsDisplayActions, dancesDisplayActions]);
+
+  // Wheel geometry calculations
+  const wheelGeometry = useMemo(() => {
+    const { size, outerRadius, innerRadius } = WHEEL_CONFIG;
+    const centerX = size / 2;
+    const centerY = size / 2;
+    const emojiRadius = (outerRadius + innerRadius) / 2;
+    const angleStep = (2 * Math.PI) / displayActions.length;
+    const startAngleOffset = -Math.PI / 2; // Start from top
+
+    return {
+      size,
+      outerRadius,
+      innerRadius,
+      centerX,
+      centerY,
+      emojiRadius,
+      angleStep,
+      startAngleOffset,
+    };
+  }, [displayActions.length]);
+
+  if (displayActions.length === 0) return null;
 
   const handleActionClick = (action, index) => {
-    if (!isActive || isBusy || !isReady) return;
-    setSelectedIndex(index);
+    if (!isActive || isBusy || !isReady || state.wheelState === 'spinning') return;
+    dispatch({ type: 'SELECT_INDEX', index });
     if (onActionClick) {
-      onActionClick(action);
+      const actionToCall = action.originalAction || action;
+      onActionClick(actionToCall);
     }
   };
 
   const handleWheelClick = () => {
+    const currentAction = displayActions[state.selectedIndex];
     if (currentAction && isActive && !isBusy && isReady) {
-      handleActionClick(currentAction, selectedIndex);
+      handleActionClick(currentAction, state.selectedIndex);
     }
   };
 
-  const handleNext = () => {
-    if (!isActive || isBusy || !isReady) return;
-    setSelectedIndex((prev) => (prev + 1) % actions.length);
+  const handleTabChange = (tab) => {
+    dispatch({ type: 'SET_TAB', tab });
   };
 
-  const handlePrevious = () => {
-    if (!isActive || isBusy || !isReady) return;
-    setSelectedIndex((prev) => (prev - 1 + actions.length) % actions.length);
+  const handleSpinWheel = () => {
+    if (state.wheelState === 'spinning' || !isActive || isBusy || !isReady || displayActions.length === 0) return;
+    
+    dispatch({ type: 'START_SPINNING' });
+    
+    // Initial speed (ms between segment changes)
+    spinSpeedRef.current = 50;
+    const totalSegments = displayActions.length;
+    const minSpins = 2; // Minimum number of full rotations
+    const totalSteps = minSpins * totalSegments + Math.floor(Math.random() * totalSegments);
+    
+    let currentStep = 0;
+    let currentIndex = state.selectedIndex;
+    
+    const spin = () => {
+      currentStep++;
+      currentIndex = (currentIndex + 1) % totalSegments;
+      dispatch({ type: 'UPDATE_SPINNING', index: currentIndex });
+      
+      // Increase delay progressively (deceleration)
+      const progress = currentStep / totalSteps;
+      const decelerationFactor = 1 + (progress * progress * 8); // Quadratic deceleration
+      spinSpeedRef.current = 50 * decelerationFactor;
+      
+      if (currentStep < totalSteps) {
+        spinIntervalRef.current = setTimeout(spin, spinSpeedRef.current);
+      } else {
+        // Final selection
+        const finalAction = displayActions[currentIndex];
+        if (onActionClick && finalAction) {
+          const actionToCall = finalAction.originalAction || finalAction;
+          onActionClick(actionToCall);
+        }
+        // Reset states after a short delay to show final selection
+        setTimeout(() => {
+          dispatch({ type: 'STOP_SPINNING' });
+        }, 500);
+      }
+    };
+    
+    spin();
   };
 
-  const currentAction = actions[selectedIndex];
-  const angleStep = (2 * Math.PI) / actions.length;
-  const radius = 55; // Distance from center to action indicators
-  const centerX = 90;
-  const centerY = 90;
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (spinIntervalRef.current) {
+        clearTimeout(spinIntervalRef.current);
+      }
+    };
+  }, []);
+
+  const currentAction = displayActions[state.selectedIndex];
+  const { size, outerRadius, innerRadius, centerX, centerY, emojiRadius, angleStep, startAngleOffset } = wheelGeometry;
+  const isSpinning = state.wheelState === 'spinning';
+  const isInteractive = isActive && !isBusy && isReady && !isSpinning;
+
+  const tabButtonStyle = (isActiveTab) => ({
+    fontSize: 13,
+    fontWeight: 400,
+    color: isActive ? '#FF9500' : (darkMode ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)'),
+    textDecoration: isActive ? 'underline' : 'none',
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    padding: 0,
+    textTransform: 'none',
+    letterSpacing: '0.3px',
+    transition: 'all 0.2s ease',
+    '&:hover': { color: '#FF9500' },
+  });
 
   return (
+    <Box sx={{ width: '100%', position: 'relative' }}>
+      <Box sx={{ position: 'absolute', left: 0, top: -18, display: 'flex', gap: .75, alignItems: 'center', zIndex: 1 }}>
+        <Typography component="button" onClick={() => handleTabChange('emotions')} sx={tabButtonStyle(state.activeTab === 'emotions')}>
+          Emotions
+        </Typography>
+        <Box sx={{ width: 1, height: 12, bgcolor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)' }} />
+        <Typography component="button" onClick={() => handleTabChange('dances')} sx={tabButtonStyle(state.activeTab === 'dances')}>
+          Dances
+        </Typography>
+        <Box sx={{ width: 1, height: 12, bgcolor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)' }} />
+        <IconButton
+          onClick={handleSpinWheel}
+          disabled={isSpinning || !isActive || isBusy || !isReady}
+          size="small"
+          sx={{
+            width: 20,
+            height: 20,
+            padding: 0,
+            color: isSpinning ? '#FF9500' : (darkMode ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)'),
+            '&:hover': {
+              color: '#FF9500',
+              bgcolor: 'transparent',
+            },
+            '&.Mui-disabled': {
+              color: isSpinning ? '#FF9500' : (darkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)'),
+            },
+            transition: 'all 0.2s ease',
+          }}
+        >
+          <CasinoIcon sx={{ fontSize: 14 }} />
+        </IconButton>
+      </Box>
+
+      {/* Wheel */}
     <Box
       sx={{
         position: 'relative',
-        width: 180,
-        height: 180,
+          width: size,
+          height: size,
         mx: 'auto',
-        mb: 2,
+          mb: 0,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
       }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      {/* Outer Wheel Ring - iPod style */}
-      <Box
+      >
+      {/* Outer Wheel - Plutchik's emotion wheel segments */}
+      <svg
+        width={size}
+        height={size}
+        style={{ position: 'absolute', top: 0, left: 0 }}
+      >
+        {/* Draw segments */}
+        {displayActions.map((action, index) => {
+          const startAngle = index * angleStep + startAngleOffset;
+          const endAngle = startAngle + angleStep;
+          const isSegmentActive = index === state.activeIndex;
+          const largeArcFlag = angleStep > Math.PI ? 1 : 0;
+          
+          // Calculate arc points
+          const outerStartX = centerX + outerRadius * Math.cos(startAngle);
+          const outerStartY = centerY + outerRadius * Math.sin(startAngle);
+          const outerEndX = centerX + outerRadius * Math.cos(endAngle);
+          const outerEndY = centerY + outerRadius * Math.sin(endAngle);
+          const innerStartX = centerX + innerRadius * Math.cos(startAngle);
+          const innerStartY = centerY + innerRadius * Math.sin(startAngle);
+          const innerEndX = centerX + innerRadius * Math.cos(endAngle);
+          const innerEndY = centerY + innerRadius * Math.sin(endAngle);
+          
+          // Create path for segment
+          const pathData = [
+            `M ${innerStartX} ${innerStartY}`,
+            `L ${outerStartX} ${outerStartY}`,
+            `A ${outerRadius} ${outerRadius} 0 ${largeArcFlag} 1 ${outerEndX} ${outerEndY}`,
+            `L ${innerEndX} ${innerEndY}`,
+            `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 0 ${innerStartX} ${innerStartY}`,
+            'Z'
+          ].join(' ');
+          
+          return (
+            <path
+              key={action.name || index}
+              d={pathData}
+              fill={isSegmentActive 
+                ? (darkMode ? 'rgba(255, 149, 0, 0.1)' : 'rgba(255, 149, 0, 0.075)')
+                : 'transparent'
+              }
+              stroke={isSegmentActive 
+                ? '#FF9500' 
+                : (darkMode ? 'rgba(255, 149, 0, 0.4)' : 'rgba(255, 149, 0, 0.35)')
+              }
+              strokeWidth={1}
+              opacity={isInteractive ? 1 : 0.3}
+              style={{
+                cursor: isInteractive ? 'pointer' : 'not-allowed',
+                transition: isSpinning ? 'all 0.05s ease' : 'all 0.2s ease',
+              }}
+              onClick={() => handleActionClick(action, index)}
+              onMouseEnter={() => {
+                if (isInteractive) {
+                  dispatch({ type: 'HOVER_SEGMENT', index });
+                }
+              }}
+              onMouseLeave={() => {
+                if (!isSpinning) {
+                  dispatch({ type: 'LEAVE_SEGMENT' });
+                }
+              }}
+            />
+          );
+        })}
+      </svg>
+
+      {/* Emojis on each segment - Plutchik emotions */}
+      {displayActions.map((action, index) => {
+        const segmentCenterAngle = index * angleStep + startAngleOffset + angleStep / 2;
+        const emojiX = centerX + emojiRadius * Math.cos(segmentCenterAngle);
+        const emojiY = centerY + emojiRadius * Math.sin(segmentCenterAngle);
+        const isSegmentActive = index === state.activeIndex;
+
+        return (
+          <Box
+            key={action.name || index}
+            onClick={() => handleActionClick(action, index)}
+            onMouseEnter={() => {
+              if (isInteractive) {
+                dispatch({ type: 'HOVER_SEGMENT', index });
+              }
+            }}
+            onMouseLeave={() => {
+              if (!isSpinning) {
+                dispatch({ type: 'LEAVE_SEGMENT' });
+              }
+            }}
         sx={{
           position: 'absolute',
-          width: 180,
-          height: 180,
-          borderRadius: '50%',
-          background: darkMode
-            ? 'linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%)'
-            : 'linear-gradient(135deg, rgba(0, 0, 0, 0.06) 0%, rgba(0, 0, 0, 0.02) 100%)',
-          border: darkMode
-            ? '1px solid rgba(255, 255, 255, 0.12)'
-            : '1px solid rgba(0, 0, 0, 0.1)',
-          boxShadow: darkMode
-            ? 'inset 0 2px 8px rgba(0, 0, 0, 0.3), 0 2px 12px rgba(0, 0, 0, 0.2)'
-            : 'inset 0 2px 8px rgba(0, 0, 0, 0.1), 0 2px 12px rgba(0, 0, 0, 0.08)',
+              left: `${emojiX - WHEEL_CONFIG.emojiOffset}px`,
+              top: `${emojiY - WHEEL_CONFIG.emojiOffset}px`,
+              width: WHEEL_CONFIG.emojiSize,
+              height: WHEEL_CONFIG.emojiSize,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: isInteractive ? 'pointer' : 'not-allowed',
+              opacity: isInteractive ? 1 : 0.3,
+              transition: isSpinning ? 'all 0.05s ease' : 'all 0.2s ease',
+              transform: isSegmentActive ? 'scale(1.2)' : 'scale(1)',
+              zIndex: isSegmentActive ? 10 : 5,
+            }}
+          >
+            <Typography
+              sx={{
+                fontSize: 20,
+                lineHeight: 1,
+                filter: isSegmentActive ? 'none' : (isInteractive ? 'grayscale(30%)' : 'grayscale(100%)'),
+                transition: 'filter 0.2s ease',
         }}
-      />
+            >
+              {action.emoji}
+            </Typography>
+          </Box>
+        );
+      })}
 
-      {/* Middle Ring */}
-      <Box
-        sx={{
-          position: 'absolute',
-          width: 140,
-          height: 140,
-          borderRadius: '50%',
-          background: darkMode
-            ? 'linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%)'
-            : 'linear-gradient(135deg, rgba(0, 0, 0, 0.04) 0%, rgba(0, 0, 0, 0.01) 100%)',
-          border: darkMode
-            ? '1px solid rgba(255, 255, 255, 0.08)'
-            : '1px solid rgba(0, 0, 0, 0.08)',
-        }}
-      />
-
-      {/* Central Display - iPod LCD style */}
+      {/* Central Display - Simple and sober */}
+      {state.activeIndex !== null && (
       <Box
         onClick={handleWheelClick}
         sx={{
           position: 'relative',
-          width: 100,
-          height: 100,
+            width: innerRadius * 2,
+            height: innerRadius * 2,
           borderRadius: '50%',
-          background: darkMode
-            ? 'linear-gradient(135deg, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0.2) 100%)'
-            : 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(250, 250, 250, 0.98) 100%)',
-          border: darkMode
-            ? '2px solid rgba(255, 255, 255, 0.15)'
-            : '2px solid rgba(0, 0, 0, 0.1)',
+            background: 'transparent',
+            border: `1px solid ${darkMode ? 'rgba(255, 149, 0, 0.4)' : 'rgba(255, 149, 0, 0.35)'}`,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
           cursor: isActive && !isBusy && isReady ? 'pointer' : 'not-allowed',
-          transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            transition: 'all 0.2s ease',
           opacity: isActive && !isBusy && isReady ? 1 : 0.5,
-          boxShadow: darkMode
-            ? 'inset 0 2px 6px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3)'
-            : 'inset 0 2px 6px rgba(0, 0, 0, 0.1), 0 4px 12px rgba(0, 0, 0, 0.1)',
-          '&:active': {
-            transform: isActive && !isBusy && isReady ? 'scale(0.96)' : 'scale(1)',
-            boxShadow: darkMode
-              ? 'inset 0 3px 8px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.2)'
-              : 'inset 0 3px 8px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.08)',
-          },
+            zIndex: 10,
         }}
       >
-        {/* Emoji Display */}
-        <Typography
-          sx={{
-            fontSize: 32,
-            lineHeight: 1,
-            mb: 0.5,
-            filter: isActive && !isBusy && isReady ? 'none' : 'grayscale(100%)',
-            transition: 'filter 0.2s ease',
-          }}
-        >
-          {currentAction?.emoji || '⚡'}
-        </Typography>
-
         {/* Label */}
         <Typography
           sx={{
             fontSize: 9,
             fontWeight: 600,
-            color: darkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)',
+              color: darkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)',
             textTransform: 'uppercase',
-            letterSpacing: '1px',
+              letterSpacing: '0.5px',
             textAlign: 'center',
-            fontFamily: 'SF Pro Display, -apple-system, BlinkMacSystemFont, sans-serif',
+              transition: 'color 0.2s ease',
           }}
         >
-          {currentAction?.label || 'Action'}
+            {currentAction?.label || ''}
         </Typography>
+        </Box>
+      )}
       </Box>
-
-      {/* Action Indicators Around Wheel - Subtle dots */}
-      {actions.map((action, index) => {
-        const angle = index * angleStep - Math.PI / 2; // Start from top
-        const x = centerX + radius * Math.cos(angle);
-        const y = centerY + radius * Math.sin(angle);
-        const isSelected = index === selectedIndex;
-
-        return (
-          <Tooltip key={action.name} title={action.label} placement="top" arrow>
-            <Box
-              onClick={() => handleActionClick(action, index)}
-              sx={{
-                position: 'absolute',
-                left: `${x - 8}px`,
-                top: `${y - 8}px`,
-                width: 16,
-                height: 16,
-                borderRadius: '50%',
-                bgcolor: isSelected
-                  ? (darkMode ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.8)')
-                  : (darkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.15)'),
-                cursor: isActive && !isBusy && isReady ? 'pointer' : 'not-allowed',
-                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                opacity: isActive && !isBusy && isReady ? 1 : 0.3,
-                transform: isSelected ? 'scale(1.3)' : 'scale(1)',
-                // z-index hierarchy: 1 = base, 10 = selected UI control
-                zIndex: isSelected ? 10 : 1,
-                border: isSelected
-                  ? `2px solid ${darkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.2)'}`
-                  : 'none',
-                '&:hover': {
-                  bgcolor: isSelected
-                    ? (darkMode ? 'rgba(255, 255, 255, 1)' : 'rgba(0, 0, 0, 0.9)')
-                    : (darkMode ? 'rgba(255, 255, 255, 0.35)' : 'rgba(0, 0, 0, 0.25)'),
-                  transform: isSelected ? 'scale(1.4)' : 'scale(1.2)',
-                },
-              }}
-            />
-          </Tooltip>
-        );
-      })}
-
-      {/* Navigation Buttons - Top/Bottom for Next/Previous */}
-      <IconButton
-        onClick={handlePrevious}
-        disabled={!isActive || isBusy || !isReady}
-        sx={{
-          position: 'absolute',
-          top: 8,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: 24,
-          height: 24,
-          borderRadius: '50%',
-          bgcolor: darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)',
-          border: darkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.1)',
-          color: darkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)',
-          opacity: isActive && !isBusy && isReady ? 1 : 0.3,
-          transition: 'all 0.2s ease',
-          '&:hover': {
-            bgcolor: darkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)',
-            transform: 'translateX(-50%) scale(1.1)',
-          },
-          '&:disabled': {
-            opacity: 0.2,
-          },
-        }}
-      >
-        <Typography sx={{ fontSize: 12, lineHeight: 1 }}>▲</Typography>
-      </IconButton>
-
-      <IconButton
-        onClick={handleNext}
-        disabled={!isActive || isBusy || !isReady}
-        sx={{
-          position: 'absolute',
-          bottom: 8,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: 24,
-          height: 24,
-          borderRadius: '50%',
-          bgcolor: darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)',
-          border: darkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.1)',
-          color: darkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)',
-          opacity: isActive && !isBusy && isReady ? 1 : 0.3,
-          transition: 'all 0.2s ease',
-          '&:hover': {
-            bgcolor: darkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)',
-            transform: 'translateX(-50%) scale(1.1)',
-          },
-          '&:disabled': {
-            opacity: 0.2,
-          },
-        }}
-      >
-        <Typography sx={{ fontSize: 12, lineHeight: 1 }}>▼</Typography>
-      </IconButton>
     </Box>
   );
 }

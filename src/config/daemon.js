@@ -51,9 +51,9 @@ export const DAEMON_CONFIG = {
   // Animation/transition durations
   ANIMATIONS: {
     MODEL_LOAD_TIME: 1000,       // ⚡ 3D model loading time (margin)
-    SCAN_DURATION: 8000,         // 3D mesh scan duration (+2s margin)
+    SCAN_DURATION: 3000,       // 3D mesh scan duration (2 minutes for debugging centering)
     SCAN_INTERNAL_DELAYS: 250,   // X-ray return delay for last mesh
-    SCAN_COMPLETE_PAUSE: 1800,   // ⚡ Pause to SEE scan success before transition
+    SCAN_COMPLETE_PAUSE: 600,    // ⚡ Pause to SEE scan success before transition (3x faster: ~0.6s instead of 1.8s)
     TRANSITION_DURATION: 800,    // TransitionView duration (resize + spinner visible)
     VIEW_FADE_DELAY: 100,        // Delay between hide StartingView and show TransitionView
     SLEEP_DURATION: 4000,        // goto_sleep duration before kill

@@ -7,7 +7,7 @@ import Viewer3D from '../../components/viewer3d';
 import CameraFeed from './camera/CameraFeed';
 import ViewportSwapper from './ViewportSwapper';
 import LogConsole from './LogConsole';
-import ApplicationStore from './application-store';
+import { RightPanel } from './right-panel';
 import RobotHeader from './RobotHeader';
 import PowerButton from './PowerButton';
 import AudioControls from './audio/AudioControls';
@@ -504,7 +504,7 @@ function ActiveRobotView({
                     backgroundColor: 'transparent !important',
                   }}
                 >
-          <ApplicationStore 
+          <RightPanel 
             showToast={showToast}
             onLoadingChange={handleAppsLoadingChange}
             quickActions={quickActions}

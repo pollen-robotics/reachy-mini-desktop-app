@@ -299,36 +299,25 @@ export function updateCellShadingMaterial(material, params = {}) {
 }
 
 /**
- * AAA X-ray shader with advanced rim lighting, depth-based opacity, and subsurface scattering
+ * Simple and efficient X-ray shader using Fresnel rim lighting
+ * Based on proven techniques: rim lighting for edges, transparency for X-ray effect
  */
 export const xrayShader = {
   uniforms: {
-    baseColor: { value: new THREE.Color(0x7A8590) },
-    rimColor: { value: new THREE.Color(0xFFFFFF) },
-    rimPower: { value: 2.0 },
-    rimIntensity: { value: 0.4 },
-    opacity: { value: 0.5 },
-    edgeIntensity: { value: 0.3 },
-    depthIntensity: { value: 0.3 }, // ✅ New: depth-based effect intensity
-    subsurfaceColor: { value: new THREE.Color(0xB0C4DE) }, // ✅ New: subsurface scattering color
-    subsurfaceIntensity: { value: 0.2 }, // ✅ New: subsurface intensity
+    baseColor: { value: new THREE.Color(0x5A6570) },
+    rimColor: { value: new THREE.Color(0x8A9AAC) },
+    opacity: { value: 0.3 },
+    rimIntensity: { value: 0.6 },
   },
   
   vertexShader: `
     varying vec3 vNormal;
     varying vec3 vViewPosition;
-    varying vec3 vWorldPosition;
-    varying float vDepth; // ✅ New: depth for depth-based opacity
     
     void main() {
       vNormal = normalize(normalMatrix * normal);
       vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
       vViewPosition = -mvPosition.xyz;
-      vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
-      
-      // ✅ Calculate depth (distance to camera)
-      vDepth = length(vViewPosition);
-      
       gl_Position = projectionMatrix * mvPosition;
     }
   `,
@@ -336,126 +325,61 @@ export const xrayShader = {
   fragmentShader: `
     uniform vec3 baseColor;
     uniform vec3 rimColor;
-    uniform float rimPower;
-    uniform float rimIntensity;
     uniform float opacity;
-    uniform float edgeIntensity;
-    uniform float depthIntensity; // ✅ New
-    uniform vec3 subsurfaceColor; // ✅ New
-    uniform float subsurfaceIntensity; // ✅ New
+    uniform float rimIntensity;
     
     varying vec3 vNormal;
     varying vec3 vViewPosition;
-    varying float vDepth; // ✅ New
     
     void main() {
       vec3 normal = normalize(vNormal);
       vec3 viewDir = normalize(vViewPosition);
       
-      // ===== ADVANCED RIM LIGHTING (Fresnel effect with color variation) =====
+      // Fresnel effect: edges are brighter (rim lighting)
       float fresnel = 1.0 - max(dot(viewDir, normal), 0.0);
-      fresnel = pow(fresnel, rimPower);
+      fresnel = pow(fresnel, 2.0);
       
-      // ✅ Rim light with smooth transition and color variation based on angle
-      float rimSmooth = smoothstep(0.2, 0.9, fresnel);
-      vec3 rimColorVaried = mix(rimColor, vec3(0.9, 0.95, 1.0), fresnel * 0.5); // Slightly bluish at edges
-      vec3 rimLight = rimColorVaried * rimSmooth * rimIntensity;
+      // Mix base color with rim color based on fresnel
+      vec3 finalColor = mix(baseColor, rimColor, fresnel * rimIntensity);
       
-      // ===== IMPROVED EDGE DETECTION =====
-      float edge = 1.0 - abs(dot(viewDir, normal));
-      edge = pow(edge, 2.5); // Slightly less aggressive
-      vec3 edgeHighlight = rimColor * edge * edgeIntensity;
-      
-      // ===== SUBSURFACE SCATTERING (simulation of light passing through) =====
-      // The more perpendicular the surface is to the view, the more light passes through
-      float subsurfaceFactor = max(dot(viewDir, normal), 0.0);
-      subsurfaceFactor = pow(subsurfaceFactor, 1.5);
-      vec3 subsurface = subsurfaceColor * subsurfaceFactor * subsurfaceIntensity;
-      
-      // ===== DEPTH-BASED OPACITY (thicker parts are more opaque) =====
-      // Normalize depth (adjust according to your scene)
-      float normalizedDepth = clamp((vDepth - 0.1) / 0.5, 0.0, 1.0);
-      float depthOpacity = 1.0 + normalizedDepth * depthIntensity;
-      float finalOpacity = opacity * depthOpacity;
-      
-      // ===== FINAL COLOR =====
-      vec3 finalColor = baseColor + rimLight + edgeHighlight + subsurface;
-      
-      // ✅ Clamp with a bit more headroom for bloom
-      finalColor = clamp(finalColor, 0.0, 1.2);
-      
-      gl_FragColor = vec4(finalColor, clamp(finalOpacity, 0.0, 1.0));
+      gl_FragColor = vec4(finalColor, opacity);
     }
   `
 };
 
 /**
- * Creates an improved X-ray material with rim lighting
- * @param {number} baseColorHex - Base color in hex
- * @param {object} options - Shader options
+ * Creates a simple X-ray material
+ * @param {number} baseColorHex - Base color in hex (default: gray-blue)
+ * @param {object} options - Options: { opacity, rimColor, rimIntensity, scanMode }
+ * @param {boolean} options.scanMode - If true, uses green color for scan effect
  * @returns {THREE.ShaderMaterial}
  */
-export function createXrayMaterial(baseColorHex = 0x7A8590, options = {}) {
-  const uniforms = {
-    baseColor: { value: new THREE.Color(baseColorHex) },
-    rimColor: { value: new THREE.Color(options.rimColor || 0xFFFFFF) },
-    rimPower: { value: options.rimPower ?? 2.0 },
-    rimIntensity: { value: options.rimIntensity ?? 0.4 },
-    opacity: { value: options.opacity ?? 0.5 },
-    edgeIntensity: { value: options.edgeIntensity ?? 0.3 },
-    depthIntensity: { value: options.depthIntensity ?? 0.3 }, // ✅ New
-    subsurfaceColor: { value: new THREE.Color(options.subsurfaceColor || 0xB0C4DE) }, // ✅ New
-    subsurfaceIntensity: { value: options.subsurfaceIntensity ?? 0.2 }, // ✅ New
-  };
+export function createXrayMaterial(baseColorHex = 0x5A6570, options = {}) {
+  const isScanMode = options.scanMode === true;
   
-  // ✅ Allow depthWrite to be overridden for error meshes (need proper z-ordering)
-  const depthWrite = options.depthWrite !== undefined ? options.depthWrite : false;
-  const transparent = options.transparent !== undefined ? options.transparent : true;
+  // Scan mode: green colors
+  const baseColor = isScanMode ? 0x2D5A3D : baseColorHex;
+  const rimColor = isScanMode ? 0x4ADE80 : (options.rimColor || 0x8A9AAC);
+  
+  const uniforms = {
+    baseColor: { value: new THREE.Color(baseColor) },
+    rimColor: { value: new THREE.Color(rimColor) },
+    opacity: { value: options.opacity ?? 0.3 },
+    rimIntensity: { value: options.rimIntensity ?? 0.6 },
+  };
   
   const material = new THREE.ShaderMaterial({
     uniforms: uniforms,
     vertexShader: xrayShader.vertexShader,
     fragmentShader: xrayShader.fragmentShader,
-    transparent: transparent,
-    depthWrite: depthWrite, // ✅ Can be overridden for error meshes
+    transparent: true,
+    depthWrite: false,
     depthTest: true,
     side: THREE.DoubleSide,
-    opacity: options.opacity ?? 0.5,
-    alphaTest: 0.001, // ✅ Reject almost transparent pixels (very low to avoid artifacts)
+    opacity: options.opacity ?? 0.3,
   });
   
   return material;
-}
-
-/**
- * Updates X-ray shader parameters
- * @param {THREE.ShaderMaterial} material - Material to update
- * @param {object} params - Parameters to modify
- */
-export function updateXrayMaterial(material, params = {}) {
-  if (!material.uniforms) return;
-  
-  if (params.baseColor !== undefined) {
-    material.uniforms.baseColor.value.set(params.baseColor);
-  }
-  if (params.rimColor !== undefined) {
-    material.uniforms.rimColor.value.set(params.rimColor);
-  }
-  if (params.rimPower !== undefined) {
-    material.uniforms.rimPower.value = params.rimPower;
-  }
-  if (params.rimIntensity !== undefined) {
-    material.uniforms.rimIntensity.value = params.rimIntensity;
-  }
-  if (params.opacity !== undefined) {
-    material.uniforms.opacity.value = params.opacity;
-    material.opacity = params.opacity;
-  }
-  if (params.edgeIntensity !== undefined) {
-    material.uniforms.edgeIntensity.value = params.edgeIntensity;
-  }
-  
-  material.needsUpdate = true;
 }
 
 

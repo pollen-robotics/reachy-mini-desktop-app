@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import { Box, Typography, Button, CircularProgress } from '@mui/material';
-import { getAppWindow } from '../../utils/windowUtils';
 import reachyBusteSvg from '../../assets/reachy-buste.svg';
 import useAppStore from '../../store/useAppStore';
 
@@ -37,7 +36,6 @@ export default function ReadyToStartView({
   isStarting, 
   usbPortName,
 }) {
-  const appWindow = getAppWindow();
   const { darkMode } = useAppStore();
   const [isButtonLoading, setIsButtonLoading] = useState(false);
   
@@ -129,62 +127,57 @@ export default function ReadyToStartView({
 
                   <Button
                     onClick={handleStartClick}
-            disabled={isButtonLoading || isStarting}
-                    variant="contained"
-                    color="primary"
-                startIcon={(isButtonLoading || isStarting) ? (
-                  <CircularProgress size={14} thickness={3} sx={{ color: 'rgba(255, 255, 255, 0.8)' }} />
-                ) : null}
-                sx={{
-                  px: 3.5,
-                  py: 1.25,
-                  minHeight: 42,
-                  fontSize: 14,
-                  fontWeight: 600,
-                  textTransform: 'none',
-                  borderRadius: '20px',
-                  bgcolor: darkMode ? '#fff' : '#000',
-                  color: darkMode ? '#000' : '#fff',
-                  position: 'relative',
-                  overflow: 'hidden',
-                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.06), inset 0 -1px 1px rgba(255, 255, 255, 0.15)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                  letterSpacing: '-0.01em',
-                  '&::before': {
-                    content: '""',
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    background: 'radial-gradient(circle at 50% 0%, rgba(255, 149, 0, 0.15), transparent 70%)',
-                    opacity: 0,
-                    transition: 'opacity 0.3s ease',
-                  },
-                  '&:hover::before': {
-                    opacity: !(isButtonLoading || isStarting) ? 1 : 0,
-                  },
-                  '&:hover': {
-                    bgcolor: !(isButtonLoading || isStarting) ? (darkMode ? '#f5f5f5' : '#1a1a1a') : (darkMode ? '#fff' : '#000'),
-                    transform: !(isButtonLoading || isStarting) ? 'translateY(-1px)' : 'none',
-                    boxShadow: !(isButtonLoading || isStarting) 
-                      ? '0 4px 12px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.08), inset 0 -1px 1px rgba(255, 255, 255, 0.2)'
-                      : '0 2px 8px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.06), inset 0 -1px 1px rgba(255, 255, 255, 0.15)',
-                  },
-                  '&:active': {
-                    transform: !(isButtonLoading || isStarting) ? 'translateY(0px)' : 'none',
-                    boxShadow: '0 1px 4px rgba(0, 0, 0, 0.12)',
-                  },
-                  '&:disabled': {
-                    bgcolor: darkMode ? '#f5f5f5' : '#1a1a1a',
-                    color: darkMode ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.7)',
-                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
-                  },
-                }}
-              >
-                {(isButtonLoading || isStarting) ? 'Starting...' : 'Start'}
-              </Button>
+                    disabled={isButtonLoading || isStarting}
+                    variant="outlined"
+                    startIcon={(isButtonLoading || isStarting) ? (
+                      <CircularProgress size={16} thickness={4} sx={{ color: '#FF9500' }} />
+                    ) : null}
+                    sx={{
+                      px: 3.5,
+                      py: 1.25,
+                      minHeight: 44,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      textTransform: 'none',
+                      borderRadius: '12px',
+                      bgcolor: 'transparent',
+                      color: '#FF9500',
+                      border: '1px solid #FF9500',
+                      position: 'relative',
+                      overflow: 'hidden',
+                      boxShadow: darkMode 
+                        ? '0 2px 8px rgba(255, 149, 0, 0.15)' 
+                        : '0 2px 8px rgba(255, 149, 0, 0.12)',
+                      transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                      letterSpacing: '0.2px',
+                      '&:hover': {
+                        bgcolor: !(isButtonLoading || isStarting) ? 'rgba(255, 149, 0, 0.08)' : 'transparent',
+                        borderColor: '#FF9500',
+                        transform: !(isButtonLoading || isStarting) ? 'translateY(-2px)' : 'none',
+                        boxShadow: !(isButtonLoading || isStarting) 
+                          ? (darkMode 
+                            ? '0 6px 16px rgba(255, 149, 0, 0.2)' 
+                            : '0 6px 16px rgba(255, 149, 0, 0.15)')
+                          : (darkMode 
+                            ? '0 2px 8px rgba(255, 149, 0, 0.15)' 
+                            : '0 2px 8px rgba(255, 149, 0, 0.12)'),
+                      },
+                      '&:active': {
+                        transform: !(isButtonLoading || isStarting) ? 'translateY(0)' : 'none',
+                        boxShadow: darkMode 
+                          ? '0 2px 8px rgba(255, 149, 0, 0.15)' 
+                          : '0 2px 8px rgba(255, 149, 0, 0.12)',
+                      },
+                      '&:disabled': {
+                        bgcolor: 'transparent',
+                        color: darkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)',
+                        borderColor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.12)',
+                        boxShadow: 'none',
+                      },
+                    }}
+                  >
+                    {(isButtonLoading || isStarting) ? 'Starting...' : 'Start'}
+                  </Button>
         </Box>
 
             {/* Bottom text - absolute positioning */}

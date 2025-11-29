@@ -1,6 +1,5 @@
 import React, { useCallback } from 'react';
 import { Box } from '@mui/material';
-import { getAppWindow } from '../../utils/windowUtils';
 import HardwareScanView from './HardwareScanView';
 import useAppStore from '../../store/useAppStore';
 import { DAEMON_CONFIG } from '../../config/daemon';
@@ -10,15 +9,11 @@ import { DAEMON_CONFIG } from '../../config/daemon';
  * Wrapper around HardwareScanView that handles the transition logic
  */
 function StartingView({ startupError, startDaemon }) {
-  const appWindow = getAppWindow();
-  const { darkMode } = useAppStore();
+  const { darkMode, setIsStarting, setIsTransitioning, setIsActive } = useAppStore();
   
   const handleScanComplete = useCallback(() => {
     // ⚡ WAIT for pause to see success, then trigger transition
     setTimeout(() => {
-      // Trigger transition via store
-      const { setIsStarting, setIsTransitioning, setIsActive } = useAppStore.getState();
-      
       // ✅ Transition: keep TransitionView displayed until apps are loaded
       // (the onAppsReady callback in ActiveRobotView will close TransitionView)
       setIsStarting(false);
@@ -27,7 +22,7 @@ function StartingView({ startupError, startDaemon }) {
       // ✅ No longer close TransitionView automatically after TRANSITION_DURATION
       // It will be closed by onAppsReady when apps are loaded
     }, DAEMON_CONFIG.ANIMATIONS.SCAN_COMPLETE_PAUSE);
-  }, []);
+  }, [setIsStarting, setIsTransitioning, setIsActive]);
 
   return (
     <Box
@@ -52,7 +47,6 @@ function StartingView({ startupError, startDaemon }) {
         <HardwareScanView 
           startupError={startupError}
           onScanComplete={handleScanComplete}
-          showTitlebar={false}
           startDaemon={startDaemon}
         />
       </Box>

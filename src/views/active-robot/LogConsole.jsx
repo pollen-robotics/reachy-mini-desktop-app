@@ -150,9 +150,20 @@ function LogConsole({ logs, darkMode = false }) {
       }}
     >
       {normalizedLogs.length === 0 ? (
-        <Typography sx={{ fontSize: 10, color: darkMode ? '#666' : '#999', fontFamily: 'inherit', textAlign: 'center' }}>
-          No logs
-        </Typography>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '100%',
+            height: '100%',
+            minHeight: 80,
+          }}
+        >
+          <Typography sx={{ fontSize: 10, color: darkMode ? '#666' : '#999', fontFamily: 'inherit', textAlign: 'center' }}>
+            No logs
+          </Typography>
+        </Box>
       ) : (
         normalizedLogs.map((log, index) => {
           const isDaemon = log.source === 'daemon';

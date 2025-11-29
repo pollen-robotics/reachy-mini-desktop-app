@@ -68,6 +68,34 @@ function ThemeWrapper({ children }) {
       divider: darkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.18)',
     },
     components: {
+      MuiButton: {
+        defaultProps: {
+          disableRipple: false,
+        },
+        styleOverrides: {
+          root: {
+            // ✅ Assure que les transitions fonctionnent correctement
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          },
+        },
+      },
+      MuiCircularProgress: {
+        styleOverrides: {
+          root: {
+            // ✅ S'assurer que le SVG s'affiche correctement
+            display: 'block',
+          },
+          svg: {
+            // ✅ S'assurer que le SVG ne soit pas clippé
+            display: 'block',
+            overflow: 'visible',
+          },
+          circle: {
+            // ✅ S'assurer que le cercle soit visible
+            strokeLinecap: 'round',
+          },
+        },
+      },
       MuiTooltip: {
         styleOverrides: {
           tooltip: {

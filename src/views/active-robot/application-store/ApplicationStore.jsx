@@ -1,9 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Box, Typography, IconButton, Button, ButtonGroup, Accordion, AccordionSummary, AccordionDetails, Tooltip } from '@mui/material';
+import { Box, Typography, IconButton, Button, ButtonGroup, Accordion, AccordionSummary, AccordionDetails, Tooltip, Chip } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined';
 import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
 import ReachyBox from '../../../assets/reachy-update-box.svg';
 import useAppStore from '../../../store/useAppStore';
 import { useApps, useAppHandlers, useAppInstallation } from '../../../hooks/apps';
@@ -11,8 +13,10 @@ import { Section as InstalledAppsSection } from './installed';
 import { Modal as DiscoverModal } from './discover';
 import { CreateAppTutorial as CreateAppTutorialModal } from './modals';
 import { Overlay as InstallOverlay } from './installation';
-import { Pad as QuickActionsPad } from './quick-actions';
+import { Pad as QuickActionsPad, Donut as QuickActionsDonut } from './quick-actions';
 import RobotPositionControl from '../position-control';
+import { useGamepadConnected, useActiveDevice } from '../../../utils/InputManager';
+import { useWindowFocus } from '../../../hooks/system/useWindowFocus';
 
 /**
  * Application Store for Reachy Mini
@@ -41,6 +45,16 @@ export default function ApplicationStore({
   const installingAppName = useAppStore(state => state.installingAppName);
   const installJobType = useAppStore(state => state.installJobType);
   const installResult = useAppStore(state => state.installResult);
+  
+  // Ref to store the reset function from RobotPositionControl
+  const positionControlResetRef = React.useRef(null);
+  // State to track if robot is at initial position
+  const [isAtInitialPosition, setIsAtInitialPosition] = React.useState(true);
+  
+  // Check if gamepad is connected and which device is active
+  const isGamepadConnected = useGamepadConnected();
+  const activeDevice = useActiveDevice();
+  const hasWindowFocus = useWindowFocus();
   
   // State for official/non-official filter
   const [officialOnly, setOfficialOnly] = useState(true); // Default: only official apps
@@ -301,8 +315,72 @@ export default function ApplicationStore({
         },
       }}
     >
-      {/* Quick Actions Section - Accordion */}
+      {/* Emotion Wheel Section - Accordion */}
       {quickActions.length > 0 && handleQuickAction && (
+        <Accordion 
+          defaultExpanded={true}
+          sx={{
+            boxShadow: 'none !important',
+            bgcolor: 'transparent !important',
+            backgroundColor: 'transparent !important',
+            '&:before': { display: 'none' },
+            '&.Mui-expanded': { margin: 0 },
+            mt: 0,
+          }}
+        >
+          <AccordionSummary
+            expandIcon={<ExpandMoreIcon sx={{ color: effectiveDarkMode ? '#666' : '#bbb', opacity: 0.5 }} />}
+            sx={{
+              px: 3,
+              py: 1,
+              pt: 0,
+              minHeight: 'auto',
+              bgcolor: 'transparent !important',
+              backgroundColor: 'transparent !important',
+              '&.Mui-expanded': { minHeight: 'auto' },
+              '& .MuiAccordionSummary-content': {
+                margin: '12px 0',
+                '&.Mui-expanded': { margin: '12px 0' },
+              },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box
+                sx={{
+                  width: 6,
+                  height: 6,
+                  bgcolor: effectiveDarkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)',
+                  borderRadius: '50%',
+                  flexShrink: 0,
+                }}
+              />
+              <Typography
+                sx={{
+                  fontSize: 20,
+                  fontWeight: 700,
+                  color: effectiveDarkMode ? '#f5f5f5' : '#333',
+                  letterSpacing: '-0.3px',
+                }}
+              >
+                Quick Actions
+              </Typography>
+            </Box>
+          </AccordionSummary>
+          <AccordionDetails sx={{ px: 3, pt: 0, pb: 0, bgcolor: 'transparent !important', backgroundColor: 'transparent !important' }}>
+            <QuickActionsDonut
+              actions={quickActions}
+              onActionClick={handleQuickAction}
+              isReady={isReady}
+              isActive={effectiveIsActive}
+              isBusy={effectiveIsBusy}
+              darkMode={effectiveDarkMode}
+            />
+          </AccordionDetails>
+        </Accordion>
+      )}
+
+      {/* Quick Actions Section - Accordion */}
+      {/* {quickActions.length > 0 && handleQuickAction && (
         <Accordion 
           defaultExpanded={true}
           sx={{
@@ -363,7 +441,7 @@ export default function ApplicationStore({
           />
           </AccordionDetails>
         </Accordion>
-      )}
+      )} */}
 
       {/* Applications Section - Accordion */}
       <Accordion 
@@ -515,6 +593,30 @@ export default function ApplicationStore({
             >
               Position Control
             </Typography>
+            {!isAtInitialPosition && (
+              <Tooltip title="Reset all position controls" arrow>
+                <IconButton 
+                  size="small" 
+                  onClick={(e) => {
+                    e.stopPropagation(); // Prevent accordion from closing
+                    if (positionControlResetRef.current) {
+                      positionControlResetRef.current();
+                    }
+                  }}
+                  disabled={!effectiveIsActive || isBusy}
+                  sx={{ 
+                    ml: 0.75,
+                    color: effectiveDarkMode ? '#888' : '#999',
+                    '&:hover': {
+                      color: '#FF9500',
+                      bgcolor: effectiveDarkMode ? 'rgba(255, 149, 0, 0.1)' : 'rgba(255, 149, 0, 0.05)',
+                    }
+                  }}
+                >
+                  <RefreshIcon sx={{ fontSize: 16, color: effectiveDarkMode ? '#888' : '#999' }} />
+                </IconButton>
+              </Tooltip>
+            )}
             <Tooltip 
               title={
                 <Box sx={{ p: 1 }}>
@@ -572,12 +674,92 @@ export default function ApplicationStore({
             >
               <InfoOutlinedIcon sx={{ fontSize: 16, color: effectiveDarkMode ? '#888' : '#999', cursor: 'help', ml: 0.75 }} />
             </Tooltip>
+            {/* Input device indicator - only show if gamepad is connected */}
+            {isGamepadConnected && (
+              <Tooltip 
+                title={activeDevice === 'gamepad' && hasWindowFocus
+                  ? 'Gamepad active' 
+                  : 'Gamepad connected'}
+              >
+                <Chip
+                  icon={<SportsEsportsIcon />}
+                  label=""
+                  size="small"
+                  color={activeDevice === 'gamepad' && hasWindowFocus ? 'primary' : 'default'}
+                  sx={{
+                    height: 20,
+                    width: 20,
+                    minWidth: 20,
+                    ml: 0.5,
+                    opacity: hasWindowFocus ? 1 : 0.4, // Gray out when window loses focus
+                    bgcolor: effectiveDarkMode 
+                      ? (activeDevice === 'gamepad' && hasWindowFocus
+                          ? 'rgba(255, 149, 0, 0.2)' 
+                          : 'rgba(255, 255, 255, 0.05)')
+                      : (activeDevice === 'gamepad' && hasWindowFocus
+                          ? 'rgba(255, 149, 0, 0.15)'
+                          : 'rgba(0, 0, 0, 0.05)'),
+                    border: `1px solid ${effectiveDarkMode 
+                      ? (activeDevice === 'gamepad' && hasWindowFocus
+                          ? 'rgba(255, 149, 0, 0.3)' 
+                          : 'rgba(255, 255, 255, 0.1)')
+                      : (activeDevice === 'gamepad' && hasWindowFocus
+                          ? 'rgba(255, 149, 0, 0.3)'
+                          : 'rgba(0, 0, 0, 0.1)')}`,
+                    '& .MuiChip-icon': {
+                      fontSize: '0.9rem',
+                      color: effectiveDarkMode 
+                        ? (activeDevice === 'gamepad' && hasWindowFocus
+                            ? '#FF9500' 
+                            : 'rgba(255, 255, 255, 0.6)')
+                        : (activeDevice === 'gamepad' && hasWindowFocus
+                            ? '#FF9500'
+                            : 'rgba(0, 0, 0, 0.6)'),
+                      margin: 0,
+                    },
+                    '& .MuiChip-label': {
+                      display: 'none',
+                    },
+                  }}
+                />
+              </Tooltip>
+            )}
+            {!isAtInitialPosition && (
+              <Tooltip title="Reset all position controls" arrow>
+                <IconButton 
+                  size="small" 
+                  onClick={(e) => {
+                    e.stopPropagation(); // Prevent accordion from closing
+                    if (positionControlResetRef.current) {
+                      positionControlResetRef.current();
+                    }
+                  }}
+                  disabled={!effectiveIsActive || effectiveIsBusy}
+                  sx={{ 
+                    ml: 0.5,
+                    color: effectiveDarkMode ? '#888' : '#999',
+                    '&:hover': {
+                      color: '#FF9500',
+                      bgcolor: effectiveDarkMode ? 'rgba(255, 149, 0, 0.1)' : 'rgba(255, 149, 0, 0.05)',
+                    }
+                  }}
+                >
+                  <RefreshIcon sx={{ fontSize: 16, color: effectiveDarkMode ? '#888' : '#999' }} />
+                </IconButton>
+              </Tooltip>
+            )}
           </Box>
         </AccordionSummary>
         <AccordionDetails sx={{ px: 0, pt: 0, pb: 3, bgcolor: 'transparent !important', backgroundColor: 'transparent !important' }}>
           <RobotPositionControl
             isActive={effectiveIsActive}
             darkMode={effectiveDarkMode}
+            onResetReady={(resetFn) => {
+              positionControlResetRef.current = resetFn;
+            }}
+            onIsAtInitialPosition={(isAtInitial) => {
+              setIsAtInitialPosition(isAtInitial);
+            }}
           />
         </AccordionDetails>
       </Accordion>

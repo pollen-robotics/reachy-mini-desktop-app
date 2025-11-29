@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useMemo, useRef } from 'react';
-import { Box, Typography, Button, ButtonGroup, CircularProgress, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
+import { Box, Typography, Button, ButtonGroup, CircularProgress, Select, MenuItem, FormControl, InputLabel, LinearProgress, useTheme } from '@mui/material';
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
 import Viewer3D from './viewer3d';
-import { getShortComponentName } from '../utils/componentNames';
+import { mapMeshToScanPart } from '../utils/scanParts';
 import { HARDWARE_ERROR_CONFIGS, getErrorMeshes } from '../utils/hardwareErrors';
 import useAppStore from '../store/useAppStore';
 
@@ -12,10 +12,11 @@ import useAppStore from '../store/useAppStore';
  */
 export default function DevPlayground() {
   const { darkMode } = useAppStore();
+  const theme = useTheme();
   const [scanState, setScanState] = useState('idle'); // 'idle' | 'scanning' | 'complete' | 'error'
   const [errorType, setErrorType] = useState('none'); // 'none' | 'camera' | 'no_motors' | 'motor_communication'
   const [scanProgress, setScanProgress] = useState({ current: 0, total: 0 });
-  const [currentComponent, setCurrentComponent] = useState(null);
+  const [currentPart, setCurrentPart] = useState(null);
   const [scanComplete, setScanComplete] = useState(false);
   const [allMeshes, setAllMeshes] = useState([]);
   const [errorMesh, setErrorMesh] = useState(null);
@@ -57,14 +58,20 @@ export default function DevPlayground() {
   }, []);
 
   const handleScanMesh = useCallback((mesh, index, total) => {
-    const componentName = getShortComponentName(mesh, index, total);
-    setCurrentComponent(componentName);
+    // Map mesh to actual scan part based on mesh characteristics
+    const partInfo = mapMeshToScanPart(mesh);
+    
+    if (partInfo) {
+      setCurrentPart(partInfo);
+    }
+    
+    // Update progress based on actual mesh count
     setScanProgress({ current: index, total });
   }, []);
 
   const handleScanComplete = useCallback(() => {
     setScanProgress(prev => ({ ...prev, current: prev.total }));
-    setCurrentComponent(null);
+    setCurrentPart(null);
     setScanComplete(true);
     setScanState('complete');
   }, []);
@@ -73,7 +80,7 @@ export default function DevPlayground() {
     setScanState('scanning');
     setScanComplete(false);
     setScanProgress({ current: 0, total: 0 });
-    setCurrentComponent(null);
+    setCurrentPart(null);
     setErrorMesh(null);
     scanKeyRef.current += 1; // Force re-render
   }, []);
@@ -82,7 +89,7 @@ export default function DevPlayground() {
     setScanState('idle');
     setScanComplete(false);
     setScanProgress({ current: 0, total: 0 });
-    setCurrentComponent(null);
+    setCurrentPart(null);
     setErrorMesh(null);
     setErrorType('none');
     scanKeyRef.current += 1;
@@ -92,6 +99,8 @@ export default function DevPlayground() {
     setErrorType(type);
     setScanState('error');
     setScanComplete(false);
+    setScanProgress({ current: 0, total: 0 });
+    setCurrentPart(null);
     scanKeyRef.current += 1;
   }, []);
 
@@ -209,29 +218,122 @@ export default function DevPlayground() {
               </Select>
             </FormControl>
 
-            {/* Scan status - simplified, no component name */}
+            {/* Scan status - matching HardwareScanView */}
             {scanState !== 'idle' && (
               <Box sx={{ 
                 display: 'flex', 
+                flexDirection: 'column',
                 alignItems: 'center', 
                 gap: 1,
                 justifyContent: 'center',
                 py: 0.5,
+                width: '100%',
               }}>
-                {scanComplete ? (
-                  <CheckCircleOutlinedIcon sx={{ fontSize: 16, color: '#00ff88' }} />
-                ) : scanState === 'scanning' ? (
-                  <CircularProgress size={14} sx={{ color: '#00ff88' }} />
-                ) : null}
-                <Typography variant="caption" sx={{ 
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: scanComplete ? '#00ff88' : scanState === 'error' ? '#ef4444' : '#666',
-                }}>
-                  {scanState === 'scanning' && !scanComplete && 'Scanning...'}
-                  {scanComplete && 'Scan complete'}
-                  {scanState === 'error' && 'Error detected'}
-                </Typography>
+                {startupError ? (
+                  // Error display - matching HardwareScanView
+                  <Box sx={{ 
+                    display: 'flex', 
+                    flexDirection: 'column',
+                    alignItems: 'center', 
+                    gap: 1,
+                    width: '100%',
+                    p: 2,
+                    bgcolor: darkMode ? 'rgba(239, 68, 68, 0.1)' : 'rgba(239, 68, 68, 0.05)',
+                    borderRadius: 2,
+                  }}>
+                    <Typography
+                      sx={{
+                        fontSize: 16,
+                        fontWeight: 900,
+                        color: '#ef4444',
+                        letterSpacing: '0.3px',
+                        textAlign: 'center',
+                      }}
+                    >
+                      {startupError.messageParts ? (
+                        <>
+                          {startupError.messageParts.text && `${startupError.messageParts.text} `}
+                          <Box component="span" sx={{ fontWeight: 700 }}>{startupError.messageParts.bold}</Box>
+                          {startupError.messageParts.suffix && ` ${startupError.messageParts.suffix}`}
+                        </>
+                      ) : startupError.message ? (
+                        startupError.message
+                      ) : (
+                        'Hardware error detected'
+                      )}
+                    </Typography>
+                    {startupError.code && (
+                      <Typography
+                        sx={{
+                          fontSize: 11,
+                          fontWeight: 500,
+                          color: darkMode ? 'rgba(239, 68, 68, 0.7)' : '#dc2626',
+                          fontFamily: 'monospace',
+                        }}
+                      >
+                        {startupError.code}
+                      </Typography>
+                    )}
+                  </Box>
+                ) : (
+                  // Normal scan display
+                  <>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {scanComplete && (
+                        <CheckCircleOutlinedIcon
+                          sx={{
+                            fontSize: 18,
+                            color: '#16a34a',
+                          }}
+                        />
+                      )}
+                      <Typography
+                        sx={{
+                          fontSize: 16,
+                          fontWeight: 900,
+                          color: darkMode ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.85)',
+                          letterSpacing: '0.3px',
+                        }}
+                      >
+                        {scanComplete ? 'Scan complete' : 'Scanning hardware'}
+                      </Typography>
+                    </Box>
+                    {!scanComplete && scanProgress.total > 0 && (
+                      <Box sx={{ margin: "auto", width: '100%', maxWidth: '300px' }}>
+                        <LinearProgress 
+                          variant="determinate"
+                          value={scanProgress.total > 0 ? (scanProgress.current / scanProgress.total) * 100 : 0}
+                          sx={{
+                            height: 4,
+                            borderRadius: 2,
+                            backgroundColor: darkMode 
+                              ? `${theme.palette.primary.main}33` 
+                              : `${theme.palette.primary.main}1A`,
+                            '& .MuiLinearProgress-bar': {
+                              backgroundColor: theme.palette.primary.main,
+                              borderRadius: 2,
+                            },
+                          }}
+                        />
+                        <Typography
+                          sx={{
+                            fontSize: 11,
+                            fontWeight: 500,
+                            color: darkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.65)',
+                            opacity: 1,
+                            textAlign: 'center',
+                            mt: 1,
+                            letterSpacing: '0.2px',
+                            minHeight: '16px',
+                            display: 'block',
+                          }}
+                        >
+                          {currentPart ? currentPart.part : 'Initializing scan...'}
+                        </Typography>
+                      </Box>
+                    )}
+                  </>
+                )}
               </Box>
             )}
           </Box>
@@ -256,7 +358,7 @@ export default function DevPlayground() {
               hideGrid={true}
               hideBorder={true}
               showScanEffect={showScanEffect}
-              usePremiumScan={true}
+              usePremiumScan={false}
               onScanComplete={handleScanComplete}
               onScanMesh={handleScanMesh}
               onMeshesReady={handleMeshesReady}
@@ -264,6 +366,9 @@ export default function DevPlayground() {
               useCinematicCamera={true}
               errorFocusMesh={errorMesh}
               backgroundColor="transparent"
+              canvasScale={0.9}
+              canvasTranslateX="5%"
+              canvasTranslateY="10%"
             />
           </Box>
         </Box>
