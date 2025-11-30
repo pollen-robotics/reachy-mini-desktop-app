@@ -5,7 +5,7 @@ import { Box, Typography } from '@mui/material';
  * 2D Joystick Component - Compact
  * Follows mouse directly for intuitive control
  */
-export default function Joystick2D({ label, valueX, valueY, onChange, onDragEnd, minX = -1, maxX = 1, minY = -1, maxY = 1, size = 100, darkMode, disabled = false, smoothedValueX, smoothedValueY }) {
+export default function Joystick2D({ label, valueX, valueY, onChange, onDragEnd, minX = -1, maxX = 1, minY = -1, maxY = 1, size = 100, darkMode, disabled = false, smoothedValueX, smoothedValueY, labelAlign = 'left' }) {
   const containerRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
   const [localStickX, setLocalStickX] = useState(size / 2);
@@ -153,7 +153,7 @@ export default function Joystick2D({ label, valueX, valueY, onChange, onDragEnd,
     <Box sx={{ 
       display: 'flex', 
       flexDirection: 'column', 
-      alignItems: 'center', 
+      alignItems: labelAlign === 'right' ? 'flex-end' : 'flex-start', 
       gap: 0.5,
       p: 0.75,
       borderRadius: '0px',
@@ -162,7 +162,7 @@ export default function Joystick2D({ label, valueX, valueY, onChange, onDragEnd,
       opacity: disabled ? 0.5 : 1,
       pointerEvents: disabled ? 'none' : 'auto',
     }}>
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.25, mb: 0.5 }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: labelAlign === 'right' ? 'flex-end' : 'flex-start', gap: 0.25, mb: 0.5 }}>
         <Typography sx={{ fontSize: 10, fontWeight: 700, color: darkMode ? '#f5f5f5' : '#333', letterSpacing: '-0.2px' }}>
           {label}
         </Typography>

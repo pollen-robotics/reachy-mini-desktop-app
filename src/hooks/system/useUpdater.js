@@ -61,16 +61,8 @@ export const useUpdater = ({
       return null;
     }
 
-    // ✅ Check internet connectivity BEFORE making network request
-    // Uses centralized isOnline() helper (DRY)
-    if (!isOnline()) {
-      console.warn('⚠️ navigator.onLine reports offline, skipping update check');
-      setIsChecking(false);
-      isCheckingRef.current = false;
-      setError('No internet connection. Please check your network settings.');
-      return null;
-    }
-
+    // ✅ Try to fetch latest.json directly - if it works, we have internet + we know if there's an update
+    // No need for separate healthcheck - the update check itself tells us about connectivity
     isCheckingRef.current = true;
     setIsChecking(true);
     setError(null);
@@ -151,12 +143,13 @@ export const useUpdater = ({
     setDownloadProgress(0);
     setError(null);
 
-      let lastProgress = 0;
-      let lastUpdateTime = Date.now();
-      let progressTimeout = null;
-      let animationFrameId = null;
-      let targetProgress = 0;
-      let currentDisplayProgress = 0;
+    let lastProgress = 0;
+    let lastUpdateTime = Date.now();
+    let progressTimeout = null;
+    let animationFrameId = null;
+    let targetProgress = 0;
+    let currentDisplayProgress = 0;
+    let downloadAborted = false;
 
     // Cleanup helper (production-grade)
     const cleanup = () => {
@@ -171,6 +164,11 @@ export const useUpdater = ({
     };
 
     try {
+      // Check if download was aborted before starting
+      if (downloadAborted) {
+        return;
+      }
+      
       // Animation function for smooth interpolation
       const animateProgress = () => {
         if (currentDisplayProgress < targetProgress) {
@@ -190,10 +188,15 @@ export const useUpdater = ({
             setDownloadProgress(0);
             lastProgress = 0;
             targetProgress = 0;
-            // Safety timeout: if no progress for 30s, consider as error
+            // Safety timeout: if no progress for 60s, abort download
             progressTimeout = setTimeout(() => {
-              console.warn('⚠️ Download stalled, timeout...');
-            }, 30000);
+              console.error('❌ Download stalled for 60s, aborting...');
+              downloadAborted = true;
+              cleanup();
+              setIsDownloading(false);
+              setDownloadProgress(0);
+              setError('Download timeout. Please check your internet connection and try again.');
+            }, 60000); // 60 seconds timeout
             break;
           
           case 'Progress':
@@ -225,11 +228,16 @@ export const useUpdater = ({
             }
             
             // Reset timeout if progress detected
-            if (progressTimeout) {
+            if (progressTimeout && !downloadAborted) {
               clearTimeout(progressTimeout);
               progressTimeout = setTimeout(() => {
-                console.warn('⚠️ Download stalled, timeout...');
-              }, 30000);
+                console.error('❌ Download stalled for 60s, aborting...');
+                downloadAborted = true;
+                cleanup();
+                setIsDownloading(false);
+                setDownloadProgress(0);
+                setError('Download timeout. Please check your internet connection and try again.');
+              }, 60000); // 60 seconds timeout
             }
             
             break;

@@ -6,7 +6,7 @@ import { Box, Typography, Slider } from '@mui/material';
  * @param {boolean} centered - If true, displays title and subtitle on two separate centered lines
  * @param {number} smoothedValue - Optional smoothed/ghost value to display as a visual indicator
  */
-export default function VerticalSlider({ label, value, onChange, min = -1, max = 1, unit = 'm', darkMode, disabled = false, centered = false, smoothedValue }) {
+export default function VerticalSlider({ label, value, onChange, min = -1, max = 1, unit = 'm', darkMode, disabled = false, centered = false, smoothedValue, height = 135 }) {
   const displayValue = typeof value === 'number' ? value.toFixed(unit === 'deg' ? 1 : 3) : (unit === 'deg' ? '0.0' : '0.000');
   
   return (
@@ -58,7 +58,7 @@ export default function VerticalSlider({ label, value, onChange, min = -1, max =
         display: 'flex', 
         flexDirection: 'row', 
         alignItems: 'center', 
-        height: 135, // Match joystick SVG height
+        height: height, // Match joystick SVG height
         width: '100%',
         position: 'relative',
       }}>

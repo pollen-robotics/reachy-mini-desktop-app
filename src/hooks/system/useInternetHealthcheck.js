@@ -30,6 +30,7 @@ export function useInternetHealthcheck({
     return null; // null = not checked yet
   });
   const [hasChecked, setHasChecked] = useState(false); // Track if we've had at least one real check
+  const hasPerformedFirstCheckRef = useRef(false); // Track if we've performed at least one check attempt
   const [isChecking, setIsChecking] = useState(false);
   const intervalRef = useRef(null);
   const abortControllerRef = useRef(null);
@@ -62,6 +63,11 @@ export function useInternetHealthcheck({
 
     abortControllerRef.current = new AbortController();
     setIsChecking(true);
+    
+    // Mark that we've attempted at least one check
+    if (!hasPerformedFirstCheckRef.current) {
+      hasPerformedFirstCheckRef.current = true;
+    }
 
     try {
       const controller = abortControllerRef.current;
@@ -86,7 +92,7 @@ export function useInternetHealthcheck({
       // This is a valid and robust way to check connectivity
       consecutiveFailuresRef.current = 0; // Reset failure counter
       setIsOnline(true);
-      setHasChecked(true);
+      setHasChecked(true); // Mark as checked after successful check
     } catch (error) {
       // Only update if not aborted (abort means component unmounted or new check started)
       if (error.name !== 'AbortError') {
@@ -95,8 +101,10 @@ export function useInternetHealthcheck({
         // Only mark as offline after 2 consecutive failures (avoid false negatives)
         if (consecutiveFailuresRef.current >= 2) {
           setIsOnline(false);
-          setHasChecked(true);
         }
+        // Always mark as checked after first attempt (even if it fails)
+        // This ensures the UI indicator appears even if the first check fails
+        setHasChecked(true);
       }
     } finally {
       setIsChecking(false);

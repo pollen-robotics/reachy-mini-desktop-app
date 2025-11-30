@@ -53,9 +53,13 @@ export function useRobotSmoothing(isActive, isDraggingRef, sendCommandRef, setLo
       if (shouldSend) {
         // Clamp to actual robot limits before sending
         // Use centralized mappings to transform robot coordinates to API coordinates
-        // Only positionY is inverted for API, positionX stays as-is
+        // positionX and positionY are inverted for API
         const apiClampedHeadPose = {
-          x: clamp(currentSmoothed.headPose.x, ROBOT_POSITION_RANGES.POSITION.min, ROBOT_POSITION_RANGES.POSITION.max),
+          x: clamp(
+            mapRobotToAPI(currentSmoothed.headPose.x, 'positionX'),
+            ROBOT_POSITION_RANGES.POSITION.min,
+            ROBOT_POSITION_RANGES.POSITION.max
+          ),
           y: clamp(
             mapRobotToAPI(currentSmoothed.headPose.y, 'positionY'),
             ROBOT_POSITION_RANGES.POSITION.min,

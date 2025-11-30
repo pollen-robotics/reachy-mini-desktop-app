@@ -217,6 +217,9 @@ export default function RobotPositionControl({ isActive, darkMode, onResetReady,
                   bgcolor: 'transparent !important',
                   border: 'none !important',
                 }
+              },
+              '& > * > *': {
+                p: '0 !important', // Remove padding from Joystick2D container
               }
             }}>
               <Joystick2D
@@ -238,7 +241,7 @@ export default function RobotPositionControl({ isActive, darkMode, onResetReady,
                 maxX={EXTENDED_ROBOT_RANGES.POSITION.max}
                 minY={EXTENDED_ROBOT_RANGES.POSITION.min}
                 maxY={EXTENDED_ROBOT_RANGES.POSITION.max}
-                size={135}
+                size={120}
                 darkMode={darkMode}
               />
             </Box>
@@ -267,6 +270,7 @@ export default function RobotPositionControl({ isActive, darkMode, onResetReady,
                 unit="m"
                 darkMode={darkMode}
                 centered={true}
+                height={120}
               />
             </Box>
           </Box>
@@ -318,8 +322,9 @@ export default function RobotPositionControl({ isActive, darkMode, onResetReady,
                 maxX={EXTENDED_ROBOT_RANGES.YAW.max}
                 minY={EXTENDED_ROBOT_RANGES.PITCH.min}
                 maxY={EXTENDED_ROBOT_RANGES.PITCH.max}
-                size={135}
+                size={120}
                 darkMode={darkMode}
+                labelAlign="right"
               />
             </Box>
           </Box>

@@ -21,6 +21,7 @@ function App() {
   const { logs, fetchLogs } = useLogs();
   
   // 🔄 Automatic update system
+  // Tries to fetch latest.json directly - if it works, we have internet + we know if there's an update
   const {
     updateAvailable,
     isChecking,

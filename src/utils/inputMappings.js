@@ -76,8 +76,8 @@ export const INPUT_TO_ROBOT_MAPPINGS = {
  */
 export const ROBOT_TO_DISPLAY_MAPPINGS = {
   positionX: {
-    transform: (value) => value,  // No inversion
-    reason: 'Robot X = Display X (no transformation needed)',
+    transform: (value) => -value,  // Invert for display (visual only) - joystick Y axis
+    reason: 'Robot X forward = Display Y up (visual inversion for joystick Y axis)',
   },
   positionY: {
     transform: (value) => value,  // No inversion - removed previous inversion
@@ -103,8 +103,8 @@ export const ROBOT_TO_DISPLAY_MAPPINGS = {
  */
 export const ROBOT_TO_API_MAPPINGS = {
   positionX: {
-    transform: (value) => value,  // No inversion
-    reason: 'Robot X = API X (no transformation needed)',
+    transform: (value) => -value,  // Invert for API (robot movement) - joystick Y axis
+    reason: 'Robot X forward = API X backward (invert for robot movement)',
   },
   positionY: {
     transform: (value) => value,  // No inversion - removed previous inversion
