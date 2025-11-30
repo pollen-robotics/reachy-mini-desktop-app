@@ -3,6 +3,7 @@ import { Box, Typography, LinearProgress, CircularProgress } from '@mui/material
 import reachyUpdateBoxSvg from '../../assets/reachy-update-box.svg';
 import useAppStore from '../../store/useAppStore';
 import { DAEMON_CONFIG } from '../../config/daemon';
+import { useInternetHealthcheck } from '../../hooks/system/useInternetHealthcheck';
 
 /**
  * Vue dédiée pour les mises à jour
@@ -20,6 +21,7 @@ export default function UpdateView({
   const { darkMode } = useAppStore();
   const [minDisplayTimeElapsed, setMinDisplayTimeElapsed] = useState(false);
   const checkStartTimeRef = useRef(Date.now());
+  const { isOnline: isInternetOnline, hasChecked: hasInternetChecked } = useInternetHealthcheck({ interval: 5000, timeout: 5000 });
 
   // Timer pour garantir l'affichage minimum (utilise config centralisée)
   useEffect(() => {
@@ -303,6 +305,51 @@ export default function UpdateView({
           </>
         ) : null}
       </Box>
+
+      {/* Internet connectivity indicator - discrete pastille at bottom center */}
+      {/* Only display after first check is complete */}
+      {hasInternetChecked && (
+        <Box
+          sx={{
+            position: 'absolute',
+            bottom: 16,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 1,
+            zIndex: 10,
+          }}
+        >
+        <Box
+          sx={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            bgcolor: isInternetOnline 
+              ? (darkMode ? 'rgba(34, 197, 94, 0.6)' : 'rgba(34, 197, 94, 0.5)')
+              : (darkMode ? 'rgba(239, 68, 68, 0.6)' : 'rgba(239, 68, 68, 0.5)'),
+            boxShadow: isInternetOnline
+              ? (darkMode ? '0 0 4px rgba(34, 197, 94, 0.3)' : '0 0 3px rgba(34, 197, 94, 0.2)')
+              : (darkMode ? '0 0 4px rgba(239, 68, 68, 0.3)' : '0 0 3px rgba(239, 68, 68, 0.2)'),
+            transition: 'all 0.3s ease',
+            flexShrink: 0,
+          }}
+        />
+        <Typography
+          sx={{
+            fontSize: 12,
+            fontWeight: 400,
+            color: darkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)',
+            whiteSpace: 'nowrap',
+            transition: 'color 0.3s ease',
+          }}
+        >
+          {isInternetOnline ? 'Online' : 'Offline'}
+        </Typography>
+        </Box>
+      )}
     </Box>
   );
 }
