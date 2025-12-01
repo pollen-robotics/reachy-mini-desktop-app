@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useCallback, useState } from 'react';
 import { Box } from '@mui/material';
 
 import { RobotNotDetectedView, StartingView, ReadyToStartView, TransitionView, ActiveRobotView, ClosingView, UpdateView } from '../views';
+import QuickActionsWindow from '../views/windows/QuickActionsWindow';
+import PositionControlWindow from '../views/windows/PositionControlWindow';
 import AppTopBar from './AppTopBar';
 import { useDaemon, useDaemonHealthCheck } from '../hooks/daemon';
 import { useUsbDetection, useLogs, useWindowResize, useUpdater } from '../hooks/system';
@@ -14,6 +16,44 @@ function App() {
   useEffect(() => {
     setAppStoreInstance(useAppStore);
   }, []);
+
+  // Initialize window manager on app startup
+  useEffect(() => {
+    import('../utils/windowManager').then(({ initializeWindowManager, closeAllSecondaryWindows }) => {
+      initializeWindowManager();
+      
+      // Close all secondary windows on hot reload (dev only)
+      if (import.meta.hot) {
+        import.meta.hot.on('vite:beforeUpdate', async () => {
+          console.log('🔄 Hot reload detected - closing all secondary windows');
+          await closeAllSecondaryWindows();
+        });
+        
+        // Also close on full page reload
+        window.addEventListener('beforeunload', async () => {
+          await closeAllSecondaryWindows();
+        });
+      }
+    });
+  }, []);
+
+  // Check if this is a window view (detected via hash)
+  const windowView = useMemo(() => {
+    const hash = window.location.hash;
+    if (hash === '#quick-actions') return 'quick-actions';
+    if (hash === '#position-control') return 'position-control';
+    return null;
+  }, []);
+
+  // Render window views directly (standalone windows)
+  // These windows need minimal setup - they use the store directly
+  if (windowView === 'quick-actions') {
+    return <QuickActionsWindow />;
+  }
+
+  if (windowView === 'position-control') {
+    return <PositionControlWindow />;
+  }
   const { daemonVersion, hardwareError, isTransitioning, setIsTransitioning, setHardwareError } = useAppStore();
   const { isActive, isStarting, isStopping, startupError, startDaemon, stopDaemon, fetchDaemonVersion } = useDaemon();
   const { isUsbConnected, usbPortName, checkUsbRobot } = useUsbDetection();

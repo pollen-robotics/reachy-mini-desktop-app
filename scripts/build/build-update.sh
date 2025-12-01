@@ -72,24 +72,48 @@ fi
 mkdir -p "$OUTPUT_DIR"
 
 # Detect platform
+# Use TARGET_TRIPLET from environment if provided (for cross-compilation in CI)
+# Otherwise, detect from OS
 PLATFORM=""
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    ARCH=$(uname -m)
-    if [ "$ARCH" = "arm64" ]; then
+if [ -n "$TARGET_TRIPLET" ]; then
+    # Use TARGET_TRIPLET to determine platform (more reliable in CI)
+    if [[ "$TARGET_TRIPLET" == *"aarch64-apple-darwin"* ]]; then
         PLATFORM="darwin-aarch64"
-    else
+    elif [[ "$TARGET_TRIPLET" == *"x86_64-apple-darwin"* ]]; then
         PLATFORM="darwin-x86_64"
+    elif [[ "$TARGET_TRIPLET" == *"x86_64-pc-windows-msvc"* ]]; then
+        PLATFORM="windows-x86_64"
+    elif [[ "$TARGET_TRIPLET" == *"x86_64-unknown-linux-gnu"* ]]; then
+        PLATFORM="linux-x86_64"
+    else
+        echo -e "${YELLOW}⚠️  Unknown TARGET_TRIPLET: $TARGET_TRIPLET, falling back to OS detection${NC}"
+        TARGET_TRIPLET="" # Clear to use fallback
     fi
-elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    PLATFORM="linux-x86_64"
-elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "win32" ]]; then
-    PLATFORM="windows-x86_64"
-else
-    echo -e "${RED}❌ Unsupported platform: $OSTYPE${NC}"
-    exit 1
+fi
+
+# Fallback to OS detection if TARGET_TRIPLET not set or not recognized
+if [ -z "$PLATFORM" ]; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        ARCH=$(uname -m)
+        if [ "$ARCH" = "arm64" ]; then
+            PLATFORM="darwin-aarch64"
+        else
+            PLATFORM="darwin-x86_64"
+        fi
+    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        PLATFORM="linux-x86_64"
+    elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "win32" ]]; then
+        PLATFORM="windows-x86_64"
+    else
+        echo -e "${RED}❌ Unsupported platform: $OSTYPE${NC}"
+        exit 1
+    fi
 fi
 
 echo -e "${BLUE}📦 Platform: ${PLATFORM}${NC}"
+if [ -n "$TARGET_TRIPLET" ]; then
+    echo -e "${BLUE}   Target: ${TARGET_TRIPLET}${NC}"
+fi
 
 # Determine bundle directory first (before building)
 # Adjust BUNDLE_DIR if target was specified

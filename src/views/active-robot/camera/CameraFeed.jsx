@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
-import VideocamOffIcon from '@mui/icons-material/VideocamOff';
+import VideocamOffOutlinedIcon from '@mui/icons-material/VideocamOffOutlined';
 
 /**
  * CameraFeed Component - Displays camera unavailable placeholder
@@ -23,7 +23,7 @@ export default function CameraFeed({ width = 240, height = 180, isLarge = false 
         gap: 1,
       }}
     >
-      <VideocamOffIcon
+      <VideocamOffOutlinedIcon
         sx={{
           fontSize: isLarge ? 64 : 32,
           color: 'rgba(255, 255, 255, 0.3)',

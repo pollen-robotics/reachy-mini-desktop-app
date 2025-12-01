@@ -1,6 +1,251 @@
 import { create } from 'zustand';
 import { DAEMON_CONFIG } from '../config/daemon';
 
+// Middleware to sync store state to other windows via Tauri events
+const windowSyncMiddleware = (config) => (set, get, api) => {
+  let isMainWindow = false;
+  let emitStoreUpdate = null;
+  let initPromise = null;
+  
+  // Initialize window check and emit function
+  const initWindowSync = async () => {
+    if (initPromise) return initPromise;
+    
+    initPromise = (async () => {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const { emit } = await import('@tauri-apps/api/event');
+        const currentWindow = await getCurrentWindow();
+        isMainWindow = currentWindow.label === 'main';
+        
+        if (isMainWindow) {
+          console.log('✅ Window sync initialized for main window');
+          emitStoreUpdate = async (updates) => {
+            try {
+              // Only emit relevant state that secondary windows need
+              const relevantUpdates = {};
+              const relevantKeys = [
+                'darkMode',
+                'isActive',
+                'robotStatus',
+                'busyReason',
+                'isCommandRunning',
+                'isAppRunning',
+                'isInstalling',
+                'robotStateFull',
+                'activeMoves',
+              ];
+              
+              // Extract only relevant keys from updates
+              relevantKeys.forEach(key => {
+                if (key in updates) {
+                  relevantUpdates[key] = updates[key];
+                }
+              });
+              
+              // Always include darkMode in updates (it's needed for UI consistency)
+              // Get current state to ensure darkMode is always present
+              const currentState = get();
+              if (!('darkMode' in relevantUpdates)) {
+                relevantUpdates.darkMode = currentState.darkMode;
+              }
+              
+              // Only emit if there are actual changes
+              if (Object.keys(relevantUpdates).length > 0) {
+                await emit('store-update', relevantUpdates);
+              }
+            } catch (error) {
+              // Silently fail if not in Tauri or event system not available
+              console.debug('Window sync emit failed (expected in non-Tauri env):', error);
+            }
+          };
+        } else {
+          console.log('ℹ️ Window sync skipped (not main window)');
+        }
+      } catch (error) {
+        // Not in Tauri environment, skip sync
+        console.debug('Window sync init failed (expected in non-Tauri env):', error);
+      }
+    })();
+    
+    return initPromise;
+  };
+  
+  // Initialize immediately (fire and forget)
+  initWindowSync();
+  
+  return config(
+    (updates, replace) => {
+      // Capture state before update
+      const prevState = get();
+      
+      // Apply the update
+      const result = set(updates, replace);
+      
+      // Helper to deep compare objects (for robotStateFull and activeMoves)
+      const deepEqual = (a, b) => {
+        if (a === b) return true;
+        if (a == null || b == null) return false;
+        if (typeof a !== 'object' || typeof b !== 'object') return false;
+        
+        // For arrays
+        if (Array.isArray(a) && Array.isArray(b)) {
+          if (a.length !== b.length) return false;
+          return a.every((val, idx) => deepEqual(val, b[idx]));
+        }
+        
+        // For objects (like robotStateFull)
+        if (Array.isArray(a) || Array.isArray(b)) return false;
+        
+        const keysA = Object.keys(a);
+        const keysB = Object.keys(b);
+        if (keysA.length !== keysB.length) return false;
+        
+        return keysA.every(key => deepEqual(a[key], b[key]));
+      };
+      
+      // Emit updates from main window only (wait for init if needed)
+      if (emitStoreUpdate) {
+        // Get the new state after update
+        const newState = get();
+        
+        // Extract only the changed values
+        const changedUpdates = {};
+        const relevantKeys = [
+          'darkMode',
+          'isActive',
+          'robotStatus',
+          'busyReason',
+          'isCommandRunning',
+          'isAppRunning',
+          'isInstalling',
+          'robotStateFull',
+          'activeMoves',
+        ];
+        
+        relevantKeys.forEach(key => {
+          const prevValue = prevState[key];
+          const newValue = newState[key];
+          
+          // For robotStateFull and activeMoves, always check if they changed
+          // These are updated frequently and need to be synced
+          if (key === 'robotStateFull' || key === 'activeMoves') {
+            // For these, compare by serializing to JSON (simple deep comparison)
+            const prevStr = JSON.stringify(prevValue);
+            const newStr = JSON.stringify(newValue);
+            if (prevStr !== newStr) {
+              changedUpdates[key] = newValue;
+            }
+          } else if (typeof prevValue === 'object' && typeof newValue === 'object' && prevValue !== null && newValue !== null) {
+            // For other objects, use deep comparison
+            if (!deepEqual(prevValue, newValue)) {
+              changedUpdates[key] = newValue;
+            }
+          } else if (prevValue !== newValue) {
+            // For primitives, simple comparison
+            changedUpdates[key] = newValue;
+          }
+        });
+        
+        // Always include critical UI state for consistency (even if it didn't change)
+        // This ensures secondary windows always have the latest values
+        const currentState = get();
+        if (!('darkMode' in changedUpdates)) {
+          changedUpdates.darkMode = currentState.darkMode;
+        }
+        if (!('isActive' in changedUpdates)) {
+          changedUpdates.isActive = currentState.isActive;
+        }
+        if (!('robotStatus' in changedUpdates)) {
+          changedUpdates.robotStatus = currentState.robotStatus;
+        }
+        
+        // Emit if there are changes (or if we added critical state)
+        if (Object.keys(changedUpdates).length > 0) {
+          console.log('📤 Emitting store update from main window:', Object.keys(changedUpdates));
+          emitStoreUpdate(changedUpdates);
+        }
+      } else if (initPromise) {
+        // Wait for init to complete, then emit
+        initPromise.then(() => {
+          if (emitStoreUpdate) {
+            const newState = get();
+            const changedUpdates = {};
+            const relevantKeys = [
+              'darkMode',
+              'isActive',
+              'robotStatus',
+              'busyReason',
+              'isCommandRunning',
+              'isAppRunning',
+              'isInstalling',
+              'robotStateFull',
+              'activeMoves',
+            ];
+            
+            // Helper to deep compare objects
+            const deepEqual = (a, b) => {
+              if (a === b) return true;
+              if (a == null || b == null) return false;
+              if (typeof a !== 'object' || typeof b !== 'object') return false;
+              if (Array.isArray(a) && Array.isArray(b)) {
+                if (a.length !== b.length) return false;
+                return a.every((val, idx) => deepEqual(val, b[idx]));
+              }
+              if (Array.isArray(a) || Array.isArray(b)) return false;
+              const keysA = Object.keys(a);
+              const keysB = Object.keys(b);
+              if (keysA.length !== keysB.length) return false;
+              return keysA.every(key => deepEqual(a[key], b[key]));
+            };
+            
+            relevantKeys.forEach(key => {
+              const prevValue = prevState[key];
+              const newValue = newState[key];
+              
+              // For robotStateFull and activeMoves, always check if they changed
+              if (key === 'robotStateFull' || key === 'activeMoves') {
+                const prevStr = JSON.stringify(prevValue);
+                const newStr = JSON.stringify(newValue);
+                if (prevStr !== newStr) {
+                  changedUpdates[key] = newValue;
+                }
+              } else if (typeof prevValue === 'object' && typeof newValue === 'object' && prevValue !== null && newValue !== null) {
+                if (!deepEqual(prevValue, newValue)) {
+                  changedUpdates[key] = newValue;
+                }
+              } else if (prevValue !== newValue) {
+                changedUpdates[key] = newValue;
+              }
+            });
+            
+            // Always include critical UI state for consistency
+            const currentState = get();
+            if (!('darkMode' in changedUpdates)) {
+              changedUpdates.darkMode = currentState.darkMode;
+            }
+            if (!('isActive' in changedUpdates)) {
+              changedUpdates.isActive = currentState.isActive;
+            }
+            if (!('robotStatus' in changedUpdates)) {
+              changedUpdates.robotStatus = currentState.robotStatus;
+            }
+            
+            if (Object.keys(changedUpdates).length > 0) {
+              console.log('📤 Emitting store update from main window (after init):', Object.keys(changedUpdates));
+              emitStoreUpdate(changedUpdates);
+            }
+          }
+        });
+      }
+      
+      return result;
+    },
+    get,
+    api
+  );
+};
+
 // Detect system preference
 const getSystemPreference = () => {
   if (typeof window === 'undefined') return false;
@@ -28,7 +273,8 @@ const getInitialDarkMode = () => {
 // Track last logged state to avoid repeated logs
 let lastLoggedStatus = null;
 
-const useAppStore = create((set) => ({
+const useAppStore = create(
+  windowSyncMiddleware((set) => ({
   // ✨ Main robot state (State Machine)
   // Possible states: 'disconnected', 'ready-to-start', 'starting', 'ready', 'busy', 'stopping', 'crashed'
   robotStatus: 'disconnected',
@@ -96,8 +342,28 @@ const useAppStore = create((set) => ({
   // Theme (initialized with system or stored preference)
   darkMode: getInitialDarkMode(),
   
+  // Window management - Track open secondary windows
+  openWindows: [], // Array of window labels that are currently open
+  
   // Actions - Generic DRY setter
   update: (updates) => set(updates),
+  
+  // Window management actions
+  addOpenWindow: (windowLabel) => set((state) => {
+    if (!state.openWindows.includes(windowLabel)) {
+      return { openWindows: [...state.openWindows, windowLabel] };
+    }
+    return state;
+  }),
+  
+  removeOpenWindow: (windowLabel) => set((state) => ({
+    openWindows: state.openWindows.filter(label => label !== windowLabel),
+  })),
+  
+  isWindowOpen: (windowLabel) => {
+    const state = useAppStore.getState();
+    return state.openWindows.includes(windowLabel);
+  },
   
   // ✨ Transition actions (State Machine)
   // Update robotStatus + busyReason + legacy states (backwards compat)
@@ -488,7 +754,8 @@ const useAppStore = create((set) => ({
     const systemPreference = getSystemPreference();
     set({ darkMode: systemPreference });
   },
-}));
+  }))
+);
 
 // Listen to system preference changes
 if (typeof window !== 'undefined') {

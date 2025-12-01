@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Box, Typography, Accordion, AccordionSummary, AccordionDetails, Tooltip } from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import { Box, Typography, Tooltip } from '@mui/material';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import useAppStore from '@store/useAppStore';
 import { useApps, useAppHandlers, useAppInstallation } from '@hooks/apps';
@@ -29,6 +28,7 @@ export default function ApplicationsSection({
   const installingAppName = useAppStore(state => state.installingAppName);
   const installJobType = useAppStore(state => state.installJobType);
   const installResult = useAppStore(state => state.installResult);
+  const installStartTime = useAppStore(state => state.installStartTime);
   
   const [officialOnly, setOfficialOnly] = useState(true);
   
@@ -205,44 +205,17 @@ export default function ApplicationsSection({
 
   return (
     <>
-      <Accordion 
-        defaultExpanded={true}
-        sx={{ 
-          boxShadow: 'none !important',
-          bgcolor: 'transparent !important',
-          backgroundColor: 'transparent !important',
-          '&:before': { display: 'none' },
-          '&.Mui-expanded': { margin: 0 },
-          mt: 0,
-        }}
-      >
-        <AccordionSummary
-          expandIcon={<ExpandMoreIcon sx={{ color: effectiveDarkMode ? '#666' : '#bbb', opacity: 0.5 }} />}
+      <Box sx={{ mt: 0 }}>
+        <Box
           sx={{
             px: 3,
             py: 1,
             pt: hasQuickActions ? 1 : 0,
-            minHeight: 'auto',
-            bgcolor: 'transparent !important',
-            backgroundColor: 'transparent !important',
-            '&.Mui-expanded': { minHeight: 'auto' },
-            '& .MuiAccordionSummary-content': {
-              margin: '12px 0',
-              '&.Mui-expanded': { margin: '12px 0' },
-            },
+            bgcolor: 'transparent',
           }}
         >
           <Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-              <Box
-                sx={{
-                  width: 6,
-                  height: 6,
-                  bgcolor: effectiveDarkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)',
-                  borderRadius: '50%',
-                  flexShrink: 0,
-                }}
-              />
               <Typography
                 sx={{
                   fontSize: 20,
@@ -282,8 +255,8 @@ export default function ApplicationsSection({
               Extend Reachy's capabilities
             </Typography>
           </Box>
-        </AccordionSummary>
-        <AccordionDetails sx={{ px: 0, pt: 0, pb: 0, bgcolor: 'transparent !important', backgroundColor: 'transparent !important' }}>
+        </Box>
+        <Box sx={{ px: 0, pt: 0, pb: 0, bgcolor: 'transparent' }}>
           <InstalledAppsSection
             installedApps={installedApps}
             darkMode={effectiveDarkMode}
@@ -300,8 +273,8 @@ export default function ApplicationsSection({
             onOpenDiscover={() => openModal('discover')}
             onOpenCreateTutorial={() => openModal('createTutorial')}
           />
-        </AccordionDetails>
-      </Accordion>
+        </Box>
+      </Box>
 
       <DiscoverModal
         open={discoverModalOpen}
@@ -339,6 +312,7 @@ export default function ApplicationsSection({
           darkMode={effectiveDarkMode}
           jobType={installJobType || 'install'}
           resultState={installResult}
+          installStartTime={installStartTime}
         />
       )}
     </>

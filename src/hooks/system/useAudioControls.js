@@ -219,7 +219,7 @@ export function useAudioControls(isActive) {
   }, [updateMicrophoneVolumeInApi]);
 
   // Update microphone via API (toggle) - for backward compatibility
-  const handleMicrophoneChange = useCallback(async (enabled) => {
+  const handleMicrophoneChange = useCallback((enabled) => {
     handleMicrophoneVolumeChange(enabled ? 50 : 0);
   }, [handleMicrophoneVolumeChange]);
 

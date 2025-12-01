@@ -3,7 +3,7 @@ import useAppStore from '../../store/useAppStore';
 import { DAEMON_CONFIG, fetchWithTimeout, buildApiUrl } from '../../config/daemon';
 
 export const useRobotCommands = () => {
-  const { isActive, isCommandRunning, setIsCommandRunning } = useAppStore();
+  const { isActive, isCommandRunning, robotStatus, isAppRunning, isInstalling } = useAppStore();
 
   const sendCommand = useCallback(async (endpoint, label, lockDuration = DAEMON_CONFIG.MOVEMENT.COMMAND_LOCK_DURATION) => {
     if (!isActive) {
@@ -12,8 +12,12 @@ export const useRobotCommands = () => {
     }
     
     // ✅ Check global lock (quick action OR app running)
-    if (useAppStore.getState().isBusy()) {
-      const currentAppName = useAppStore.getState().currentAppName;
+    // Calculate isBusy directly from state (functions are not synced in secondary windows)
+    const state = useAppStore.getState();
+    const isBusy = state.robotStatus === 'busy' || state.isCommandRunning || state.isAppRunning || state.isInstalling;
+    
+    if (isBusy) {
+      const currentAppName = state.currentAppName;
       if (currentAppName) {
         console.warn(`⚠️ Command ${label} ignored: ${currentAppName} app is running`);
       } else {
@@ -22,7 +26,14 @@ export const useRobotCommands = () => {
       return;
     }
     
-    setIsCommandRunning(true);
+    // Use getState() to access setIsCommandRunning (works in all windows)
+    const store = useAppStore.getState();
+    if (store.setIsCommandRunning && typeof store.setIsCommandRunning === 'function') {
+      store.setIsCommandRunning(true);
+    } else {
+      // Fallback: use setState directly
+      useAppStore.setState({ isCommandRunning: true });
+    }
     
     // Fire and forget avec logging automatique via fetchWithTimeout
     fetchWithTimeout(
@@ -37,10 +48,16 @@ export const useRobotCommands = () => {
       .finally(() => {
         // Unlock commands after lock duration
         setTimeout(() => {
-          setIsCommandRunning(false);
+          const store = useAppStore.getState();
+          if (store.setIsCommandRunning && typeof store.setIsCommandRunning === 'function') {
+            store.setIsCommandRunning(false);
+          } else {
+            // Fallback: use setState directly
+            useAppStore.setState({ isCommandRunning: false });
+          }
         }, lockDuration);
       });
-  }, [isActive, isCommandRunning, setIsCommandRunning]);
+  }, [isActive, isCommandRunning]);
 
   const playRecordedMove = useCallback(async (dataset, move) => {
     if (!isActive) return;

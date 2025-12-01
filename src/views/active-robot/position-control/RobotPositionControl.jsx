@@ -58,7 +58,10 @@ export default function RobotPositionControl({ isActive, darkMode, onResetReady,
   const handleGlobalReset = React.useCallback(() => {
     // Use the dedicated reset function from the hook (sends single API call)
     resetAllValues();
+    // Safely call addFrontendLog if available (may not be in secondary windows)
+    if (addFrontendLog && typeof addFrontendLog === 'function') {
     addFrontendLog(`↺ Reset all position controls to center`);
+    }
   }, [resetAllValues, addFrontendLog]);
 
   // Expose reset function to parent via callback
@@ -78,7 +81,13 @@ export default function RobotPositionControl({ isActive, darkMode, onResetReady,
   if (!isActive) return null;
 
   return (
-    <Box sx={{ px: 3, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+    <Box sx={{ 
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 1.5,
+      width: '100%',
+      flex: 1,
+    }}>
       {/* ANTENNAS - Top level title */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: -0.5 }}>
         <Box
@@ -111,11 +120,11 @@ export default function RobotPositionControl({ isActive, darkMode, onResetReady,
       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
         {/* ANTENNAS - Left Card (controls Left antenna) */}
         <Box sx={{
-          px: 1.5,
-          py: 0.75,
+          px: 1,
+          py: 0.5,
           borderRadius: '8px',
           boxSizing: 'border-box',
-          bgcolor: darkMode ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
+          bgcolor: '#ffffff',
           border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'}`,
         }}>
           <CircularSlider
@@ -134,11 +143,11 @@ export default function RobotPositionControl({ isActive, darkMode, onResetReady,
 
         {/* ANTENNAS - Right Card (controls Right antenna) */}
         <Box sx={{
-          px: 1.5,
-          py: 0.75,
+          px: 1,
+          py: 0.5,
           borderRadius: '8px',
           boxSizing: 'border-box',
-          bgcolor: darkMode ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
+          bgcolor: '#ffffff',
           border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'}`,
           display: 'flex',
           flexDirection: 'column',
@@ -193,10 +202,10 @@ export default function RobotPositionControl({ isActive, darkMode, onResetReady,
       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
         {/* HEAD - Card 1: Position X/Y/Z */}
         <Box sx={{
-          p: 1.5,
+          p: 1,
           borderRadius: '8px',
           boxSizing: 'border-box',
-          bgcolor: darkMode ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
+          bgcolor: '#ffffff',
           border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'}`,
         }}>
           <Box sx={{ 
@@ -278,10 +287,10 @@ export default function RobotPositionControl({ isActive, darkMode, onResetReady,
 
         {/* HEAD - Card 2: Pitch/Yaw */}
         <Box sx={{
-          p: 1.5,
+          p: 1,
           borderRadius: '8px',
           boxSizing: 'border-box',
-          bgcolor: darkMode ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
+          bgcolor: '#ffffff',
           border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'}`,
         }}>
           <Box sx={{ 
@@ -333,11 +342,11 @@ export default function RobotPositionControl({ isActive, darkMode, onResetReady,
 
       {/* HEAD - Card 2: Roll */}
       <Box sx={{
-        px: 1.5,
-        py: 0.75,
+        px: 1,
+        py: 0.5,
         borderRadius: '8px',
         boxSizing: 'border-box',
-        bgcolor: darkMode ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
+        bgcolor: '#ffffff',
         border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'}`,
       }}>
         <SimpleSlider
@@ -383,11 +392,11 @@ export default function RobotPositionControl({ isActive, darkMode, onResetReady,
 
       {/* BODY - Yaw Card */}
       <Box sx={{
-        px: 1.5,
-        py: 0.75,
+        px: 1,
+        py: 0.5,
         borderRadius: '8px',
         boxSizing: 'border-box',
-        bgcolor: darkMode ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
+        bgcolor: '#ffffff',
         border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'}`,
       }}>
         <CircularSlider

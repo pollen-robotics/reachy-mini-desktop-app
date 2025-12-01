@@ -20,7 +20,7 @@ export function useRobotPowerState(isActive) {
   const movementTimeoutRef = useRef(null);
 
   useEffect(() => {
-    if (!isActive || !robotStateFull.data) {
+    if (!isActive || !robotStateFull || !robotStateFull.data) {
       setRobotState({ isOn: null, isMoving: false });
       return;
     }

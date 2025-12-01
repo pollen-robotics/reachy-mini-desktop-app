@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "secondary-windows",
+  "description": "Capability for secondary windows (quick-actions, position-control)",
+  "windows": ["quick-actions", "position-control"],
+  "permissions": [
+    "core:default",
+    "core:event:allow-listen",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-size",
+    "core:window:allow-inner-size"
+  ]
+}
+

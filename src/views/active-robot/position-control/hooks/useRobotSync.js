@@ -21,7 +21,7 @@ export function useRobotSync(
 ) {
   // ✅ Update robotState from centralized data (NO POLLING)
   useEffect(() => {
-    if (!isActive || !robotStateFull.data) return;
+    if (!isActive || !robotStateFull || !robotStateFull.data) return;
 
     const data = robotStateFull.data;
     const timeSinceDragEnd = Date.now() - lastDragEndTimeRef.current;

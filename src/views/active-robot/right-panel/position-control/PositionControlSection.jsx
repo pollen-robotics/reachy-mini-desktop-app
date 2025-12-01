@@ -53,15 +53,6 @@ export default function PositionControlSection({
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Box
-            sx={{
-              width: 6,
-              height: 6,
-              bgcolor: darkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)',
-              borderRadius: '50%',
-              flexShrink: 0,
-            }}
-          />
           <Typography
             sx={{
               fontSize: 20,

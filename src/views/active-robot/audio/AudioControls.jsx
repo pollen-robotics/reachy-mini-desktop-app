@@ -82,7 +82,7 @@ function AudioControls({
   };
 
   const renderControl = (label, tooltip, device, platform, volume, isActive, onMute, onVolumeChange) => (
-    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+    <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
       {/* Label */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
         <Typography sx={{ fontSize: 11, fontWeight: 600, color: darkMode ? '#888' : '#999', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -94,11 +94,11 @@ function AudioControls({
       </Box>
 
       {/* Card */}
-      <Box sx={cardStyle}>
+      <Box sx={{ ...cardStyle, width: '100%', boxSizing: 'border-box' }}>
         {/* Controls row */}
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, p: 1.5, pb: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, p: 1.5, pb: 0, minWidth: 0 }}>
           {/* Device info */}
-          <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+          <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.25, overflow: 'hidden' }}>
             <Typography sx={deviceTextStyle}>{device}</Typography>
             {platform && <Typography sx={platformTextStyle}>{platform}</Typography>}
           </Box>
@@ -112,6 +112,7 @@ function AudioControls({
                 width: 20,
                 height: 20,
                 padding: 0,
+                flexShrink: 0,
                 color: isActive ? (darkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)') : (darkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)'),
                 '&:hover': {
                   color: isActive ? '#FF9500' : (darkMode ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.5)'),
@@ -125,14 +126,14 @@ function AudioControls({
                 label === 'Speaker' ? <VolumeOffIcon sx={{ fontSize: 14 }} /> : <MicOffIcon sx={{ fontSize: 14 }} />
               )}
             </IconButton>
-            <Box sx={{ width: 60, height: 24, display: 'flex', alignItems: 'center' }}>
+            <Box sx={{ width: 60, height: 24, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
               <Slider value={volume} onChange={(e, val) => onVolumeChange(val)} size="small" sx={sliderStyle} />
             </Box>
           </Box>
         </Box>
 
         {/* Visualizer - responsive width */}
-        <Box sx={{ width: '100%', height: '28px', flexShrink: 0, overflow: 'hidden' }}>
+        <Box sx={{ width: '100%', height: '28px', flexShrink: 0, overflow: 'hidden', boxSizing: 'border-box' }}>
           <AudioLevelBars 
             isActive={isActive} 
             color={darkMode ? 'rgba(255, 255, 255, 0.35)' : 'rgba(0, 0, 0, 0.3)'} 
@@ -144,7 +145,7 @@ function AudioControls({
   );
 
   return (
-    <Box sx={{ width: '100%', mb: 1.5, display: 'flex', gap: 2, alignItems: 'stretch' }}>
+    <Box sx={{ width: '100%', mb: 1.5, display: 'flex', gap: 1.5, alignItems: 'stretch', minWidth: 0, boxSizing: 'border-box' }}>
       {renderControl(
         'Speaker',
         "Adjust the robot's audio output volume",

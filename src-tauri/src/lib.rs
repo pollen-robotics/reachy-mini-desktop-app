@@ -371,6 +371,56 @@ fn get_logs(state: State<DaemonState>) -> Vec<String> {
 }
 
 #[tauri::command]
+fn apply_transparent_titlebar(app: tauri::AppHandle, window_label: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(window) = app.get_webview_window(&window_label) {
+            use cocoa::base::{id, YES};
+            use objc::{msg_send, sel, sel_impl};
+            
+            let ns_window_result = window.ns_window();
+            match ns_window_result {
+                Ok(ns_window_ptr) => {
+                    unsafe {
+                        let ns_window = ns_window_ptr as id;
+                        
+                        // Transparent titlebar and fullscreen content
+                        let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: YES];
+                        
+                        // Full size content view so content goes under titlebar
+                        let style_mask: u64 = msg_send![ns_window, styleMask];
+                        let new_style = style_mask | (1 << 15); // NSWindowStyleMaskFullSizeContentView
+                        let _: () = msg_send![ns_window, setStyleMask: new_style];
+                    }
+                    Ok(())
+                }
+                Err(e) => Err(format!("Failed to get ns_window: {}", e)),
+            }
+        } else {
+            Err(format!("Window '{}' not found", window_label))
+        }
+    }
+    
+    #[cfg(not(target_os = "macos"))]
+    {
+        // No-op on non-macOS
+        Ok(())
+    }
+}
+
+#[tauri::command]
+fn close_window(app: tauri::AppHandle, window_label: String) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window(&window_label) {
+        // Use close() method - this should work for WebviewWindow
+        window.close().map_err(|e| format!("Failed to close window '{}': {}", window_label, e))?;
+        println!("✅ Window '{}' closed successfully", window_label);
+    } else {
+        return Err(format!("Window '{}' not found", window_label));
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn check_usb_robot() -> Result<Option<String>, String> {
     match serialport::available_ports() {
         Ok(ports) => {
@@ -440,17 +490,27 @@ pub fn run() {
             
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![start_daemon, stop_daemon, get_logs, check_usb_robot, install_mujoco])
+        .invoke_handler(tauri::generate_handler![start_daemon, stop_daemon, get_logs, check_usb_robot, install_mujoco, apply_transparent_titlebar, close_window])
         .on_window_event(|window, event| {
             match event {
                 tauri::WindowEvent::CloseRequested { .. } => {
-                    println!("🔴 Window close requested - killing daemon");
+                    // Only kill daemon if main window is closing
+                    if window.label() == "main" {
+                        println!("🔴 Main window close requested - killing daemon");
                     let state: tauri::State<DaemonState> = window.state();
                     kill_daemon(&state);
+                    } else {
+                        println!("🔴 Secondary window close requested: {}", window.label());
+                    }
                 }
                 tauri::WindowEvent::Destroyed => {
-                    println!("🔴 Window destroyed - final cleanup");
+                    // Only cleanup if main window is destroyed
+                    if window.label() == "main" {
+                        println!("🔴 Main window destroyed - final cleanup");
                     cleanup_system_daemons();
+                    } else {
+                        println!("🔴 Secondary window destroyed: {}", window.label());
+                    }
                 }
                 _ => {}
             }

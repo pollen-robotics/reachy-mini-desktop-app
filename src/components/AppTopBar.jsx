@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Box, Typography } from '@mui/material';
 import { getAppWindow } from '../utils/windowUtils';
 import { getVersion } from '@tauri-apps/api/app';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import useAppStore from '../store/useAppStore';
 import { isSimulationMode } from '../utils/simulationMode';
 
@@ -12,6 +13,7 @@ import { isSimulationMode } from '../utils/simulationMode';
 export default function AppTopBar() {
   const { darkMode } = useAppStore();
   const [currentVersion, setCurrentVersion] = useState('');
+  const [isMainWindow, setIsMainWindow] = useState(true);
   const appWindow = getAppWindow();
   const simMode = isSimulationMode();
 
@@ -19,6 +21,19 @@ export default function AppTopBar() {
     getVersion().then(setCurrentVersion).catch(() => {
       setCurrentVersion(null);
     });
+    
+    // Check if we're in the main window
+    const checkWindow = async () => {
+      try {
+        const window = await getCurrentWindow();
+        setIsMainWindow(window.label === 'main');
+      } catch (error) {
+        // If we can't determine, assume main window (fallback)
+        setIsMainWindow(true);
+      }
+    };
+    
+    checkWindow();
   }, []);
 
   return (
@@ -76,7 +91,8 @@ export default function AppTopBar() {
           </Typography>
         </Box>
       )}
-      {/* Version number - always visible when available */}
+      {/* Version number - only visible in main window */}
+      {isMainWindow && (
       <Typography
         sx={{
           position: 'fixed',
@@ -94,6 +110,7 @@ export default function AppTopBar() {
       >
 {currentVersion ? `v${currentVersion}` : 'unknown version'}
       </Typography>
+      )}
     </>
   );
 }

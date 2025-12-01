@@ -442,7 +442,7 @@ function ActiveRobotView({
           />
 
         {/* Audio Controls - Stable wrapper to ensure correct sizing */}
-        <Box sx={{ width: '100%' }}>
+        <Box sx={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }}>
           <AudioControls
             volume={volume}
             microphoneVolume={microphoneVolume}

@@ -36,6 +36,13 @@ import { mapInputToRobot } from '@utils/inputMappings';
 export function useRobotPosition(isActive) {
   const { robotStateFull, addFrontendLog } = useAppStore();
   
+  // Helper to safely call addFrontendLog (may not be available in secondary windows)
+  const safeAddFrontendLog = useCallback((message) => {
+    if (addFrontendLog && typeof addFrontendLog === 'function') {
+      addFrontendLog(message);
+    }
+  }, [addFrontendLog]);
+  
   const [robotState, setRobotState] = useState({
     headPose: { x: 0, y: 0, z: 0, pitch: 0, yaw: 0, roll: 0 },
     bodyYaw: 0,
@@ -345,7 +352,7 @@ export function useRobotPosition(isActive) {
       const now = Date.now();
       if (now - lastLogTimeRef.current > 500) {
         const formatted = formatPoseForLog(finalPose.headPose, finalPose.bodyYaw);
-        addFrontendLog(`→ Position: ${formatted}`);
+        safeAddFrontendLog(`→ Position: ${formatted}`);
         lastLoggedPoseRef.current = finalPose;
         lastLogTimeRef.current = now;
       }
@@ -353,7 +360,7 @@ export function useRobotPosition(isActive) {
     
     dragStartPoseRef.current = null;
     // No need to send goto anymore - just stop continuous updates
-  }, [localValues, addFrontendLog]);
+  }, [localValues, safeAddFrontendLog]);
 
   // Handle head pose changes (always continuous with set_target)
   // Now uses unified target smoothing system
@@ -377,7 +384,7 @@ export function useRobotPosition(isActive) {
           headPose: { ...localValues.headPose },
           bodyYaw: localValues.bodyYaw,
         };
-        addFrontendLog(`▶️ Moving head...`);
+        safeAddFrontendLog(`▶️ Moving head...`);
       }
       
       // Update localValues to reflect the target (what user wants)
@@ -415,7 +422,7 @@ export function useRobotPosition(isActive) {
       const now = Date.now();
       if (hasSignificantChange(lastLoggedPoseRef.current, newPose) && now - lastLogTimeRef.current > 500) {
         const formatted = formatPoseForLog(newPose.headPose, newPose.bodyYaw);
-        addFrontendLog(`→ Position: ${formatted}`);
+        safeAddFrontendLog(`→ Position: ${formatted}`);
         lastLoggedPoseRef.current = newPose;
         lastLogTimeRef.current = now;
       }
@@ -452,7 +459,7 @@ export function useRobotPosition(isActive) {
       });
       }, 50); // Small delay to allow smoothing to apply
     }
-  }, [localValues, robotState.antennas, addFrontendLog]);
+  }, [localValues, robotState.antennas, safeAddFrontendLog]);
 
   // Handle body yaw changes (always using set_target)
   // Now uses unified target smoothing system
@@ -464,7 +471,7 @@ export function useRobotPosition(isActive) {
     if (continuous) {
       // ✅ Log body yaw drag start (only once)
       if (!isDraggingRef.current) {
-        addFrontendLog(`▶️ Rotating body...`);
+        safeAddFrontendLog(`▶️ Rotating body...`);
       }
       
       // Update localValues to reflect the target (what user wants)
@@ -490,7 +497,7 @@ export function useRobotPosition(isActive) {
       const now = Date.now();
       const bodyYawRad = clampedValue.toFixed(3);
       if (now - lastLogTimeRef.current > 500) {
-        addFrontendLog(`→ Body Yaw: ${bodyYawRad}rad`);
+        safeAddFrontendLog(`→ Body Yaw: ${bodyYawRad}rad`);
         lastLogTimeRef.current = now;
         lastLoggedPoseRef.current = {
           headPose: localValues.headPose,
@@ -527,7 +534,7 @@ export function useRobotPosition(isActive) {
       });
       }, 50); // Small delay to allow smoothing to apply
     }
-  }, [robotState.bodyYaw, robotState.headPose, robotState.antennas, localValues.headPose, addFrontendLog, isActive]);
+  }, [robotState.bodyYaw, robotState.headPose, robotState.antennas, localValues.headPose, safeAddFrontendLog, isActive]);
 
   // Handle antennas changes (always using set_target)
   // Changed signature: now accepts 'left' or 'right' as first param, and the new value as second
@@ -551,7 +558,7 @@ export function useRobotPosition(isActive) {
     if (continuous) {
       // Log antennas drag start (only once)
       if (!isDraggingRef.current) {
-        addFrontendLog(`▶️ Moving antennas...`);
+        safeAddFrontendLog(`▶️ Moving antennas...`);
       }
       
       // Update localValues to reflect the target (what user wants)
@@ -578,7 +585,7 @@ export function useRobotPosition(isActive) {
       const leftRad = clampedAntennas[0].toFixed(3);
       const rightRad = clampedAntennas[1].toFixed(3);
       if (now - lastLogTimeRef.current > 500) {
-        addFrontendLog(`→ Antennas: L:${leftRad}rad R:${rightRad}rad`);
+        safeAddFrontendLog(`→ Antennas: L:${leftRad}rad R:${rightRad}rad`);
         lastLogTimeRef.current = now;
       }
       
@@ -611,7 +618,7 @@ export function useRobotPosition(isActive) {
       });
       }, 50); // Small delay to allow smoothing to apply
     }
-  }, [robotState.headPose, robotState.bodyYaw, localValues.antennas, addFrontendLog, isActive]);
+  }, [robotState.headPose, robotState.bodyYaw, localValues.antennas, safeAddFrontendLog, isActive]);
 
   // Reset all values to zero (used by global reset function)
   const resetAllValues = useCallback(() => {

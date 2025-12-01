@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { Box, Typography, Button, ButtonGroup, CircularProgress, Select, MenuItem, FormControl, InputLabel, LinearProgress, useTheme } from '@mui/material';
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
 import Viewer3D from './viewer3d';
+import SpinningWheel from '../views/active-robot/application-store/quick-actions/SpinningWheel';
 import { mapMeshToScanPart } from '../utils/scanParts';
 import { HARDWARE_ERROR_CONFIGS, getErrorMeshes } from '../utils/hardwareErrors';
 import useAppStore from '../store/useAppStore';
@@ -22,6 +23,36 @@ export default function DevPlayground() {
   const [errorMesh, setErrorMesh] = useState(null);
   const robotRefRef = useRef(null);
   const scanKeyRef = useRef(0); // Force re-render of scan effect
+  const [activeTab, setActiveTab] = useState('emotions');
+  
+  // Sample actions for the wheel
+  const sampleActions = useMemo(() => {
+    const emotions = [
+      { id: 'happy', label: 'Happy', emoji: '😊', originalAction: { type: 'emotion', name: 'happy' } },
+      { id: 'sad', label: 'Sad', emoji: '😢', originalAction: { type: 'emotion', name: 'sad' } },
+      { id: 'angry', label: 'Angry', emoji: '😠', originalAction: { type: 'emotion', name: 'angry' } },
+      { id: 'surprised', label: 'Surprised', emoji: '😲', originalAction: { type: 'emotion', name: 'surprised' } },
+      { id: 'excited', label: 'Excited', emoji: '🤩', originalAction: { type: 'emotion', name: 'excited' } },
+      { id: 'calm', label: 'Calm', emoji: '😌', originalAction: { type: 'emotion', name: 'calm' } },
+      { id: 'confused', label: 'Confused', emoji: '😕', originalAction: { type: 'emotion', name: 'confused' } },
+      { id: 'love', label: 'Love', emoji: '🥰', originalAction: { type: 'emotion', name: 'love' } },
+    ];
+    
+    const dances = [
+      { id: 'wave', label: 'Wave', emoji: '👋', originalAction: { type: 'dance', name: 'wave' } },
+      { id: 'spin', label: 'Spin', emoji: '🌀', originalAction: { type: 'dance', name: 'spin' } },
+      { id: 'dance1', label: 'Dance 1', emoji: '💃', originalAction: { type: 'dance', name: 'dance1' } },
+      { id: 'dance2', label: 'Dance 2', emoji: '🕺', originalAction: { type: 'dance', name: 'dance2' } },
+      { id: 'bow', label: 'Bow', emoji: '🙇', originalAction: { type: 'dance', name: 'bow' } },
+      { id: 'jump', label: 'Jump', emoji: '🦘', originalAction: { type: 'dance', name: 'jump' } },
+    ];
+    
+    return { emotions, dances };
+  }, []);
+  
+  const handleActionClick = useCallback((action) => {
+    console.log('Action clicked:', action);
+  }, []);
 
   // Get error configuration
   const errorConfig = useMemo(() => {
@@ -130,6 +161,50 @@ export default function DevPlayground() {
       <Typography variant="h6" sx={{ mb: 1 }}>
         Dev Playground - Normal vs Scan Mode
       </Typography>
+      
+      {/* Spinning Wheel Section - Same size as Tauri window (500x400) */}
+      <Box sx={{ 
+        width: '500px',
+        height: '400px',
+        border: '2px solid #FF9500',
+        borderRadius: 2,
+        overflow: 'hidden',
+        mb: 2,
+        position: 'relative',
+      }}>
+        {/* Mock header to match QuickActionsWindow layout */}
+        <Box sx={{
+          height: '120px',
+          width: '100%',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          zIndex: 10,
+          pointerEvents: 'none',
+        }} />
+        {/* Wheel container - same as QuickActionsWindow: calc(100% - 120px) */}
+        <Box sx={{
+          width: '100%',
+          height: 'calc(100% - 120px)',
+          position: 'absolute',
+          top: '120px',
+          left: 0,
+        }}>
+          <SpinningWheel
+            actions={activeTab === 'emotions' ? sampleActions.emotions : sampleActions.dances}
+            onActionClick={handleActionClick}
+            isReady={true}
+            isActive={true}
+            isBusy={false}
+            darkMode={darkMode}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            emojiSize={72}
+            gap={30}
+          />
+        </Box>
+      </Box>
+      
       <Box
         sx={{
           width: '100%', 

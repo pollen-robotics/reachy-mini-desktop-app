@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Box, Typography, InputBase, Tooltip, IconButton, Checkbox, FormControlLabel } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
@@ -18,21 +18,92 @@ export default function SearchBar({
   totalAppsCount,
   isFiltered,
 }) {
+  const [isSticky, setIsSticky] = useState(false);
+  const containerRef = useRef(null);
+  const sentinelRef = useRef(null);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    const container = containerRef.current;
+    if (!sentinel || !container) return;
+
+    const checkSticky = () => {
+      const sentinelRect = sentinel.getBoundingClientRect();
+      // When sentinel's top is above viewport (top < 0), container is sticky
+      const shouldBeSticky = sentinelRect.top < 0;
+      setIsSticky(shouldBeSticky);
+    };
+
+    // Check immediately
+    checkSticky();
+
+    // Find the scrollable container (FullscreenOverlay)
+    let scrollContainer = container;
+    while (scrollContainer && scrollContainer !== document.body) {
+      const style = window.getComputedStyle(scrollContainer);
+      if (style.position === 'fixed' && (style.overflow === 'auto' || style.overflowY === 'auto')) {
+        // Found the FullscreenOverlay
+        scrollContainer.addEventListener('scroll', checkSticky, { passive: true });
+        break;
+      }
+      scrollContainer = scrollContainer.parentElement;
+    }
+
+    // Also use IntersectionObserver as backup
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        setIsSticky(!entry.isIntersecting);
+      },
+      {
+        root: null,
+        rootMargin: '0px',
+        threshold: 0,
+      }
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+      if (scrollContainer && scrollContainer !== document.body) {
+        scrollContainer.removeEventListener('scroll', checkSticky);
+      }
+    };
+  }, []);
+
   return (
-    <Box
-      sx={{
-        position: 'sticky',
-        top: 0,
-        pt: 1,
-        pb: 0,
-        mb: 2,
-        zIndex: 10,
-        // Background wrapper to cover scrolling content
-        bgcolor: darkMode ? 'rgba(18, 18, 18, 0.92)' : 'rgba(255, 255, 255, 0.95)',
-        backdropFilter: 'blur(10px)',
-        WebkitBackdropFilter: 'blur(10px)',
-      }}
-    >
+    <>
+      {/* Sentinel to detect when searchbar becomes sticky */}
+      <Box
+        ref={sentinelRef}
+        sx={{
+          position: 'relative',
+          height: '1px',
+          width: '100%',
+          pointerEvents: 'none',
+          visibility: 'hidden',
+        }}
+      />
+      <Box
+        ref={containerRef}
+        sx={{
+          position: 'sticky',
+          top: 0,
+          pt: 1,
+          pb: 0,
+          mb: 2,
+          zIndex: 10,
+          // Background wrapper to cover scrolling content
+          // Transparent when not sticky, opaque exactly when sticky
+          bgcolor: isSticky 
+            ? (darkMode ? 'rgba(18, 18, 18, 0.92)' : 'rgba(255, 255, 255, 0.95)')
+            : 'transparent',
+          backdropFilter: isSticky ? 'blur(10px)' : 'none',
+          WebkitBackdropFilter: isSticky ? 'blur(10px)' : 'none',
+          transition: 'background-color 0.2s ease, backdrop-filter 0.2s ease',
+        }}
+      >
       <Box
         sx={{
           display: 'flex',
@@ -203,6 +274,7 @@ export default function SearchBar({
           }}
         />
       </Box>
-    </Box>
+      </Box>
+    </>
   );
 }

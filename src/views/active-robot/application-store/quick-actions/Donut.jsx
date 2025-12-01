@@ -1,6 +1,7 @@
 import React, { useReducer, useMemo, useEffect, useRef } from 'react';
 import { Box, Typography, IconButton } from '@mui/material';
-import CasinoIcon from '@mui/icons-material/Casino';
+import CasinoOutlinedIcon from '@mui/icons-material/CasinoOutlined';
+import { EMOTIONS, DANCES } from '@constants/choreographies';
 
 /**
  * Quick Actions Plutchik's Wheel of Emotions Component
@@ -88,6 +89,7 @@ function wheelReducer(state, action) {
   }
 }
 
+// Legacy export - use SpinningWheel instead
 export default function QuickActionsDonut({
   actions = [],
   onActionClick = null,
@@ -257,37 +259,22 @@ export default function QuickActionsDonut({
   });
 
   return (
-    <Box sx={{ width: '100%', position: 'relative' }}>
-      <Box sx={{ position: 'absolute', left: 0, top: -18, display: 'flex', gap: .75, alignItems: 'center', zIndex: 1 }}>
+    <Box sx={{ width: '100%', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      {/* Centered tabs */}
+      <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', justifyContent: 'center', mb: 2, zIndex: 1 }}>
         <Typography component="button" onClick={() => handleTabChange('emotions')} sx={tabButtonStyle(state.activeTab === 'emotions')}>
           Emotions
+          <Typography component="span" sx={{ fontSize: 10, ml: 0.5, opacity: 0.6 }}>
+            ({EMOTIONS.length})
+          </Typography>
         </Typography>
         <Box sx={{ width: 1, height: 12, bgcolor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)' }} />
         <Typography component="button" onClick={() => handleTabChange('dances')} sx={tabButtonStyle(state.activeTab === 'dances')}>
           Dances
+          <Typography component="span" sx={{ fontSize: 10, ml: 0.5, opacity: 0.6 }}>
+            ({DANCES.length})
+          </Typography>
         </Typography>
-        <Box sx={{ width: 1, height: 12, bgcolor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)' }} />
-        <IconButton
-          onClick={handleSpinWheel}
-          disabled={isSpinning || !isActive || isBusy || !isReady}
-          size="small"
-          sx={{
-            width: 20,
-            height: 20,
-            padding: 0,
-            color: isSpinning ? '#FF9500' : (darkMode ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)'),
-            '&:hover': {
-              color: '#FF9500',
-              bgcolor: 'transparent',
-            },
-            '&.Mui-disabled': {
-              color: isSpinning ? '#FF9500' : (darkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)'),
-            },
-            transition: 'all 0.2s ease',
-          }}
-        >
-          <CasinoIcon sx={{ fontSize: 14 }} />
-        </IconButton>
       </Box>
 
       {/* Wheel */}
@@ -458,6 +445,28 @@ export default function QuickActionsDonut({
         </Typography>
         </Box>
       )}
+      </Box>
+      
+      {/* Dice button below the circle, centered */}
+      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1.5 }}>
+        <IconButton
+          onClick={handleSpinWheel}
+          disabled={isSpinning || !isActive || isBusy || !isReady}
+          size="small"
+          sx={{
+            color: isSpinning ? '#FF9500' : (darkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)'),
+            '&:hover': {
+              color: '#FF9500',
+              bgcolor: 'transparent',
+            },
+            '&.Mui-disabled': {
+              color: isSpinning ? '#FF9500' : (darkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)'),
+            },
+            transition: 'all 0.2s ease',
+          }}
+        >
+          <CasinoOutlinedIcon sx={{ fontSize: 24 }} />
+        </IconButton>
       </Box>
     </Box>
   );

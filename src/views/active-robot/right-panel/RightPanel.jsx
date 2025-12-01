@@ -1,11 +1,11 @@
 import React from 'react';
 import { Box } from '@mui/material';
-import { PositionControlSection } from './position-control';
-import { QuickActionsSection } from './quick-actions';
 import { ApplicationsSection } from './applications';
+import ControlButtons from './ControlButtons';
 
 /**
- * Right Panel - Assembles Position Control, Quick Actions, and Applications sections
+ * Right Panel - Assembles Control Buttons and Applications sections
+ * Quick Actions and Position Control are now opened in separate windows
  */
 export default function RightPanel({ 
   showToast, 
@@ -45,30 +45,19 @@ export default function RightPanel({
         },
       }}
     >
-      {/* Quick Actions - First */}
-      <QuickActionsSection
-        quickActions={quickActions}
-        handleQuickAction={handleQuickAction}
-        isReady={isReady}
-        isActive={isActive}
-        isBusy={isBusy}
-        darkMode={darkMode}
-      />
-
-      {/* Position Control - Second */}
-      <PositionControlSection
-        isActive={isActive}
-        isBusy={isBusy}
-        darkMode={darkMode}
-      />
-
-      {/* Applications - Third */}
+      {/* Applications - First */}
       <ApplicationsSection
         showToast={showToast}
         onLoadingChange={onLoadingChange}
         hasQuickActions={quickActions.length > 0 && handleQuickAction}
         isActive={isActive}
         isBusy={isBusy}
+        darkMode={darkMode}
+      />
+
+      {/* Control Buttons - Opens Quick Actions and Position Control in new windows */}
+      <ControlButtons
+        isActive={isActive}
         darkMode={darkMode}
       />
     </Box>
