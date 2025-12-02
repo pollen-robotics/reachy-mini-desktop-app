@@ -73,7 +73,7 @@ fn build_daemon_args(sim_mode: bool) -> Result<Vec<String>, String> {
     } else {
         "python"
     };
-    
+
     let mut args = vec![
         "run".to_string(),
         python_cmd.to_string(),
@@ -81,12 +81,13 @@ fn build_daemon_args(sim_mode: bool) -> Result<Vec<String>, String> {
         "reachy_mini.daemon.app.main".to_string(),
         "--kinematics-engine".to_string(),
         "Placo".to_string(),
+        "--desktop-version".to_string(),
     ];
-    
+
     if sim_mode {
         args.push("--sim".to_string());
     }
-    
+
     Ok(args)
 }
 
