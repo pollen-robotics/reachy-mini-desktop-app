@@ -604,10 +604,14 @@ jobs:
     needs: build-and-release
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract version
         id: version
@@ -668,6 +672,26 @@ jobs:
           files: latest.json
           draft: false
           prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'alpha') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Copy latest.json to docs/ for GitHub Pages
+        run: |
+          mkdir -p docs
+          cp latest.json docs/latest.json
+          echo "✅ Copied latest.json to docs/"
+
+      - name: Commit and push latest.json to docs/
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add docs/latest.json
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update latest.json for v${{ steps.version.outputs.version }}"
+            git push origin HEAD:main
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
