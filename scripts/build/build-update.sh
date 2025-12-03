@@ -467,20 +467,33 @@ else
     echo -e "${GREEN}✅ Bundle signed: ${SIGNATURE_FILE}${NC}"
     
     # 4. Read signature in base64
+    # Tauri expects the entire signature file (including comments) encoded in base64
+    # The signature file format is:
+    #   untrusted comment: ...
+    #   <signature line 1>
+    #   trusted comment: ...
+    #   <signature line 2>
+    # We need to encode the entire file, preserving all content
     # Compatible macOS and Linux
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        SIGNATURE=$(base64 -i "$SIGNATURE_FILE" | tr -d '\n')
+        # macOS: base64 -i reads from file, -b breaks lines every 76 chars (default)
+        # We use -b 0 to disable line breaks, or pipe to tr -d '\n'
+        SIGNATURE=$(base64 -i "$SIGNATURE_FILE" | tr -d '\n\r')
     else
-        SIGNATURE=$(base64 -w 0 "$SIGNATURE_FILE")
+        # Linux: base64 -w 0 disables line wrapping
+        SIGNATURE=$(base64 -w 0 "$SIGNATURE_FILE" | tr -d '\r')
     fi
+    
+    # ✅ Verify the signature is not empty and is valid base64
     if [ -z "$SIGNATURE" ]; then
-        if [ "$ENV" = "dev" ]; then
-            echo -e "${YELLOW}⚠️  Empty signature, using test signature${NC}"
-            SIGNATURE="test-signature-placeholder"
-        else
-            echo -e "${RED}❌ Unable to read signature${NC}"
-            exit 1
-        fi
+        echo -e "${RED}❌ Signature encoding resulted in empty string${NC}"
+        exit 1
+    fi
+    
+    # Verify it's valid base64 (should only contain A-Z, a-z, 0-9, +, /, =)
+    if ! echo "$SIGNATURE" | grep -qE '^[A-Za-z0-9+/=]+$'; then
+        echo -e "${YELLOW}⚠️  Warning: Signature may contain invalid base64 characters${NC}"
+        echo -e "${YELLOW}   First 100 chars: ${SIGNATURE:0:100}${NC}"
     fi
 fi
 
