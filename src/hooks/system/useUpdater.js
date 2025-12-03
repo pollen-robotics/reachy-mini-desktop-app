@@ -87,6 +87,22 @@ export const useUpdater = ({
       const errorMessage = extractErrorMessage(err);
       const errorString = errorMessage.toLowerCase();
       
+      // Check if this is a missing update server error (common in dev mode)
+      const isMissingUpdateServer = errorString.includes('release json') || 
+                                    errorString.includes('could not fetch') ||
+                                    errorString.includes('404');
+      const isDev = isDevMode();
+      
+      // In dev mode, immediately stop checking if update server is missing (no retries needed)
+      if (isDev && isMissingUpdateServer) {
+        console.log('ℹ️ Update server not available (dev mode - this is normal)');
+        isCheckingRef.current = false;
+        setIsChecking(false);
+        setUpdateAvailable(null);
+        setError(null);
+        return null;
+      }
+      
       console.error(`❌ Error checking for updates (attempt ${retryCount + 1}/${maxRetries}):`, errorMessage);
       
       // Automatic retry for recoverable errors (only if under max retries)
@@ -100,19 +116,9 @@ export const useUpdater = ({
       }
       
       // Non-recoverable error or max retries reached
-      // In dev mode, be more lenient - don't show errors for missing update server
-      const isDev = isDevMode();
-      const isMissingUpdateServer = errorString.includes('release json') || 
-                                    errorString.includes('could not fetch') ||
-                                    errorString.includes('404');
-      
       let userErrorMessage = null;
       
-      // In dev mode, silently ignore missing update server (normal case)
-      if (isDev && isMissingUpdateServer) {
-        console.log('ℹ️ Update server not available (dev mode - this is normal)');
-        // Don't set error in dev mode for missing server
-      } else if (isRecoverableError(err) || isMissingUpdateServer) {
+      if (isRecoverableError(err) || isMissingUpdateServer) {
         // Production: show user-friendly message
         userErrorMessage = `Unable to check for updates. Please check your internet connection.`;
       } else {

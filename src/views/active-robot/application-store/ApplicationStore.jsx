@@ -8,13 +8,13 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
 import ReachyBox from '../../../assets/reachy-update-box.svg';
 import useAppStore from '../../../store/useAppStore';
-import { useApps, useAppHandlers, useAppInstallation, useAppFiltering, useModalStack } from '@hooks/apps';
+import { useApps, useAppHandlers, useAppInstallation, useAppFiltering, useModalStack } from './hooks';
 import { InstalledAppsSection } from './installed';
 import { Modal as DiscoverModal } from './discover';
 import { CreateAppTutorial as CreateAppTutorialModal } from './modals';
 import { Overlay as InstallOverlay } from './installation';
 import { Pad as QuickActionsPad, Donut as QuickActionsDonut } from './quick-actions';
-import RobotPositionControl from '../position-control';
+import Controller from '../controller';
 import { useGamepadConnected, useActiveDevice } from '../../../utils/InputManager';
 import { useWindowFocus } from '../../../hooks/system/useWindowFocus';
 
@@ -47,10 +47,12 @@ export default function ApplicationStore({
   const installResult = useAppStore(state => state.installResult);
   const installStartTime = useAppStore(state => state.installStartTime);
   
-  // Ref to store the reset function from RobotPositionControl
-  const positionControlResetRef = React.useRef(null);
+  // Ref to store the reset function from Controller
+  const controllerResetRef = React.useRef(null);
   // State to track if robot is at initial position
   const [isAtInitialPosition, setIsAtInitialPosition] = React.useState(true);
+  // State to track if position control accordion is expanded
+  const [isPositionControlExpanded, setIsPositionControlExpanded] = React.useState(true);
   
   // Check if gamepad is connected and which device is active
   const isGamepadConnected = useGamepadConnected();
@@ -396,7 +398,15 @@ export default function ApplicationStore({
 
       {/* Robot Position Control */}
       <Accordion
-        defaultExpanded={true}
+        expanded={isPositionControlExpanded}
+        onChange={(event, expanded) => {
+          const wasExpanded = isPositionControlExpanded;
+          setIsPositionControlExpanded(expanded);
+          // Auto-reset only when accordion is closed (was open, now closed)
+          if (wasExpanded && !expanded && controllerResetRef.current) {
+            controllerResetRef.current();
+          }
+        }}
         sx={{
           boxShadow: 'none !important',
           bgcolor: 'transparent !important',
@@ -439,8 +449,8 @@ export default function ApplicationStore({
                   size="small" 
                   onClick={(e) => {
                     e.stopPropagation(); // Prevent accordion from closing
-                    if (positionControlResetRef.current) {
-                      positionControlResetRef.current();
+                    if (controllerResetRef.current) {
+                      controllerResetRef.current();
                     }
                   }}
                   disabled={!effectiveIsActive || isBusy}
@@ -460,16 +470,25 @@ export default function ApplicationStore({
             <Tooltip 
               title={
                 <Box sx={{ p: 1 }}>
-                  <Typography sx={{ fontSize: 12, fontWeight: 700, mb: 1, color: '#fff' }}>
+                  <Typography sx={{ fontSize: 12, fontWeight: 700, mb: 1, color: effectiveDarkMode ? '#fff' : '#333' }}>
                     API Documentation
                   </Typography>
-                  <Typography sx={{ fontSize: 11, mb: 1, color: '#f0f0f0', lineHeight: 1.6 }}>
+                  <Typography sx={{ fontSize: 11, mb: 1, color: effectiveDarkMode ? '#f0f0f0' : '#666', lineHeight: 1.6 }}>
                     <strong>Endpoint:</strong> POST /api/move/set_target
                   </Typography>
-                  <Typography sx={{ fontSize: 11, mb: 1, color: '#f0f0f0', lineHeight: 1.6 }}>
+                  <Typography sx={{ fontSize: 11, mb: 1, color: effectiveDarkMode ? '#f0f0f0' : '#666', lineHeight: 1.6 }}>
                     <strong>Request Body:</strong>
                   </Typography>
-                  <Box component="pre" sx={{ fontSize: 10, mb: 1, color: '#e0e0e0', fontFamily: 'monospace', whiteSpace: 'pre-wrap', bgcolor: 'rgba(0,0,0,0.3)', p: 1, borderRadius: 1 }}>
+                  <Box component="pre" sx={{ 
+                    fontSize: 10, 
+                    mb: 1, 
+                    color: effectiveDarkMode ? '#e0e0e0' : '#333', 
+                    fontFamily: 'monospace', 
+                    whiteSpace: 'pre-wrap', 
+                    bgcolor: effectiveDarkMode ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.05)', 
+                    p: 1, 
+                    borderRadius: 1 
+                  }}>
 {`{
   "target_head_pose": {
     "x": float,    // Position X (m), range: -0.05 to 0.05
@@ -483,10 +502,10 @@ export default function ApplicationStore({
   "target_body_yaw": float           // Body rotation (rad), range: -160° to 160°
 }`}
                   </Box>
-                  <Typography sx={{ fontSize: 11, mb: 0.5, color: '#f0f0f0', lineHeight: 1.6 }}>
+                  <Typography sx={{ fontSize: 11, mb: 0.5, color: effectiveDarkMode ? '#f0f0f0' : '#666', lineHeight: 1.6 }}>
                     <strong>Controls:</strong>
                   </Typography>
-                  <Typography sx={{ fontSize: 10, mb: 1, color: '#e0e0e0', lineHeight: 1.6 }}>
+                  <Typography sx={{ fontSize: 10, mb: 1, color: effectiveDarkMode ? '#e0e0e0' : '#666', lineHeight: 1.6 }}>
                     • Drag joysticks/sliders for continuous movement<br/>
                     • Release to send final position<br/>
                     • All movements use set_target (no interpolation)<br/>
@@ -500,78 +519,29 @@ export default function ApplicationStore({
                 tooltip: {
                   sx: {
                     maxWidth: 420,
-                    bgcolor: 'rgba(26, 26, 26, 0.98)',
-                    border: '1px solid rgba(255, 149, 0, 0.3)',
-                    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5)',
+                    bgcolor: effectiveDarkMode ? 'rgba(26, 26, 26, 0.98)' : 'rgba(255, 255, 255, 0.98)',
+                    border: `1px solid ${effectiveDarkMode ? 'rgba(255, 149, 0, 0.3)' : 'rgba(255, 149, 0, 0.4)'}`,
+                    boxShadow: effectiveDarkMode ? '0 8px 24px rgba(0, 0, 0, 0.5)' : '0 8px 24px rgba(0, 0, 0, 0.15)',
                   }
                 },
                 arrow: {
                   sx: {
-                    color: 'rgba(26, 26, 26, 0.98)',
+                    color: effectiveDarkMode ? 'rgba(26, 26, 26, 0.98)' : 'rgba(255, 255, 255, 0.98)',
                   }
                 }
               }}
             >
               <InfoOutlinedIcon sx={{ fontSize: 16, color: effectiveDarkMode ? '#888' : '#999', cursor: 'help', ml: 0.75 }} />
             </Tooltip>
-            {/* Input device indicator - only show if gamepad is connected */}
-            {isGamepadConnected && (
-              <Tooltip 
-                title={activeDevice === 'gamepad' && hasWindowFocus
-                  ? 'Gamepad active' 
-                  : 'Gamepad connected'}
-              >
-                <Chip
-                  icon={<SportsEsportsIcon />}
-                  label=""
-                  size="small"
-                  color={activeDevice === 'gamepad' && hasWindowFocus ? 'primary' : 'default'}
-                  sx={{
-                    height: 20,
-                    width: 20,
-                    minWidth: 20,
-                    ml: 0.5,
-                    opacity: hasWindowFocus ? 1 : 0.4, // Gray out when window loses focus
-                    bgcolor: effectiveDarkMode 
-                      ? (activeDevice === 'gamepad' && hasWindowFocus
-                          ? 'rgba(255, 149, 0, 0.2)' 
-                          : 'rgba(255, 255, 255, 0.05)')
-                      : (activeDevice === 'gamepad' && hasWindowFocus
-                          ? 'rgba(255, 149, 0, 0.15)'
-                          : 'rgba(0, 0, 0, 0.05)'),
-                    border: `1px solid ${effectiveDarkMode 
-                      ? (activeDevice === 'gamepad' && hasWindowFocus
-                          ? 'rgba(255, 149, 0, 0.3)' 
-                          : 'rgba(255, 255, 255, 0.1)')
-                      : (activeDevice === 'gamepad' && hasWindowFocus
-                          ? 'rgba(255, 149, 0, 0.3)'
-                          : 'rgba(0, 0, 0, 0.1)')}`,
-                    '& .MuiChip-icon': {
-                      fontSize: '0.9rem',
-                      color: effectiveDarkMode 
-                        ? (activeDevice === 'gamepad' && hasWindowFocus
-                            ? '#FF9500' 
-                            : 'rgba(255, 255, 255, 0.6)')
-                        : (activeDevice === 'gamepad' && hasWindowFocus
-                            ? '#FF9500'
-                            : 'rgba(0, 0, 0, 0.6)'),
-                      margin: 0,
-                    },
-                    '& .MuiChip-label': {
-                      display: 'none',
-                    },
-                  }}
-                />
-              </Tooltip>
-            )}
+      
             {!isAtInitialPosition && (
               <Tooltip title="Reset all position controls" arrow>
                 <IconButton 
                   size="small" 
                   onClick={(e) => {
                     e.stopPropagation(); // Prevent accordion from closing
-                    if (positionControlResetRef.current) {
-                      positionControlResetRef.current();
+                    if (controllerResetRef.current) {
+                      controllerResetRef.current();
                     }
                   }}
                   disabled={!effectiveIsActive || effectiveIsBusy}
@@ -591,11 +561,11 @@ export default function ApplicationStore({
           </Box>
         </AccordionSummary>
         <AccordionDetails sx={{ px: 0, pt: 0, pb: 3, bgcolor: 'transparent !important', backgroundColor: 'transparent !important' }}>
-          <RobotPositionControl
+          <Controller
             isActive={effectiveIsActive}
             darkMode={effectiveDarkMode}
             onResetReady={(resetFn) => {
-              positionControlResetRef.current = resetFn;
+              controllerResetRef.current = resetFn;
             }}
             onIsAtInitialPosition={(isAtInitial) => {
               setIsAtInitialPosition(isAtInitial);

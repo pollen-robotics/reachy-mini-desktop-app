@@ -1,9 +1,10 @@
 /**
- * Barrel export for robot-related hooks
+ * Barrel export for core robot hooks (used globally)
+ * 
+ * Note: Specific hooks have been moved closer to their usage:
+ * - useRobotPowerState, useRobotMovementStatus → views/active-robot/hooks
+ * - useRobotWebSocket → components/viewer3d/hooks
  */
 export { useRobotCommands } from './useRobotCommands';
-export { useRobotPowerState } from './useRobotPowerState';
 export { useRobotState } from './useRobotState';
-export { useRobotWebSocket } from './useRobotWebSocket';
-export { useRobotMovementStatus } from './useRobotMovementStatus';
 

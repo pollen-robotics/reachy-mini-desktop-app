@@ -2,13 +2,12 @@ import React, { useEffect, useMemo, useCallback, useState } from 'react';
 import { Box } from '@mui/material';
 
 import { RobotNotDetectedView, StartingView, ReadyToStartView, TransitionView, ActiveRobotView, ClosingView, UpdateView } from '../views';
-import QuickActionsWindow from '../views/windows/QuickActionsWindow';
-import PositionControlWindow from '../views/windows/PositionControlWindow';
 import AppTopBar from './AppTopBar';
 import { useDaemon, useDaemonHealthCheck } from '../hooks/daemon';
 import { useUsbDetection, useLogs, useWindowResize, useUpdater } from '../hooks/system';
 import { useRobotCommands, useRobotState } from '../hooks/robot';
 import { DAEMON_CONFIG, setAppStoreInstance } from '../config/daemon';
+import { isDevMode } from '../utils/devMode';
 import useAppStore from '../store/useAppStore';
 
 function App() {
@@ -16,44 +15,6 @@ function App() {
   useEffect(() => {
     setAppStoreInstance(useAppStore);
   }, []);
-
-  // Initialize window manager on app startup
-  useEffect(() => {
-    import('../utils/windowManager').then(({ initializeWindowManager, closeAllSecondaryWindows }) => {
-      initializeWindowManager();
-      
-      // Close all secondary windows on hot reload (dev only)
-      if (import.meta.hot) {
-        import.meta.hot.on('vite:beforeUpdate', async () => {
-          console.log('🔄 Hot reload detected - closing all secondary windows');
-          await closeAllSecondaryWindows();
-        });
-        
-        // Also close on full page reload
-        window.addEventListener('beforeunload', async () => {
-          await closeAllSecondaryWindows();
-        });
-      }
-    });
-  }, []);
-
-  // Check if this is a window view (detected via hash)
-  const windowView = useMemo(() => {
-    const hash = window.location.hash;
-    if (hash === '#quick-actions') return 'quick-actions';
-    if (hash === '#position-control') return 'position-control';
-    return null;
-  }, []);
-
-  // Render window views directly (standalone windows)
-  // These windows need minimal setup - they use the store directly
-  if (windowView === 'quick-actions') {
-    return <QuickActionsWindow />;
-  }
-
-  if (windowView === 'position-control') {
-    return <PositionControlWindow />;
-  }
   const { daemonVersion, hardwareError, isTransitioning, setIsTransitioning, setHardwareError } = useAppStore();
   const { isActive, isStarting, isStopping, startupError, startDaemon, stopDaemon, fetchDaemonVersion } = useDaemon();
   const { isUsbConnected, usbPortName, checkUsbRobot } = useUsbDetection();
@@ -62,6 +23,8 @@ function App() {
   
   // 🔄 Automatic update system
   // Tries to fetch latest.json directly - if it works, we have internet + we know if there's an update
+  // In dev mode, skip automatic check but still show the view for minimum time
+  const isDev = isDevMode();
   const {
     updateAvailable,
     isChecking,
@@ -72,7 +35,7 @@ function App() {
     installUpdate,
     dismissUpdate,
   } = useUpdater({
-    autoCheck: true,
+    autoCheck: !isDev, // Disable auto check in dev mode
     checkInterval: DAEMON_CONFIG.UPDATE_CHECK.INTERVAL,
     silent: false,
   });
@@ -82,64 +45,76 @@ function App() {
   const [usbCheckStartTime, setUsbCheckStartTime] = useState(null);
   const [showUpdateViewForced, setShowUpdateViewForced] = useState(true); // Start with true to show UpdateView first
   
-  // Update check tracking - ensures minimum 2.5s display
+  // DEV MODE: Simple logic - just show view for minimum time, then hide
+  // No update check is performed, so isChecking will always be false
   useEffect(() => {
+    if (!isDev) return; // Only run in dev mode
+    
+    const elapsed = Date.now() - updateCheckStartTime;
+    const minTime = DAEMON_CONFIG.MIN_DISPLAY_TIMES.UPDATE_CHECK;
+    
+    if (elapsed >= minTime) {
+      // Minimum time elapsed, hide the view
+      setShowUpdateViewForced(false);
+      setUpdateCheckStartTime(null);
+    } else {
+      // Wait for remaining time
+      const remainingTime = minTime - elapsed;
+      const timer = setTimeout(() => {
+        setShowUpdateViewForced(false);
+        setUpdateCheckStartTime(null);
+      }, remainingTime);
+      return () => clearTimeout(timer);
+    }
+  }, [isDev, updateCheckStartTime]);
+  
+  // PRODUCTION MODE: Track update check lifecycle and ensure minimum display time
+  useEffect(() => {
+    if (isDev) return; // Skip in dev mode
+    
+    // Start tracking when check begins
     if (isChecking && updateCheckStartTime === null) {
-      // Start tracking when check begins
       const startTime = Date.now();
       setUpdateCheckStartTime(startTime);
       setShowUpdateViewForced(true);
-    } else if (!isChecking && !updateAvailable && !isDownloading && !updateError && updateCheckStartTime !== null && showUpdateViewForced) {
-      // Check completed without update - ensure minimum display time
+      return;
+    }
+    
+    // Check completed - ensure minimum display time
+    if (!isChecking && !updateAvailable && !isDownloading && !updateError && updateCheckStartTime !== null && showUpdateViewForced) {
       const elapsed = Date.now() - updateCheckStartTime;
-      if (elapsed < DAEMON_CONFIG.MIN_DISPLAY_TIMES.UPDATE_CHECK) {
+      const minTime = DAEMON_CONFIG.MIN_DISPLAY_TIMES.UPDATE_CHECK;
+      
+      if (elapsed >= minTime) {
+        // Minimum time already elapsed
+        setShowUpdateViewForced(false);
+        setUpdateCheckStartTime(null);
+      } else {
         // Keep showing for remaining minimum time
-        const remainingTime = DAEMON_CONFIG.MIN_DISPLAY_TIMES.UPDATE_CHECK - elapsed;
+        const remainingTime = minTime - elapsed;
         const timer = setTimeout(() => {
           setShowUpdateViewForced(false);
           setUpdateCheckStartTime(null);
         }, remainingTime);
         return () => clearTimeout(timer);
-      } else {
-        // Minimum time already elapsed
-        setShowUpdateViewForced(false);
-        setUpdateCheckStartTime(null);
       }
     }
-    // Ensure minimum display time is tracked from the start
-    // This handles the case where check hasn't started yet but we want to show UpdateView
-  }, [isChecking, updateAvailable, isDownloading, updateError, updateCheckStartTime, showUpdateViewForced]);
+  }, [isDev, isChecking, updateAvailable, isDownloading, updateError, updateCheckStartTime, showUpdateViewForced]);
   
-  // Ensure minimum display time even if check hasn't started yet
-  // Also handle error case: allow continuation after minimum time + error grace period
+  // PRODUCTION MODE: Handle error case - allow continuation after minimum time + grace period
   useEffect(() => {
-    if (updateCheckStartTime !== null && showUpdateViewForced) {
-      const elapsed = Date.now() - updateCheckStartTime;
-      const minTime = DAEMON_CONFIG.MIN_DISPLAY_TIMES.UPDATE_CHECK;
-      
-      // If error occurred, allow continuation after minimum time + 1s grace period
-      if (updateError && elapsed >= minTime + 1000) {
-        setShowUpdateViewForced(false);
-        setUpdateCheckStartTime(null);
-        return;
-      }
-      
-      // Normal case: wait for minimum time
-      if (!isChecking && !updateAvailable && !isDownloading && !updateError) {
-        if (elapsed >= minTime) {
-          setShowUpdateViewForced(false);
-          setUpdateCheckStartTime(null);
-        } else {
-          const remainingTime = minTime - elapsed;
-          const timer = setTimeout(() => {
-            setShowUpdateViewForced(false);
-            setUpdateCheckStartTime(null);
-          }, remainingTime);
-          return () => clearTimeout(timer);
-        }
-      }
+    if (isDev) return; // Skip in dev mode
+    if (!updateError || !showUpdateViewForced || updateCheckStartTime === null) return;
+    
+    const elapsed = Date.now() - updateCheckStartTime;
+    const minTime = DAEMON_CONFIG.MIN_DISPLAY_TIMES.UPDATE_CHECK;
+    
+    // Allow continuation after minimum time + 1s grace period for errors
+    if (elapsed >= minTime + 1000) {
+      setShowUpdateViewForced(false);
+      setUpdateCheckStartTime(null);
     }
-  }, [updateCheckStartTime, showUpdateViewForced, isChecking, updateAvailable, isDownloading, updateError]);
+  }, [isDev, updateError, showUpdateViewForced, updateCheckStartTime]);
   
   // USB check tracking - track when first USB check happens
   const { isFirstCheck } = useAppStore();
@@ -308,7 +283,7 @@ function App() {
   // Ensures minimum display time of 2.5 seconds
   if (shouldShowUpdateView) {
     return (
-      <>
+      <Box sx={{ position: 'relative', width: '100%', height: '100vh' }}>
         <AppTopBar />
         <UpdateView
           isChecking={isChecking}
@@ -318,7 +293,7 @@ function App() {
           updateError={updateError}
           onInstallUpdate={installUpdate}
         />
-      </>
+      </Box>
     );
   }
 
@@ -326,20 +301,20 @@ function App() {
   // Only show if update check is complete
   if (shouldShowUsbCheck) {
     return (
-      <>
+      <Box sx={{ position: 'relative', width: '100%', height: '100vh' }}>
         <AppTopBar />
         <RobotNotDetectedView />
-      </>
+      </Box>
     );
   }
 
   // 🔌 PRIORITY 3: Robot not connected (after USB check minimum time)
   if (!isUsbConnected) {
     return (
-      <>
+      <Box sx={{ position: 'relative', width: '100%', height: '100vh' }}>
         <AppTopBar />
         <RobotNotDetectedView />
-      </>
+      </Box>
     );
   }
 
@@ -348,10 +323,10 @@ function App() {
   // Also show if hardwareError is set (even if isStarting becomes false)
   if (isStarting || hardwareError) {
     return (
-      <>
+      <Box sx={{ position: 'relative', width: '100%', height: '100vh' }}>
         <AppTopBar />
         <StartingView startupError={hardwareError || startupError} startDaemon={startDaemon} />
-      </>
+      </Box>
     );
   }
 
@@ -359,7 +334,7 @@ function App() {
   // ✅ Render ActiveRobotView in background to load apps, but display TransitionView on top
   if (isTransitioning) {
     return (
-      <>
+      <Box sx={{ position: 'relative', width: '100%', height: '100vh' }}>
         <AppTopBar />
         {/* ActiveRobotView hidden to load apps in background */}
         <Box sx={{ position: 'absolute', opacity: 0, pointerEvents: 'none', zIndex: -1 }}>
@@ -379,7 +354,7 @@ function App() {
         </Box>
         {/* TransitionView visible on top */}
         <TransitionView />
-      </>
+      </Box>
     );
   }
 
@@ -392,20 +367,20 @@ function App() {
   // Main view: Robot connected but daemon not active - show start screen
   if (isUsbConnected && !isActive && !isStarting) {
     return (
-      <>
+      <Box sx={{ position: 'relative', width: '100%', height: '100vh' }}>
         <AppTopBar />
       <ReadyToStartView 
         startDaemon={startDaemon} 
         isStarting={isStarting} 
         usbPortName={usbPortName}
       />
-      </>
+      </Box>
     );
   }
 
   // Full control view: Robot connected and daemon active
   return (
-    <>
+    <Box sx={{ position: 'relative', width: '100%', height: '100vh' }}>
       <AppTopBar />
       <ActiveRobotView 
         isActive={isActive}
@@ -420,7 +395,7 @@ function App() {
         usbPortName={usbPortName}
         onAppsReady={handleAppsReady}
       />
-    </>
+    </Box>
   );
 }
 

@@ -4,5 +4,5 @@ export { default } from './ApplicationStore';
 export { default as ApplicationStore } from './ApplicationStore';
 // Utilities and hooks
 export { fetchHuggingFaceAppList, HUGGINGFACE_APP_LIST_URL } from '@utils/huggingFaceApi';
-export { useAppHandlers } from '@hooks/apps';
+export { useAppHandlers } from './hooks';
 

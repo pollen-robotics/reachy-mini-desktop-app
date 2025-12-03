@@ -37,7 +37,6 @@ export default function AppTopBar() {
   }, []);
 
   return (
-    <>
       <Box
         onMouseDown={async (e) => {
           e.preventDefault();
@@ -48,54 +47,23 @@ export default function AppTopBar() {
           }
         }}
         sx={{
-          position: 'fixed',
+        position: 'absolute',
           top: 0,
-          left: 0,
+          left: 65,
           right: 0,
-          height: 44,
+          height: 33,
           cursor: 'move',
           userSelect: 'none',
           WebkitAppRegion: 'drag',
           bgcolor: 'transparent',
-          zIndex: 99999,
-        }}
-      />
-      {/* Simulation mode indicator */}
-      {simMode && (
-        <Box
-          sx={{
-            position: 'fixed',
-            top: 10,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            px: 1,
-            py: 0.5,
-            bgcolor: darkMode ? 'rgba(255, 149, 0, 0.2)' : 'rgba(255, 149, 0, 0.15)',
-            border: `1px solid ${darkMode ? 'rgba(255, 149, 0, 0.4)' : 'rgba(255, 149, 0, 0.3)'}`,
-            borderRadius: 1,
-            pointerEvents: 'none',
             zIndex: 99999,
           }}
         >
-          <Typography
-            sx={{
-              fontSize: 8,
-              color: darkMode ? 'rgba(255, 149, 0, 0.9)' : 'rgba(255, 149, 0, 0.8)',
-              fontWeight: 600,
-              letterSpacing: '0.05em',
-              fontFamily: 'SF Mono, Monaco, Menlo, monospace',
-              lineHeight: 1.2,
-            }}
-          >
-            🎭 SIM
-          </Typography>
-        </Box>
-      )}
-      {/* Version number - only visible in main window */}
+      {/* Version number à droite - only visible in main window */}
       {isMainWindow && (
       <Typography
         sx={{
-          position: 'fixed',
+          position: 'absolute',
           top: 10,
           right: 12,
           fontSize: 9,
@@ -111,7 +79,7 @@ export default function AppTopBar() {
 {currentVersion ? `v${currentVersion}` : 'unknown version'}
       </Typography>
       )}
-    </>
+    </Box>
   );
 }
 

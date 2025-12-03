@@ -85,6 +85,49 @@ export const calculateSelectedIndex = (rotation, gap, itemCount) => {
 };
 
 /**
+ * Calculate selected item index and active angle based on visible items and rotation
+ * Uses actual visual Y position after rotation transformation (more accurate than angle-based)
+ * 
+ * @param {Array} visibleItems - Array of visible items with { item, angle, listIndex }
+ * @param {number} rotation - Current rotation in degrees
+ * @param {number} wheelSize - Size of the wheel
+ * @param {number} radiusRatio - Radius as ratio of wheel size
+ * @returns {{selectedIndex: number, activeItemAngle: number|null}} Selected index and angle
+ */
+export const calculateSelectedIndexFromVisible = (visibleItems, rotation, wheelSize, radiusRatio) => {
+  if (!visibleItems.length) return { selectedIndex: 0, activeItemAngle: null };
+  
+  let minY = Infinity;
+  let selectedListIndex = 0;
+  let activeAngle = null;
+  const wheelCenter = wheelSize / 2;
+  const rotationRad = (rotation * Math.PI) / 180;
+  const cos = Math.cos(rotationRad);
+  const sin = Math.sin(rotationRad);
+  
+  visibleItems.forEach(({ item, angle, listIndex }) => {
+    if (!item) return;
+    
+    // Get item position, then rotate around wheel center
+    const { x: itemX, y: itemY } = getItemPosition(angle, wheelSize, radiusRatio);
+    const dx = itemX - wheelCenter;
+    const dy = itemY - wheelCenter;
+    
+    // Apply rotation transformation
+    const rotatedY = wheelCenter + (dx * sin + dy * cos);
+    
+    // Item with smallest Y is highest on screen
+    if (rotatedY < minY) {
+      minY = rotatedY;
+      selectedListIndex = listIndex;
+      activeAngle = angle; // Store angle for triangle positioning
+    }
+  });
+  
+  return { selectedIndex: selectedListIndex, activeItemAngle: activeAngle };
+};
+
+/**
  * Calculate snap rotation to align item to top position
  * @param {number} currentRotation - Current rotation in degrees
  * @param {number} gap - Gap between items in degrees

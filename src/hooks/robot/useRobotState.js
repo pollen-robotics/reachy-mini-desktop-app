@@ -77,6 +77,11 @@ export function useRobotState(isActive) {
             return;
           }
           
+          // Silently ignore AbortError (expected when component unmounts or dependencies change)
+          if (error.name === 'AbortError') {
+            return;
+          }
+          
           // ❌ Timeout → increment counter for crash detection
           if (error.name === 'TimeoutError' || error.message?.includes('timed out')) {
             console.warn('⚠️ Robot state fetch timeout, incrementing counter');
@@ -119,6 +124,10 @@ export function useRobotState(isActive) {
           if (error.name === 'SkippedError') {
             return;
           }
+          // Silently ignore AbortError (expected when component unmounts or dependencies change)
+          if (error.name === 'AbortError') {
+            return;
+          }
           // Silently fail for moves (non-critical for health check)
           console.warn('⚠️ Failed to fetch active moves:', error.message);
         }
@@ -137,6 +146,6 @@ export function useRobotState(isActive) {
     return () => {
       clearInterval(interval);
     };
-  }, [isActive, isDaemonCrashed, setRobotStateFull, setActiveMoves, incrementTimeouts, resetTimeouts, setIsActive]);
+  }, [isActive, isDaemonCrashed]); // Removed setters from deps - Zustand setters are stable and don't need to be in deps
 }
 

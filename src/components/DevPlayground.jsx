@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { Box, Typography, Button, ButtonGroup, CircularProgress, Select, MenuItem, FormControl, InputLabel, LinearProgress, useTheme } from '@mui/material';
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
 import Viewer3D from './viewer3d';
-import SpinningWheel from '../views/active-robot/application-store/quick-actions/SpinningWheel';
+import SpinningWheel from '@components/wheel/SpinningWheel';
 import { mapMeshToScanPart } from '../utils/scanParts';
 import { HARDWARE_ERROR_CONFIGS, getErrorMeshes } from '../utils/hardwareErrors';
 import useAppStore from '../store/useAppStore';

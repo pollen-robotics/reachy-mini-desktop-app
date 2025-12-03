@@ -2,10 +2,13 @@ import React from 'react';
 import { Box } from '@mui/material';
 import { ApplicationsSection } from './applications';
 import ControlButtons from './ControlButtons';
+import { ControllerSection } from './controller';
+import ExpressionsSection from './expressions';
+import useAppStore from '@store/useAppStore';
 
 /**
  * Right Panel - Assembles Control Buttons and Applications sections
- * Quick Actions and Position Control are now opened in separate windows
+ * Can display Applications (default), Controller, or Expressions based on rightPanelView state
  */
 export default function RightPanel({ 
   showToast, 
@@ -17,6 +20,8 @@ export default function RightPanel({
   isBusy = false,
   darkMode = false,
 }) {
+  const rightPanelView = useAppStore(state => state.rightPanelView);
+
   return (
     <Box
       sx={{
@@ -45,21 +50,38 @@ export default function RightPanel({
         },
       }}
     >
-      {/* Applications - First */}
-      <ApplicationsSection
-        showToast={showToast}
-        onLoadingChange={onLoadingChange}
-        hasQuickActions={quickActions.length > 0 && handleQuickAction}
-        isActive={isActive}
-        isBusy={isBusy}
-        darkMode={darkMode}
-      />
+      {/* Conditional rendering based on rightPanelView */}
+      {rightPanelView === 'controller' ? (
+        <ControllerSection
+          isActive={isActive}
+          isBusy={isBusy}
+          darkMode={darkMode}
+        />
+      ) : rightPanelView === 'expressions' ? (
+        <ExpressionsSection
+          isActive={isActive}
+          isBusy={isBusy}
+          darkMode={darkMode}
+        />
+      ) : (
+        <>
+          {/* Applications - Default view */}
+          <ApplicationsSection
+            showToast={showToast}
+            onLoadingChange={onLoadingChange}
+            hasQuickActions={quickActions.length > 0 && handleQuickAction}
+            isActive={isActive}
+            isBusy={isBusy}
+            darkMode={darkMode}
+          />
 
-      {/* Control Buttons - Opens Quick Actions and Position Control in new windows */}
-      <ControlButtons
-        isActive={isActive}
-        darkMode={darkMode}
-      />
+          {/* Control Buttons - Opens Controller and Expressions in right panel */}
+          <ControlButtons
+            isActive={isActive}
+            darkMode={darkMode}
+          />
+        </>
+      )}
     </Box>
   );
 }

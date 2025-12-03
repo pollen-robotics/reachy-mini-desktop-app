@@ -43,7 +43,10 @@ export const useRobotCommands = () => {
       { label } // ⚡ Label will be used in automatic log
     )
       .catch(e => {
-        console.error(`❌ ${label} ERROR:`, e.message);
+        // Silently ignore AbortError (expected when component unmounts or dependencies change)
+        if (e.name !== 'AbortError') {
+          console.error(`❌ ${label} ERROR:`, e.message);
+        }
       })
       .finally(() => {
         // Unlock commands after lock duration

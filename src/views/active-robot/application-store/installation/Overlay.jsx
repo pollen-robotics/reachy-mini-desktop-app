@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Box, Typography, CircularProgress } from '@mui/material';
+import { Box, Typography, CircularProgress, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FullscreenOverlay from '@components/FullscreenOverlay';
 
 /**
@@ -11,6 +12,7 @@ import FullscreenOverlay from '@components/FullscreenOverlay';
  */
 export default function InstallOverlay({ appInfo, jobInfo, darkMode, jobType = 'install', resultState = null, installStartTime = null }) {
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [logsExpanded, setLogsExpanded] = useState(false);
   const logsContainerRef = useRef(null);
   const intervalRef = useRef(null);
   
@@ -147,21 +149,22 @@ export default function InstallOverlay({ appInfo, jobInfo, darkMode, jobType = '
   };
   
   const phaseInfo = detectPhase(currentLogs);
-  const latestLogs = currentLogs.length > 0 ? currentLogs.slice(-5) : []; // Display last 5 logs
+  const latestLogs = currentLogs.length > 0 ? currentLogs.slice(-5) : []; // Display last 5 logs when collapsed
+  const allLogs = currentLogs; // All logs when expanded
   
   // Determine if showing final result or progress
   const isShowingResult = resultState !== null;
 
-  // Auto-scroll to bottom when new logs arrive (continue even in success state)
+  // Auto-scroll to bottom when new logs arrive (only when accordion is expanded)
   useEffect(() => {
-    if (logsContainerRef.current && latestLogs.length > 0) {
+    if (logsContainerRef.current && logsExpanded && allLogs.length > 0) {
       // Smooth scroll to bottom
       logsContainerRef.current.scrollTo({
         top: logsContainerRef.current.scrollHeight,
         behavior: 'smooth'
       });
     }
-  }, [latestLogs.length]); // Use latestLogs.length instead of jobInfo?.logs?.length to track persisted logs
+  }, [logsExpanded, allLogs.length]); // Only scroll when expanded
 
   return (
     <FullscreenOverlay
@@ -405,21 +408,94 @@ export default function InstallOverlay({ appInfo, jobInfo, darkMode, jobType = '
             </Box>
           )}
 
-          {/* Recent logs - Keep visible even in success state */}
-            <Box
-              ref={logsContainerRef}
+          {/* Recent logs - Accordion (collapsed by default) */}
+          <Accordion
+            expanded={logsExpanded}
+            onChange={(e, expanded) => setLogsExpanded(expanded)}
               sx={{
                 width: '100%',
                 maxWidth: '460px',
-                bgcolor: darkMode ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 0.03)',
-                border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)'}`,
+              bgcolor: 'transparent !important',
+              boxShadow: 'none !important',
+              '&:before': { display: 'none' },
+              '&.Mui-expanded': { margin: 0 },
+            }}
+          >
+            <AccordionSummary
+              expandIcon={
+                <ExpandMoreIcon 
+                  sx={{ 
+                    color: darkMode ? '#888' : '#999',
+                    fontSize: 18,
+                  }} 
+                />
+              }
+              sx={{
+                minHeight: 'auto !important',
+                py: 1,
+                px: 1.5,
                 borderRadius: '12px',
-                p: 2,
-                height: '140px', // Hauteur fixe
+                bgcolor: darkMode ? 'rgba(0, 0, 0, 0.2)' : 'rgba(0, 0, 0, 0.02)',
+                border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)'}`,
+                '&:hover': {
+                  bgcolor: darkMode ? 'rgba(0, 0, 0, 0.3)' : 'rgba(0, 0, 0, 0.04)',
+                },
+                '&.Mui-expanded': {
+                  minHeight: 'auto !important',
+                  borderBottomLeftRadius: 0,
+                  borderBottomRightRadius: 0,
+                },
+                '& .MuiAccordionSummary-content': {
+                  margin: '8px 0 !important',
+                  '&.Mui-expanded': {
+                    margin: '8px 0 !important',
+                  },
+                },
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                <Typography
+                  sx={{
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color: darkMode ? '#aaa' : '#666',
+                  }}
+                >
+                  {logsExpanded ? 'Hide logs' : 'Show logs'}
+                </Typography>
+                {!logsExpanded && latestLogs.length > 0 && (
+                  <Typography
+                    sx={{
+                      fontSize: 10,
+                      color: darkMode ? '#666' : '#999',
+                      ml: 'auto',
+                    }}
+                  >
+                    {latestLogs.length} {latestLogs.length === 1 ? 'recent log' : 'recent logs'}
+                  </Typography>
+                )}
+              </Box>
+            </AccordionSummary>
+            <AccordionDetails
+              sx={{
+                p: 0,
+                border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)'}`,
+                borderTop: 'none',
+                borderBottomLeftRadius: '12px',
+                borderBottomRightRadius: '12px',
+                bgcolor: darkMode ? 'rgba(0, 0, 0, 0.2)' : 'rgba(0, 0, 0, 0.02)',
+              }}
+            >
+              <Box
+                ref={logsContainerRef}
+                sx={{
+                  width: '100%',
+                  maxHeight: '140px',
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: latestLogs.length > 0 ? 'flex-start' : 'center',
+                  justifyContent: allLogs.length > 0 ? 'flex-start' : 'center',
                 overflowY: 'auto',
+                  p: 2,
                 '&::-webkit-scrollbar': {
                   width: '5px',
                 },
@@ -435,15 +511,15 @@ export default function InstallOverlay({ appInfo, jobInfo, darkMode, jobType = '
                 },
               }}
             >
-              {latestLogs.length > 0 ? (
-                latestLogs.map((log, idx) => (
+                {allLogs.length > 0 ? (
+                  allLogs.map((log, idx) => (
                   <Box
                     key={idx}
                     sx={{
                       display: 'flex',
                       alignItems: 'flex-start',
                       gap: 1,
-                      mb: idx < latestLogs.length - 1 ? 1 : 0,
+                          mb: idx < allLogs.length - 1 ? 1 : 0,
                       animation: 'slideIn 0.3s ease',
                       '@keyframes slideIn': {
                         from: { 
@@ -496,6 +572,8 @@ export default function InstallOverlay({ appInfo, jobInfo, darkMode, jobType = '
                 </Typography>
               )}
             </Box>
+            </AccordionDetails>
+          </Accordion>
 
           {/* Instruction - Show only during progress */}
           {!isShowingResult && isInstalling && (

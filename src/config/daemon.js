@@ -195,12 +195,39 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions 
     const duration = Date.now() - startTime;
     
     // Log result if not silent (only show completion, not start to avoid redundancy)
-    if (!shouldBeSilent && appStoreInstance) {
+    if (!shouldBeSilent) {
       const logLabel = label || `${method} ${baseEndpoint}`;
-      if (response.ok) {
-        appStoreInstance.getState().addFrontendLog(`✓ ${logLabel}`);
-      } else {
-        appStoreInstance.getState().addFrontendLog(`✗ ${logLabel} (${response.status})`);
+      const logMessage = response.ok ? `✓ ${logLabel}` : `✗ ${logLabel} (${response.status})`;
+      
+      // Détecter si on est dans la fenêtre principale
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const currentWindow = await getCurrentWindow();
+        const isMain = currentWindow.label === 'main';
+        
+        if (isMain) {
+          // Fenêtre principale : log direct
+          if (appStoreInstance) {
+            const store = appStoreInstance.getState();
+            const addLog = store?.addFrontendLog;
+            if (typeof addLog === 'function') {
+              addLog(logMessage);
+            }
+          }
+        } else {
+          // Fenêtre secondaire : émettre événement vers la fenêtre principale
+          const { emit } = await import('@tauri-apps/api/event');
+          await emit('add-log', { message: logMessage });
+        }
+      } catch (error) {
+        // Fallback : utiliser appStoreInstance si détection échoue
+        if (appStoreInstance) {
+          const store = appStoreInstance.getState();
+          const addLog = store?.addFrontendLog;
+          if (typeof addLog === 'function') {
+            addLog(logMessage);
+          }
+        }
       }
     }
     
@@ -214,9 +241,37 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions 
       permissionError.name = 'PermissionDeniedError';
       permissionError.originalError = error;
       
-      if (!shouldBeSilent && appStoreInstance) {
+      if (!shouldBeSilent) {
         const logLabel = label || `${method} ${baseEndpoint}`;
-        appStoreInstance.getState().addFrontendLog(`🔒 ${logLabel} (permission denied)`);
+        const logMessage = `🔒 ${logLabel} (permission denied)`;
+        
+        // Détecter si on est dans la fenêtre principale
+        try {
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          const currentWindow = await getCurrentWindow();
+          const isMain = currentWindow.label === 'main';
+          
+          if (isMain) {
+            if (appStoreInstance) {
+              const store = appStoreInstance.getState();
+              const addLog = store?.addFrontendLog;
+              if (typeof addLog === 'function') {
+                addLog(logMessage);
+              }
+            }
+          } else {
+            const { emit } = await import('@tauri-apps/api/event');
+            await emit('add-log', { message: logMessage });
+          }
+        } catch (error) {
+          if (appStoreInstance) {
+            const store = appStoreInstance.getState();
+            const addLog = store?.addFrontendLog;
+            if (typeof addLog === 'function') {
+              addLog(logMessage);
+            }
+          }
+        }
       }
       
       throw permissionError;
@@ -229,21 +284,77 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions 
       popupError.originalError = error;
       popupError.duration = duration;
       
-      if (!shouldBeSilent && appStoreInstance) {
+      if (!shouldBeSilent) {
         const logLabel = label || `${method} ${baseEndpoint}`;
-        appStoreInstance.getState().addFrontendLog(`⏱️ ${logLabel} (timeout - check system permissions)`);
+        const logMessage = `⏱️ ${logLabel} (timeout - check system permissions)`;
+        
+        // Détecter si on est dans la fenêtre principale
+        try {
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          const currentWindow = await getCurrentWindow();
+          const isMain = currentWindow.label === 'main';
+          
+          if (isMain) {
+            if (appStoreInstance) {
+              const store = appStoreInstance.getState();
+              const addLog = store?.addFrontendLog;
+              if (typeof addLog === 'function') {
+                addLog(logMessage);
+              }
+            }
+          } else {
+            const { emit } = await import('@tauri-apps/api/event');
+            await emit('add-log', { message: logMessage });
+          }
+        } catch (error) {
+          if (appStoreInstance) {
+            const store = appStoreInstance.getState();
+            const addLog = store?.addFrontendLog;
+            if (typeof addLog === 'function') {
+              addLog(logMessage);
+            }
+          }
+        }
       }
       
       throw popupError;
     }
     
     // Log standard error if not silent
-    if (!shouldBeSilent && appStoreInstance) {
+    if (!shouldBeSilent) {
       const logLabel = label || `${method} ${baseEndpoint}`;
       const errorMsg = error.name === 'AbortError' || error.name === 'TimeoutError' 
         ? 'timeout' 
         : error.message;
-      appStoreInstance.getState().addFrontendLog(`✗ ${logLabel} (${errorMsg})`);
+      const logMessage = `✗ ${logLabel} (${errorMsg})`;
+      
+      // Détecter si on est dans la fenêtre principale
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const currentWindow = await getCurrentWindow();
+        const isMain = currentWindow.label === 'main';
+        
+        if (isMain) {
+          if (appStoreInstance) {
+            const store = appStoreInstance.getState();
+            const addLog = store?.addFrontendLog;
+            if (typeof addLog === 'function') {
+              addLog(logMessage);
+            }
+          }
+        } else {
+          const { emit } = await import('@tauri-apps/api/event');
+          await emit('add-log', { message: logMessage });
+        }
+      } catch (error) {
+        if (appStoreInstance) {
+          const store = appStoreInstance.getState();
+          const addLog = store?.addFrontendLog;
+          if (typeof addLog === 'function') {
+            addLog(logMessage);
+          }
+        }
+      }
     }
     
     throw error;

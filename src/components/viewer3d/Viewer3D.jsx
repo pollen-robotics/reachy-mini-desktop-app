@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { IconButton, Switch, Tooltip, Box, Typography } from '@mui/material';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
@@ -7,12 +7,10 @@ import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import ThreeSixtyOutlinedIcon from '@mui/icons-material/ThreeSixtyOutlined';
 import MyLocationOutlinedIcon from '@mui/icons-material/MyLocationOutlined';
 import CircleIcon from '@mui/icons-material/Circle';
-import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined';
-import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined';
 // Leva removed - was never displayed
 import * as THREE from 'three';
 import Scene from './Scene';
-import { useRobotWebSocket } from '../../hooks/robot';
+import { useRobotWebSocket } from './hooks';
 import useAppStore from '../../store/useAppStore';
 import SettingsOverlay from './SettingsOverlay';
 import { FPSMeter } from '../FPSMeter';
@@ -91,28 +89,84 @@ export default function RobotViewer3D({
   // ✅ Use provided props or those from WebSocket robotState
   // If headJoints is explicitly null, NEVER use WebSocket data for movements
   // This ensures the robot remains static in the scan view
-  // ✅ OPTIMIZED: Memoize computed props to avoid recalculating on every render
-  const finalAntennas = useMemo(() => 
-    antennas !== null ? antennas : (shouldConnectWebSocket ? (robotState.antennas || [0, 0]) : [0, 0]),
-    [antennas, shouldConnectWebSocket, robotState.antennas]
-  );
-  const finalHeadPose = useMemo(() => 
-    headPose !== null ? headPose : (shouldConnectWebSocket ? robotState.headPose : null),
-    [headPose, shouldConnectWebSocket, robotState.headPose]
-  );
-  const finalHeadJoints = useMemo(() => 
-    headJoints !== null ? headJoints : (shouldConnectWebSocket ? robotState.headJoints : null),
-    [headJoints, shouldConnectWebSocket, robotState.headJoints]
-  );
-  const finalYawBody = useMemo(() => 
-    yawBody !== null ? yawBody : (shouldConnectWebSocket ? robotState.yawBody : null),
-    [yawBody, shouldConnectWebSocket, robotState.yawBody]
-  );
+  // ✅ OPTIMIZED: Memoize computed props with stable references to avoid unnecessary recalculations
+  // Use refs to compare values numerically instead of relying on object references
+  const prevAntennasRef = useRef(null);
+  const prevHeadPoseRef = useRef(null);
+  const prevHeadJointsRef = useRef(null);
+  const prevYawBodyRef = useRef(null);
+  const prevPassiveJointsRef = useRef(null);
+  
+  // Helper to check if arrays are equal (with tolerance)
+  const arraysEqual = (a, b, tolerance = 0.005) => {
+    if (a === b) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (Math.abs(a[i] - b[i]) > tolerance) return false;
+    }
+    return true;
+  };
+  
+  // ✅ OPTIMIZED: Only recalculate if values actually changed (not just reference)
+  const finalAntennas = useMemo(() => {
+    const value = antennas !== null ? antennas : (shouldConnectWebSocket ? (robotState.antennas || [0, 0]) : [0, 0]);
+    if (!arraysEqual(value, prevAntennasRef.current)) {
+      prevAntennasRef.current = value;
+      return value;
+    }
+    return prevAntennasRef.current || value;
+  }, [antennas, shouldConnectWebSocket, robotState.antennas]);
+  
+  const finalHeadPose = useMemo(() => {
+    const value = headPose !== null ? headPose : (shouldConnectWebSocket ? robotState.headPose : null);
+    if (value && (!prevHeadPoseRef.current || !arraysEqual(value, prevHeadPoseRef.current))) {
+      prevHeadPoseRef.current = value;
+      return value;
+    }
+    if (!value && prevHeadPoseRef.current) {
+      prevHeadPoseRef.current = null;
+      return null;
+    }
+    return prevHeadPoseRef.current || value;
+  }, [headPose, shouldConnectWebSocket, robotState.headPose]);
+  
+  const finalHeadJoints = useMemo(() => {
+    const value = headJoints !== null ? headJoints : (shouldConnectWebSocket ? robotState.headJoints : null);
+    if (value && (!prevHeadJointsRef.current || !arraysEqual(value, prevHeadJointsRef.current))) {
+      prevHeadJointsRef.current = value;
+      return value;
+    }
+    if (!value && prevHeadJointsRef.current) {
+      prevHeadJointsRef.current = null;
+      return null;
+    }
+    return prevHeadJointsRef.current || value;
+  }, [headJoints, shouldConnectWebSocket, robotState.headJoints]);
+  
+  const finalYawBody = useMemo(() => {
+    const value = yawBody !== null ? yawBody : (shouldConnectWebSocket ? robotState.yawBody : null);
+    if (value !== undefined && Math.abs(value - (prevYawBodyRef.current ?? 0)) > 0.005) {
+      prevYawBodyRef.current = value;
+      return value;
+    }
+    return prevYawBodyRef.current ?? value ?? null;
+  }, [yawBody, shouldConnectWebSocket, robotState.yawBody]);
+  
   // 🚀 GAME-CHANGING: Extract passiveJoints from unified WebSocket
-  const finalPassiveJoints = useMemo(() => 
-    shouldConnectWebSocket ? robotState.passiveJoints : null,
-    [shouldConnectWebSocket, robotState.passiveJoints]
-  );
+  const finalPassiveJoints = useMemo(() => {
+    const value = shouldConnectWebSocket ? robotState.passiveJoints : null;
+    const prevPassive = Array.isArray(prevPassiveJointsRef.current) ? prevPassiveJointsRef.current : prevPassiveJointsRef.current?.array;
+    const currentPassive = Array.isArray(value) ? value : value?.array;
+    if (value && (!prevPassiveJointsRef.current || !arraysEqual(currentPassive, prevPassive))) {
+      prevPassiveJointsRef.current = value;
+      return value;
+    }
+    if (!value && prevPassiveJointsRef.current) {
+      prevPassiveJointsRef.current = null;
+      return null;
+    }
+    return prevPassiveJointsRef.current || value;
+  }, [shouldConnectWebSocket, robotState.passiveJoints]);
   
   const [isTransparent, setIsTransparent] = useState(initialMode === 'xray');
   const [showSettingsOverlay, setShowSettingsOverlay] = useState(false);
@@ -326,37 +380,6 @@ export default function RobotViewer3D({
               }}
             >
               <SettingsOutlinedIcon sx={{ fontSize: 20 }} />
-            </IconButton>
-          </Tooltip>
-
-          {/* Dark Mode Toggle */}
-          <Tooltip
-            title={darkMode ? 'Light mode' : 'Dark mode'}
-            placement="top"
-            arrow
-          >
-            <IconButton
-              onClick={() => useAppStore.getState().toggleDarkMode()}
-              size="small"
-              sx={{
-                width: 32,
-                height: 32,
-                transition: 'all 0.2s ease',
-                opacity: 0.7,
-                color: '#666',
-                bgcolor: darkMode ? 'rgba(255, 149, 0, 0.08)' : 'transparent',
-                '&:hover': {
-                  opacity: 1,
-                  color: '#FF9500',
-                  bgcolor: darkMode ? 'rgba(255, 149, 0, 0.12)' : 'rgba(0, 0, 0, 0.04)',
-                },
-              }}
-            >
-              {darkMode ? (
-                <LightModeOutlinedIcon sx={{ fontSize: 18 }} />
-              ) : (
-                <DarkModeOutlinedIcon sx={{ fontSize: 18 }} />
-              )}
             </IconButton>
           </Tooltip>
 

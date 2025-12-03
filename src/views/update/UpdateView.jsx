@@ -3,7 +3,7 @@ import { Box, Typography, LinearProgress, CircularProgress } from '@mui/material
 import reachyUpdateBoxSvg from '../../assets/reachy-update-box.svg';
 import useAppStore from '../../store/useAppStore';
 import { DAEMON_CONFIG } from '../../config/daemon';
-import { useInternetHealthcheck } from '../../hooks/system/useInternetHealthcheck';
+import { useInternetHealthcheck } from './hooks';
 
 /**
  * Update view component
