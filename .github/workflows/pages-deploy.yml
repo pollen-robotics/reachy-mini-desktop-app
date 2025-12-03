@@ -1,0 +1,46 @@
+name: Deploy to GitHub Pages
+
+on:
+  workflow_run:
+    workflows: ["Release Cross-Platform", "Update Manifest Only"]
+    types:
+      - completed
+    branches:
+      - main
+
+jobs:
+  deploy-pages:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      
+      - name: Verify latest.json exists
+        run: |
+          if [ ! -f "docs/latest.json" ]; then
+            echo "❌ docs/latest.json not found"
+            exit 1
+          fi
+          echo "✅ docs/latest.json found"
+          cat docs/latest.json
+      
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+      
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
