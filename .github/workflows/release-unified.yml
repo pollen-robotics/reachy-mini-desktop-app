@@ -170,15 +170,18 @@ jobs:
             FIRST_CHARS=$(printf '%s' "$TAURI_SIGNING_KEY" | head -c 50)
             
             if echo "$FIRST_CHARS" | grep -q "untrusted comment"; then
-              # Raw format - write directly (preserve newlines and structure)
-              # Only remove leading/trailing whitespace, preserve internal structure
-              printf '%s' "$TAURI_SIGNING_KEY" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' > ~/.tauri/reachy-mini.key
-              echo "✅ Using raw format private key (from GitHub Secrets)"
+              # Raw format in GitHub Secrets - encode to base64 for file storage
+              # tauri signer expects the key file to be base64-encoded
+              # Clean the raw key first (remove leading/trailing whitespace)
+              CLEANED_RAW=$(printf '%s' "$TAURI_SIGNING_KEY" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+              # Encode to base64 (tauri signer will decode it automatically)
+              printf '%s' "$CLEANED_RAW" | base64 -w 0 > ~/.tauri/reachy-mini.key
+              echo "✅ Encoded raw format private key to base64 (for tauri signer)"
             else
-              # Base64 format - clean and decode it
+              # Already base64 format - use directly (just clean whitespace)
               CLEANED_KEY=$(printf '%s' "$TAURI_SIGNING_KEY" | tr -d '\n\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-              echo "$CLEANED_KEY" | base64 -d > ~/.tauri/reachy-mini.key
-              echo "✅ Decoded base64 private key to raw format"
+              printf '%s' "$CLEANED_KEY" > ~/.tauri/reachy-mini.key
+              echo "✅ Using base64 format private key (from GitHub Secrets)"
             fi
             chmod 600 ~/.tauri/reachy-mini.key
             
