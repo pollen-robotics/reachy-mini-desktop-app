@@ -566,13 +566,13 @@ export default function SpinningWheel({
         // Gradient configuration variables
         const gradientHeight = '240px';
         const gradientWidth = '160px';
-        const maxOpacity = 0.45; // Increased from 0.3
-        const midOpacity = 0.25; // Increased from 0.15
-        const sideMidOpacity = 0.2; // Increased from 0.1
-        const topBottomFadeStart = '20%';
-        const topBottomFadeEnd = '60%';
-        const sideFadeStart = '30%';
-        const sideFadeEnd = '70%';
+        const maxOpacity = 1; // Increased for better visibility
+        const midOpacity = 0.6; // Increased for better visibility
+        const sideMidOpacity = 0.85; // Increased for better visibility
+        const topBottomFadeStart = '25%';
+        const topBottomFadeEnd = '65%';
+        const sideFadeStart = '35%';
+        const sideFadeEnd = '75%';
         
         const darkColor = 'rgba(26, 26, 26,';
         const lightColor = 'rgba(250, 250, 252,';

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
-import { extractErrorMessage, formatUserErrorMessage, isRecoverableError as checkRecoverableError } from '../../utils/errorUtils';
+import { extractErrorMessage, formatUserErrorMessage, isRecoverableError as checkRecoverableError, getDetailedUpdateErrorMessage } from '../../utils/errorUtils';
 import { isDevMode } from '../../utils/devMode';
 import { DAEMON_CONFIG, isOnline } from '../../config/daemon';
 
@@ -67,13 +67,33 @@ export const useUpdater = ({
     setIsChecking(true);
     setError(null);
 
+    // ✅ CRITICAL FIX: Add timeout to prevent infinite blocking
+    // If check() hangs (network issue, GitHub down, etc.), we timeout after 30s
+    const CHECK_TIMEOUT = DAEMON_CONFIG.UPDATE_CHECK.CHECK_TIMEOUT || 30000;
+    let timeoutId = null;
+
     try {
-      const update = await check();
+      // Wrapper check() with timeout using Promise.race
+      const checkPromise = check();
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error('Update check timeout: The update server did not respond within 30 seconds'));
+        }, CHECK_TIMEOUT);
+      });
+
+      const update = await Promise.race([checkPromise, timeoutPromise]);
+      
+      // ✅ Clear timeout if check succeeded (guaranteed cleanup)
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
       
       // Reset retry count on success
       retryCountRef.current = 0;
       lastCheckTimeRef.current = Date.now();
       isCheckingRef.current = false;
+      setIsChecking(false); // ✅ Ensure isChecking is always set to false on success
       
       if (update) {
         setUpdateAvailable(update);
@@ -83,9 +103,19 @@ export const useUpdater = ({
         return null;
       }
     } catch (err) {
+      // ✅ CRITICAL: Always clear timeout in case of error (guaranteed cleanup)
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+
       // Extract error message using centralized utility (DRY)
       const errorMessage = extractErrorMessage(err);
       const errorString = errorMessage.toLowerCase();
+      
+      // ✅ Detect timeout errors as recoverable
+      const isTimeout = errorString.includes('timeout') || 
+                       errorString.includes('did not respond');
       
       // Check if this is a missing update server error (common in dev mode)
       const isMissingUpdateServer = errorString.includes('release json') || 
@@ -103,33 +133,46 @@ export const useUpdater = ({
         return null;
       }
       
+      // ✅ Use detailed error message function for better user feedback
+      const detailedError = getDetailedUpdateErrorMessage(err, retryCount, maxRetries, isTimeout);
       console.error(`❌ Error checking for updates (attempt ${retryCount + 1}/${maxRetries}):`, errorMessage);
       
-      // Automatic retry for recoverable errors (only if under max retries)
-      if (isRecoverableError(err) && retryCount < maxRetries) {
+      // ✅ Treat timeout as recoverable error (retry if under max retries)
+      const shouldRetry = (isRecoverableError(err) || isTimeout) && retryCount < maxRetries;
+      
+      // Automatic retry for recoverable errors or timeouts (only if under max retries)
+      if (shouldRetry) {
         const delay = retryDelay * Math.pow(2, retryCount); // Exponential backoff
         
-        console.log(`🔄 Retrying in ${delay}ms... (${retryCount + 1}/${maxRetries})`);
-        await sleep(delay);
+        // ✅ Synchronize retryCountRef with retryCount
         retryCountRef.current = retryCount + 1;
+        
+        if (isTimeout) {
+          console.log(`⏱️ Update check timeout, retrying in ${delay}ms... (${retryCount + 1}/${maxRetries})`);
+        } else {
+          console.log(`🔄 Retrying in ${delay}ms... (${retryCount + 1}/${maxRetries})`);
+        }
+        
+        // ✅ Show retry message to user (non-blocking, will be replaced by final error if all retries fail)
+        if (retryCount === 0) {
+          // Only show on first retry to avoid spam
+          setError(detailedError);
+        }
+        
+        await sleep(delay);
         return checkForUpdates(retryCount + 1);
       }
       
       // Non-recoverable error or max retries reached
-      let userErrorMessage = null;
-      
-      if (isRecoverableError(err) || isMissingUpdateServer) {
-        // Production: show user-friendly message
-        userErrorMessage = `Unable to check for updates. Please check your internet connection.`;
-      } else {
-        // Other errors: format and show
-        userErrorMessage = formatUserErrorMessage(errorMessage);
-      }
+      // ✅ Use detailed error message with full context
+      const userErrorMessage = getDetailedUpdateErrorMessage(err, retryCount, maxRetries, isTimeout);
       
       // Only set error if we've exhausted retries and have a message (don't show error during retries)
       if (retryCount >= maxRetries && userErrorMessage) {
         setError(userErrorMessage);
       }
+      
+      // ✅ CRITICAL: Always reset isChecking to false, even on error
       isCheckingRef.current = false;
       setIsChecking(false);
       return null;

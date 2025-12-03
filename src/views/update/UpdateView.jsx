@@ -274,7 +274,7 @@ export default function UpdateView({
                 </Typography>
               </Box>
 
-              {/* Error title */}
+              {/* Error title - more specific based on error type */}
               <Typography
                 sx={{
                   fontSize: 18,
@@ -283,22 +283,30 @@ export default function UpdateView({
                   mb: 1,
                 }}
               >
-                {isNetworkError(updateError) ? 'No Internet Connection' : 'Update Check Failed'}
+                {updateError.includes('timed out') || updateError.includes('timeout')
+                  ? 'Update Check Timed Out'
+                  : updateError.includes('Network error') || updateError.includes('DNS error')
+                  ? 'Connection Problem'
+                  : updateError.includes('Server error')
+                  ? 'Server Error'
+                  : updateError.includes('Security error') || updateError.includes('certificate')
+                  ? 'Security Error'
+                  : isNetworkError(updateError)
+                  ? 'No Internet Connection'
+                  : 'Update Check Failed'}
               </Typography>
 
-              {/* Error message */}
+              {/* Error message - use the detailed error message directly */}
               <Typography
                 sx={{
                   fontSize: 13,
                   color: darkMode ? '#aaa' : '#666',
                   lineHeight: 1.6,
                   mb: 2,
+                  maxWidth: 400,
                 }}
               >
-                {isNetworkError(updateError) 
-                  ? 'Unable to check for updates. Please check your internet connection and try again.'
-                  : updateError
-                }
+                {updateError}
               </Typography>
 
             </Box>

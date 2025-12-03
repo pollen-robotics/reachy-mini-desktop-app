@@ -76,6 +76,7 @@ export const DAEMON_CONFIG = {
     INTERVAL: 3600000,            // Check for updates every hour (1h)
     STARTUP_DELAY: 2000,          // Delay before first check on startup (2s)
     RETRY_DELAY: 1000,            // Delay between retry attempts (1s)
+    CHECK_TIMEOUT: 30000,         // Timeout for check() call (30s) - prevents infinite blocking
   },
   
   // Robot movement and commands

@@ -379,6 +379,17 @@ const useAppStore = create(
   // Possible values: null (default/applications), 'controller', 'expressions'
   rightPanelView: null,
   
+  // 🎯 Apps Management - Centralized app state
+  availableApps: [],              // All available apps (official + installed)
+  installedApps: [],              // Only installed apps (subset of availableApps)
+  currentApp: null,               // Currently running app: { info: { name, ... }, state: 'running'|'starting'|..., error?: string } | null
+  activeJobs: {},                 // Active installation jobs: Object<jobId, { type: 'install'|'remove', appName, status, logs }> (Object instead of Map for Zustand serialization)
+  appsLoading: false,             // Loading state for apps fetch
+  appsError: null,                // Error state for apps fetch
+  appsLastFetch: null,            // Timestamp of last successful fetch (for cache)
+  appsOfficialMode: true,         // Current mode: true = official only, false = all apps
+  appsCacheValid: false,          // Whether cache is still valid (to avoid unnecessary refetch)
+  
   // Actions - Generic DRY setter
   update: (updates) => set(updates),
   
@@ -790,6 +801,64 @@ const useAppStore = create(
     const systemPreference = getSystemPreference();
     set({ darkMode: systemPreference });
   },
+  
+  // 🎯 Apps Management Actions
+  setAvailableApps: (apps) => set({ 
+    availableApps: apps,
+    appsLastFetch: Date.now(),
+    appsCacheValid: true,
+    appsError: null,
+  }),
+  
+  setInstalledApps: (apps) => set({ installedApps: apps }),
+  
+  setCurrentApp: (app) => set({ currentApp: app }),
+  
+  setActiveJobs: (jobs) => {
+    // Handle both Map and Object, and function updaters
+    if (typeof jobs === 'function') {
+      // Updater function
+      set((state) => {
+        const currentJobs = state.activeJobs instanceof Map 
+          ? Object.fromEntries(state.activeJobs) 
+          : (state.activeJobs || {});
+        const newJobs = jobs(new Map(Object.entries(currentJobs)));
+        // Convert Map to Object for Zustand
+        const jobsObj = newJobs instanceof Map 
+          ? Object.fromEntries(newJobs) 
+          : newJobs;
+        return { activeJobs: jobsObj };
+      });
+    } else {
+      // Direct value
+      const jobsObj = jobs instanceof Map 
+        ? Object.fromEntries(jobs) 
+        : jobs;
+      set({ activeJobs: jobsObj || {} });
+    }
+  },
+  
+  setAppsLoading: (loading) => set({ appsLoading: loading }),
+  
+  setAppsError: (error) => set({ appsError: error }),
+  
+  setAppsOfficialMode: (mode) => set({ 
+    appsOfficialMode: mode,
+    appsCacheValid: false, // Invalidate cache when mode changes
+  }),
+  
+  invalidateAppsCache: () => set({ appsCacheValid: false }),
+  
+  clearApps: () => set({
+    availableApps: [],
+    installedApps: [],
+    currentApp: null,
+    activeJobs: {},
+    appsLoading: false,
+    appsError: null,
+    appsLastFetch: null,
+    appsCacheValid: false,
+  }),
   }))
 );
 
