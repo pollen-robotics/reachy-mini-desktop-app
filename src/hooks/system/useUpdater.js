@@ -358,13 +358,6 @@ export const useUpdater = ({
     }
   }, [updateAvailable, downloadAndInstall]);
 
-  /**
-   * Dismisses the available update
-   */
-  const dismissUpdate = useCallback(() => {
-    setUpdateAvailable(null);
-  }, []);
-
   // Listen for online/offline events to retry when connection is restored
   useEffect(() => {
     const handleOnline = () => {
@@ -444,7 +437,6 @@ export const useUpdater = ({
     error,
     checkForUpdates,
     installUpdate,
-    dismissUpdate,
   };
 };
 

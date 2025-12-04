@@ -3,11 +3,105 @@ import { Box, Typography } from '@mui/material';
 import useAppStore from '../../store/useAppStore';
 import { DAEMON_CONFIG } from '../../config/daemon';
 
-function LogConsole({ logs, darkMode = false }) {
+// ✅ Constant empty arrays to avoid creating new arrays on each render
+const EMPTY_ARRAY = [];
+
+/**
+ * Helper function to format timestamp
+ */
+const formatTimestamp = (timestamp) => {
+  if (typeof timestamp === 'string') {
+    // Already formatted string (HH:mm:ss)
+    return timestamp;
+  }
+  if (typeof timestamp === 'number') {
+    // Unix timestamp (milliseconds)
+    return new Date(timestamp).toLocaleTimeString('en-GB', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+  }
+  // Fallback: generate current time
+  return new Date().toLocaleTimeString('en-GB', { 
+    hour: '2-digit', 
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+};
+
+/**
+ * Helper function to normalize a log entry
+ * IMPORTANT: Preserves timestamp if already formatted to avoid creating new objects on each render
+ */
+const normalizeLog = (log) => {
+  // If already normalized (has source and message and timestamp is already a string)
+  if (log && typeof log === 'object' && log.message && log.source) {
+    // If timestamp is already a formatted string, preserve it to avoid creating new objects
+    if (typeof log.timestamp === 'string') {
+      return log; // Return as-is to preserve identity
+    }
+    // Only format if timestamp is a number or missing
+    return {
+      ...log,
+      timestamp: log.timestamp ? formatTimestamp(log.timestamp) : formatTimestamp(Date.now()),
+      level: log.level || 'info',
+    };
+  }
+  
+  // If it's an object with message and level (like startupLogs)
+  if (log && typeof log === 'object' && log.message) {
+    // Preserve timestamp if it's already formatted
+    const timestamp = typeof log.timestamp === 'string' 
+      ? log.timestamp 
+      : (log.timestamp ? formatTimestamp(log.timestamp) : formatTimestamp(Date.now()));
+    
+    return {
+      message: log.message,
+      source: log.source || 'daemon',
+      timestamp,
+      level: log.level || 'info',
+      appName: log.appName,
+    };
+  }
+  
+  // If it's a string
+  if (typeof log === 'string') {
+    return {
+      message: log,
+      source: 'daemon',
+      timestamp: formatTimestamp(Date.now()),
+      level: 'info',
+    };
+  }
+  
+  // Fallback
+  return {
+    message: String(log),
+    source: 'daemon',
+    timestamp: formatTimestamp(Date.now()),
+    level: 'info',
+  };
+};
+
+function LogConsole({ 
+  logs, 
+  darkMode = false,
+  includeStoreLogs = true, // Include frontendLogs and appLogs from store
+  sx = {}, // Additional sx styles
+  maxHeight = null, // Override max height (string like '60px' or number)
+  height = null, // Override height (string like '60px' or number, or 'auto')
+  showTimestamp = true, // Show timestamp column
+  compact = false, // Compact mode (smaller font, less spacing)
+}) {
   const scrollRef = useRef(null);
   // ✅ Use specific selectors to avoid unnecessary re-renders
-  const frontendLogs = useAppStore(state => state.frontendLogs);
-  const appLogs = useAppStore(state => state.appLogs);
+  // ✅ CRITICAL: Use constant EMPTY_ARRAY instead of [] to avoid creating new arrays on each render
+  // This prevents infinite loops when includeStoreLogs is false
+  const frontendLogs = useAppStore(state => includeStoreLogs ? state.frontendLogs : EMPTY_ARRAY);
+  const appLogs = useAppStore(state => includeStoreLogs ? state.appLogs : EMPTY_ARRAY);
   const isFirstLoadRef = useRef(true);
   const shouldAutoScrollRef = useRef(true); // ✅ Track if we should auto-scroll (starts as true)
   const lastScrollTopRef = useRef(0); // ✅ Track last scroll position to detect scroll direction
@@ -26,22 +120,17 @@ function LogConsole({ logs, darkMode = false }) {
     ];
     
     const filteredLogs = logs.filter(log => {
-      const message = typeof log === 'string' ? log : log.toString();
+      // Extract message correctly from string or object
+      const message = typeof log === 'string' 
+        ? log 
+        : (log && typeof log === 'object' && log.message) 
+          ? log.message 
+          : String(log);
       return !repetitiveDaemonLogs.some(pattern => message.includes(pattern));
     });
     
     const allLogs = [
-      ...filteredLogs.map(log => ({ 
-        message: log, 
-        source: 'daemon',
-        timestamp: new Date().toLocaleTimeString('en-GB', { 
-          hour: '2-digit', 
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: false
-        }),
-        level: 'info',
-      })),
+      ...filteredLogs.map(normalizeLog),
       ...frontendLogs.map(log => ({ ...log, level: log.level || 'info' })),
       ...appLogs,
     ];
@@ -71,9 +160,11 @@ function LogConsole({ logs, darkMode = false }) {
       return 0;
     });
     
-    // ✅ Performance: Limit displayed logs to avoid UI lag
-    return sortedLogs.slice(-DAEMON_CONFIG.LOGS.MAX_DISPLAY);
-  }, [logs, frontendLogs, appLogs]); // ✅ Use full arrays as dependencies to detect all changes
+    // ✅ Performance: Limit displayed logs to avoid UI lag (only if includeStoreLogs is true)
+    return includeStoreLogs 
+      ? sortedLogs.slice(-DAEMON_CONFIG.LOGS.MAX_DISPLAY)
+      : sortedLogs;
+  }, [logs, frontendLogs, appLogs, includeStoreLogs]); // ✅ Use full arrays as dependencies to detect all changes
 
   // ✅ Check if user is at bottom (within 5px threshold)
   const isAtBottom = () => {
@@ -115,27 +206,59 @@ function LogConsole({ logs, darkMode = false }) {
     }
   }, [normalizedLogs.length]);
 
+  const fontSize = compact ? 9 : 10;
+  const defaultHeight = compact ? 60 : 80;
+  
+  // Determine height and maxHeight based on props
+  // - If height is 'auto': no fixed height, use maxHeight if provided
+  // - If height is provided (string/number): use it as fixed height
+  // - Otherwise: use maxHeight if provided, or defaultHeight
+  const heightStyle = {};
+  const maxHeightStyle = {};
+  
+  if (height === 'auto') {
+    // Auto height: only set maxHeight if provided
+    if (maxHeight) {
+      maxHeightStyle.maxHeight = maxHeight;
+    }
+  } else if (height !== null) {
+    // Fixed height provided
+    heightStyle.height = height;
+    if (maxHeight) {
+      maxHeightStyle.maxHeight = maxHeight;
+    }
+  } else {
+    // No height prop: use maxHeight if provided, otherwise defaultHeight
+    if (maxHeight) {
+      heightStyle.height = maxHeight;
+    } else {
+      heightStyle.height = defaultHeight;
+    }
+  }
+  
   return (
     <Box
       ref={scrollRef}
       onScroll={handleScroll}
+      className="log-console"
       sx={{
         width: '100%',
-        height: 80, // ✅ Reduced by 20px (was 100)
-        borderRadius: '12px',
+        ...heightStyle,
+        ...maxHeightStyle,
+        borderRadius: compact ? '6px' : '12px',
         bgcolor: darkMode ? '#1a1a1a' : '#ffffff', // Darker background for better contrast
         border: darkMode ? '1px solid rgba(255, 255, 255, 0.15)' : '1px solid rgba(0, 0, 0, 0.15)', // More visible border
         overflowY: 'auto',
         overflowX: 'hidden',
-        pl: 2,
-        pr: 1,
-        py: .5,
+        pl: compact ? 1 : 2,
+        pr: compact ? 0.5 : 1,
+        py: compact ? 0.5 : 0.5,
         fontFamily: 'SF Mono, Monaco, Menlo, monospace',
-        fontSize: 10,
+        fontSize: fontSize,
         // ✅ No transition on bgcolor/border to avoid animation when changing dark mode
         transition: 'box-shadow 0.3s ease',
         '&::-webkit-scrollbar': {
-          width: '4px',
+          width: compact ? '4px' : '4px',
         },
         '&::-webkit-scrollbar-track': {
           background: 'transparent',
@@ -147,20 +270,21 @@ function LogConsole({ logs, darkMode = false }) {
         '&:hover::-webkit-scrollbar-thumb': {
           background: darkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)',
         },
+        ...sx, // Merge additional styles
       }}
     >
       {normalizedLogs.length === 0 ? (
-        <Box
+          <Box
           sx={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             width: '100%',
             height: '100%',
-            minHeight: 80,
+            minHeight: defaultHeight,
           }}
         >
-          <Typography sx={{ fontSize: 10, color: darkMode ? '#666' : '#999', fontFamily: 'inherit', textAlign: 'center' }}>
+          <Typography sx={{ fontSize: fontSize, color: darkMode ? '#666' : '#999', fontFamily: 'inherit', textAlign: 'center' }}>
             No logs
           </Typography>
         </Box>
@@ -191,15 +315,15 @@ function LogConsole({ logs, darkMode = false }) {
               key={index}
               sx={{
                 display: 'flex',
-                justifyContent: 'space-between',
+                justifyContent: showTimestamp ? 'space-between' : 'flex-start',
                 alignItems: 'flex-start',
-                mb: 0.3,
+                mb: compact ? 0.2 : 0.3,
                 gap: 1,
               }}
             >
               <Typography
                 sx={{
-                  fontSize: 10,
+                  fontSize: fontSize,
                   color: darkMode ? 
                     (isError ? '#ff5555' : 
                      isWarning ? '#fbbf24' :
@@ -216,7 +340,7 @@ function LogConsole({ logs, darkMode = false }) {
                      isApp ? '#7c3aed' :       // Purple for app logs
                      '#1a1a1a'),               // Very dark gray for daemon (high contrast)
                   fontFamily: 'inherit',
-                  lineHeight: 1.6,
+                  lineHeight: compact ? 1.4 : 1.6,
                   fontWeight: isFrontend ? 500 : 400, // Frontend in bold
                   opacity: 1, // Full opacity for all logs
                   flex: 1,
@@ -224,20 +348,22 @@ function LogConsole({ logs, darkMode = false }) {
               >
                 {displayMessage}
               </Typography>
-              <Typography
-                sx={{
-                  fontSize: 9,
-                  color: darkMode ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.5)',
-                  fontFamily: 'inherit',
-                  lineHeight: 1.6,
-                  fontWeight: 400,
-                  opacity: 0.8,
-                  flexShrink: 0,
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {timestamp}
-            </Typography>
+              {showTimestamp && (
+                <Typography
+                  sx={{
+                    fontSize: fontSize - 1,
+                    color: darkMode ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.5)',
+                    fontFamily: 'inherit',
+                    lineHeight: compact ? 1.4 : 1.6,
+                    fontWeight: 400,
+                    opacity: 0.8,
+                    flexShrink: 0,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {timestamp}
+                </Typography>
+              )}
             </Box>
           );
         })

@@ -4,7 +4,7 @@ import { Box } from '@mui/material';
 import { RobotNotDetectedView, StartingView, ReadyToStartView, TransitionView, ActiveRobotView, ClosingView, UpdateView } from '../views';
 import AppTopBar from './AppTopBar';
 import { useDaemon, useDaemonHealthCheck } from '../hooks/daemon';
-import { useUsbDetection, useLogs, useWindowResize, useUpdater } from '../hooks/system';
+import { useUsbDetection, useLogs, useWindowResize, useUpdater, useUpdateViewState } from '../hooks/system';
 import { useRobotCommands, useRobotState } from '../hooks/robot';
 import { DAEMON_CONFIG, setAppStoreInstance } from '../config/daemon';
 import { isDevMode } from '../utils/devMode';
@@ -33,106 +33,28 @@ function App() {
     error: updateError,
     checkForUpdates,
     installUpdate,
-    dismissUpdate,
   } = useUpdater({
     autoCheck: !isDev, // Disable auto check in dev mode
     checkInterval: DAEMON_CONFIG.UPDATE_CHECK.INTERVAL,
     silent: false,
   });
   
-  // 🕐 Track view start times to ensure minimum display duration (DRY)
-  const [updateCheckStartTime, setUpdateCheckStartTime] = useState(() => Date.now()); // Initialize immediately
+  // 🕐 USB check tracking - track when first USB check happens
   const [usbCheckStartTime, setUsbCheckStartTime] = useState(null);
-  const [showUpdateViewForced, setShowUpdateViewForced] = useState(true); // Start with true to show UpdateView first
-  
-  // DEV MODE: Simple logic - just show view for minimum time, then hide
-  // No update check is performed, so isChecking will always be false
-  useEffect(() => {
-    if (!isDev) return; // Only run in dev mode
-    
-    const elapsed = Date.now() - updateCheckStartTime;
-    const minTime = DAEMON_CONFIG.MIN_DISPLAY_TIMES.UPDATE_CHECK;
-    
-    if (elapsed >= minTime) {
-      // Minimum time elapsed, hide the view
-      setShowUpdateViewForced(false);
-      setUpdateCheckStartTime(null);
-    } else {
-      // Wait for remaining time
-      const remainingTime = minTime - elapsed;
-      const timer = setTimeout(() => {
-        setShowUpdateViewForced(false);
-        setUpdateCheckStartTime(null);
-      }, remainingTime);
-      return () => clearTimeout(timer);
-    }
-  }, [isDev, updateCheckStartTime]);
-  
-  // PRODUCTION MODE: Track update check lifecycle and ensure minimum display time
-  useEffect(() => {
-    if (isDev) return; // Skip in dev mode
-    
-    // Start tracking when check begins
-    if (isChecking && updateCheckStartTime === null) {
-      const startTime = Date.now();
-      setUpdateCheckStartTime(startTime);
-      setShowUpdateViewForced(true);
-      return;
-    }
-    
-    // Check completed - ensure minimum display time
-    if (!isChecking && !updateAvailable && !isDownloading && !updateError && updateCheckStartTime !== null && showUpdateViewForced) {
-      const elapsed = Date.now() - updateCheckStartTime;
-      const minTime = DAEMON_CONFIG.MIN_DISPLAY_TIMES.UPDATE_CHECK;
-      
-      if (elapsed >= minTime) {
-        // Minimum time already elapsed
-        setShowUpdateViewForced(false);
-        setUpdateCheckStartTime(null);
-      } else {
-        // Keep showing for remaining minimum time
-        const remainingTime = minTime - elapsed;
-        const timer = setTimeout(() => {
-          setShowUpdateViewForced(false);
-          setUpdateCheckStartTime(null);
-        }, remainingTime);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [isDev, isChecking, updateAvailable, isDownloading, updateError, updateCheckStartTime, showUpdateViewForced]);
-  
-  // PRODUCTION MODE: Handle error case - allow continuation after minimum time + grace period
-  useEffect(() => {
-    if (isDev) return; // Skip in dev mode
-    if (!updateError || !showUpdateViewForced || updateCheckStartTime === null) return;
-    
-    const elapsed = Date.now() - updateCheckStartTime;
-    const minTime = DAEMON_CONFIG.MIN_DISPLAY_TIMES.UPDATE_CHECK;
-    
-    // Allow continuation after minimum time + 1s grace period for errors
-    if (elapsed >= minTime + 1000) {
-      setShowUpdateViewForced(false);
-      setUpdateCheckStartTime(null);
-    }
-  }, [isDev, updateError, showUpdateViewForced, updateCheckStartTime]);
-  
-  // USB check tracking - track when first USB check happens
   const { isFirstCheck } = useAppStore();
   
-  // Determine if UpdateView should be shown (ALWAYS FIRST, before USB)
-  // Must be defined before useEffects that use it
-  const shouldShowUpdateView = useMemo(() => {
-    // Don't show if daemon is active/starting/stopping
-    if (isActive || isStarting || isStopping) return false;
-    
-    // Show if checking, downloading, update available, or error
-    if (isChecking || updateAvailable || isDownloading || updateError) return true;
-    
-    // Show if forced (minimum display time not elapsed yet)
-    if (showUpdateViewForced) return true;
-    
-    return false;
-  }, [isActive, isStarting, isStopping, isChecking, updateAvailable, isDownloading, updateError, showUpdateViewForced]);
+  // ✨ Update view state management with useReducer
+  // Handles all cases: dev mode, production mode, minimum display time, errors
+  const shouldShowUpdateView = useUpdateViewState({
+    isDev,
+    isChecking,
+    updateAvailable,
+    isDownloading,
+    updateError,
+    isActive,
+    isStarting,
+    isStopping,
+  });
   
   // Start USB check only after update check is complete
   useEffect(() => {

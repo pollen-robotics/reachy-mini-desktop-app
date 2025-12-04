@@ -4,6 +4,7 @@
 // Global system hooks
 export { useLogs } from './useLogs';
 export { useUpdater } from './useUpdater';
+export { useUpdateViewState } from './useUpdateViewState';
 export { useUsbDetection } from './useUsbDetection';
 export { useWindowResize } from './useWindowResize';
 

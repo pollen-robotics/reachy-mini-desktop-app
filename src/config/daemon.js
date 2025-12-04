@@ -65,7 +65,7 @@ export const DAEMON_CONFIG = {
   
   // Minimum display times for views (UX smoothness)
   MIN_DISPLAY_TIMES: {
-    UPDATE_CHECK: 2500,          // Minimum time to show update check (2.5s)
+    UPDATE_CHECK: 2000,          // Minimum time to show update check (2s)
     USB_CHECK: 2000,              // Minimum time to show USB check (2s)
     USB_CHECK_FIRST: 1500,        // Minimum delay for first USB check (1.5s)
     APP_UNINSTALL: 4000,         // Minimum display time for uninstall result (4s)

@@ -8,6 +8,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { HARDWARE_ERROR_CONFIGS, getErrorMeshes } from '../../utils/hardwareErrors';
 import { getTotalScanParts, getCurrentScanPart, mapMeshToScanPart } from '../../utils/scanParts';
 import { useDaemonStartupLogs } from '../../hooks/daemon/useDaemonStartupLogs';
+import LogConsole from '../active-robot/LogConsole';
 
 /**
  * Generate text shadow for better readability on transparent backgrounds
@@ -459,58 +460,29 @@ function HardwareScanView({
             transform: 'translateX(-50%)',
             width: 'calc(100% - 32px)',
             maxWidth: '420px',
-            maxHeight: '60px', // ~3 lines, scrollable if more content
-            overflowY: 'auto', // Enable scrolling
-            overflowX: 'hidden',
-            bgcolor: darkMode ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 0.05)',
-            borderRadius: '6px',
-            px: 1,
-            py: 0.75,
-            border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)'}`,
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
+            zIndex: 1000,
             opacity: 0.25, // Discreet by default
             transition: 'opacity 0.3s ease-in-out',
-            zIndex: 1000,
             '&:hover': {
               opacity: 1, // Full opacity on hover
             },
-            // Custom scrollbar styling
-            '&::-webkit-scrollbar': {
-              width: '6px',
-            },
-            '&::-webkit-scrollbar-track': {
-              background: 'transparent',
-            },
-            '&::-webkit-scrollbar-thumb': {
-              background: darkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)',
-              borderRadius: '3px',
-              '&:hover': {
-                background: darkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)',
-              },
-            },
           }}
         >
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.2 }}>
-            {startupLogs.map((log, idx) => (
-              <Typography
-                key={idx}
-                sx={{
-                  fontSize: 9, // Smaller font size
-                  fontFamily: 'monospace',
-                  color: log.level === 'error' 
-                    ? '#ef4444' 
-                    : log.level === 'warning'
-                    ? '#f59e0b'
-                    : darkMode ? '#ccc' : '#666',
-                  lineHeight: 1.4,
-                  wordBreak: 'break-word', // Allow wrapping for long lines
-                }}
-              >
-                {log.message}
-              </Typography>
-            ))}
-          </Box>
+          <LogConsole
+            logs={startupLogs}
+            darkMode={darkMode}
+            includeStoreLogs={false}
+            compact={true}
+            showTimestamp={false}
+            height="auto"
+            maxHeight="60px"
+            sx={{
+              bgcolor: darkMode ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 0.05)',
+              border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)'}`,
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
+            }}
+          />
         </Box>
       )}
     </Box>

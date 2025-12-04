@@ -23,7 +23,9 @@ export default function UpdateView({
   const checkStartTimeRef = useRef(Date.now());
   const { isOnline: isInternetOnline, hasChecked: hasInternetChecked } = useInternetHealthcheck({ interval: 5000, timeout: 5000 });
 
-  // Timer to guarantee minimum display time (uses centralized config)
+  // ✅ Timer to guarantee minimum display time (uses centralized config)
+  // Reset timer when component mounts to ensure "Looking for updates..." is visible for at least 2 seconds
+  // This works in both DEV mode (where isChecking stays false) and PRODUCTION (where check may complete quickly)
   useEffect(() => {
     checkStartTimeRef.current = Date.now();
     setMinDisplayTimeElapsed(false);
@@ -33,7 +35,7 @@ export default function UpdateView({
     }, DAEMON_CONFIG.MIN_DISPLAY_TIMES.UPDATE_CHECK);
 
     return () => clearTimeout(timer);
-  }, []); // Triggers only once on component mount
+  }, []); // ✅ Only reset on mount - ensures consistent 2s display regardless of check speed
 
   // Automatic installation if update available and minimum time elapsed
   useEffect(() => {
@@ -102,8 +104,10 @@ export default function UpdateView({
           px: 4,
         }}
       >
-        {isChecking && !updateAvailable ? (
-          // State: Checking in progress - subtle and centered design
+        {/* ✅ Show "Looking for updates..." if checking OR if minimum time not elapsed yet
+            This ensures the message is visible for at least 2 seconds, even if check completes quickly */}
+        {(isChecking || !minDisplayTimeElapsed) && !updateAvailable && !updateError ? (
+          // State: Checking in progress OR minimum display time not elapsed - subtle and centered design
           <Box
             sx={{
               display: 'flex',
