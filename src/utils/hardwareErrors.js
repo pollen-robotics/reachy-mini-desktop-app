@@ -137,6 +137,20 @@ export const HARDWARE_ERROR_CONFIGS = {
     code: null,
   },
   
+  APP_TRANSLOCATION: {
+    type: 'app_translocation',
+    patterns: ['AppTranslocation', 'APP_TRANSLOCATION_ERROR', 'Read-only file system'],
+    message: {
+      text: 'Move the app to',
+      bold: 'Applications',
+      suffix: 'folder',
+    },
+    meshPatterns: null,
+    linkName: null,
+    cameraPreset: 'scan',
+    code: 'APP_TRANSLOCATION',
+  },
+  
   // Add more error types here as needed
   // Example:
   // ANTENNA_ERROR: {

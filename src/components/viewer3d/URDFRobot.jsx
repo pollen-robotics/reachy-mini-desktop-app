@@ -95,14 +95,14 @@ function URDFRobot({
         
         child.material = createXrayMaterial(xrayColor, { opacity });
       } else {
-        // Normal mode: simple opaque material with smooth shading
         // Normal mode: flat shading classique
         // Pour un vrai flat shading, on doit calculer les normales par face (pas par vertex)
-        // Supprimer les normales existantes et laisser Three.js les calculer par face
+        // Supprimer les normales existantes et recalculer les normales par face
         if (child.geometry.attributes.normal) {
           child.geometry.deleteAttribute('normal');
         }
-        // Three.js calculera automatiquement les normales par face avec flatShading: true
+        // ✅ Recalculer les normales par face pour le flat shading
+        child.geometry.computeVertexNormals();
         
         if (isBigLens) {
           child.material = new THREE.MeshStandardMaterial({
@@ -250,7 +250,8 @@ function URDFRobot({
     }
     
     // ✅ IMPORTANT: Initialize lastAntennasRef to prevent useFrame from reapplying antennas
-    lastAntennasRef.current = currentAntennas.slice();
+    // ✅ OPTIMIZED: Store reference directly (currentAntennas is already a new array)
+    lastAntennasRef.current = currentAntennas;
     
     // Only log if antennas changed significantly (threshold: 0.01 rad)
     const lastAntennas = lastAntennasLogRef.current;
@@ -328,7 +329,9 @@ function URDFRobot({
           console.warn(`⚠️ Only ${appliedCount}/6 stewart joints were applied`);
         }
         
-        lastHeadJointsRef.current = headJoints.slice();
+        // ✅ OPTIMIZED: Store reference directly (arrays from WebSocket are not mutated)
+        // Only slice if we need a copy for safety, but WebSocket arrays are safe to reference
+        lastHeadJointsRef.current = headJoints;
       }
     } else if (yawBody !== lastYawBodyRef.current && yawBody !== undefined && robot.joints['yaw_body']) {
       // ✅ Fallback: use yawBody alone if headJoints is not available
@@ -367,7 +370,8 @@ function URDFRobot({
           }
         }
         
-        lastPassiveJointsRef.current = passiveArray.slice();
+        // ✅ OPTIMIZED: Store reference directly (arrays from WebSocket are not mutated)
+        lastPassiveJointsRef.current = passiveArray;
       }
     }
 
@@ -380,7 +384,8 @@ function URDFRobot({
     if (headPose && headPose.length === 16) {
       const headPoseChanged = !arraysEqual(headPose, lastHeadPoseRef.current);
       if (headPoseChanged) {
-        lastHeadPoseRef.current = headPose.slice(); // Keep in cache for comparison
+        // ✅ OPTIMIZED: Store reference directly (arrays from WebSocket are not mutated)
+        lastHeadPoseRef.current = headPose;
         // Note: We no longer apply the matrix directly as joints are more precise
       }
     }
@@ -403,29 +408,29 @@ function URDFRobot({
       if (robot.joints['right_antenna']) {
         robot.setJointValue('right_antenna', -antennas[0]); // Left data (negated) goes to right visual antenna
       }
-      lastAntennasRef.current = antennas.slice(); // Copy for comparison
+      // ✅ OPTIMIZED: Store reference directly (arrays from WebSocket are not mutated)
+      lastAntennasRef.current = antennas;
         // No need to update matrices for antennas (they are independent)
       }
     }
     
-    // ✅ Hover detection with raycaster for debug (throttled for performance)
-    // 🚀 GAME-CHANGING: Raycaster already throttled by useFrame throttling above (10 Hz)
-    // No need to throttle again since we're already at 10 Hz
-    if (process.env.NODE_ENV === 'development') {
-      // frameCountRef already incremented above, so we're already at 10 Hz
-      // Just run raycaster on every throttled frame
-    raycaster.current.setFromCamera(mouse.current, camera);
-    const intersects = raycaster.current.intersectObject(robot, true);
-    
-    if (intersects.length > 0) {
-      const mesh = intersects[0].object;
-      if (mesh.isMesh && mesh !== hoveredMesh.current) {
-        hoveredMesh.current = mesh;
-      }
-    } else {
-      hoveredMesh.current = null;
+    // ✅ Hover detection with raycaster for debug (COMPLETELY DISABLED in production)
+    // ✅ OPTIMIZED: Raycaster completely disabled in production for maximum performance
+    // In development, only run every 3rd throttled frame (~3.3 Hz) for minimal overhead
+    if (process.env.NODE_ENV === 'development' && frameCountRef.current % 3 === 0) {
+      raycaster.current.setFromCamera(mouse.current, camera);
+      const intersects = raycaster.current.intersectObject(robot, true);
+      
+      if (intersects.length > 0) {
+        const mesh = intersects[0].object;
+        if (mesh.isMesh && mesh !== hoveredMesh.current) {
+          hoveredMesh.current = mesh;
+        }
+      } else {
+        hoveredMesh.current = null;
       }
     }
+    // ✅ Production: Raycaster completely skipped (0% overhead)
   });
 
   // STEP 2: Apply materials (on initial load AND on changes)

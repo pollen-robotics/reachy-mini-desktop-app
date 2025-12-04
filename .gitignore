@@ -8,6 +8,8 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+.analysis/
+
 node_modules
 dist
 dist-ssr

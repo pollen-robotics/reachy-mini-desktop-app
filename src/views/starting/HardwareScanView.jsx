@@ -7,6 +7,8 @@ import useAppStore from '../../store/useAppStore';
 import { invoke } from '@tauri-apps/api/core';
 import { HARDWARE_ERROR_CONFIGS, getErrorMeshes } from '../../utils/hardwareErrors';
 import { getTotalScanParts, getCurrentScanPart, mapMeshToScanPart } from '../../utils/scanParts';
+import { useDaemonStartupLogs } from '../../hooks/daemon/useDaemonStartupLogs';
+import LogConsole from '../active-robot/LogConsole';
 
 /**
  * Generate text shadow for better readability on transparent backgrounds
@@ -31,8 +33,9 @@ function HardwareScanView({
   onScanComplete: onScanCompleteCallback,
   startDaemon,
 }) {
-  const { setHardwareError, darkMode, setIsStarting } = useAppStore();
+  const { setHardwareError, darkMode, setIsStarting, isStarting } = useAppStore();
   const theme = useTheme();
+  const { logs: startupLogs, hasError: hasStartupError, lastMessage } = useDaemonStartupLogs(isStarting);
   const totalScanParts = getTotalScanParts(); // Static total from scan parts list
   const [scanProgress, setScanProgress] = useState({ current: 0, total: totalScanParts });
   const [currentPart, setCurrentPart] = useState(null);
@@ -88,19 +91,24 @@ function HardwareScanView({
       await invoke('stop_daemon');
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Reset all error states
+      // Reset scan progress and visual states (but NOT hardwareError yet)
+      // hardwareError will be reset by startDaemon, and re-set if error persists
       setScanError(null);
       setErrorMesh(null);
       setScanProgress({ current: 0, total: totalScanParts });
       setCurrentPart(null);
       setScanComplete(false);
-      setHardwareError(null);
       scannedPartsRef.current.clear(); // Reset scanned parts tracking
+      
+      // ✅ Don't reset hardwareError here - let startDaemon handle it
+      // If the error persists, it will be re-detected by the stderr listener
       
       // If startDaemon is provided, use it instead of reloading
       if (startDaemon) {
         setIsStarting(true);
         await startDaemon();
+        // ✅ startDaemon will reset hardwareError, and if error persists,
+        // it will be re-detected by sidecar-stderr listener or timeout
         setIsRetrying(false);
       } else {
         // Fallback to reload if startDaemon not available
@@ -109,14 +117,19 @@ function HardwareScanView({
     } catch (err) {
       console.error('Failed to retry:', err);
       setIsRetrying(false);
-      // If startDaemon fails, reload as fallback
-      if (startDaemon) {
-        window.location.reload();
-      }
+      // ✅ Keep scan view active - don't reload, let the error be handled by startDaemon
+      // startDaemon will set hardwareError if it fails, keeping us in scan view
     }
-  }, [setHardwareError, setIsStarting, startDaemon]);
+  }, [setIsStarting, startDaemon]);
   
   const handleScanComplete = useCallback(() => {
+    // ✅ Don't mark scan as complete if there's an error - stay in error state
+    const currentState = useAppStore.getState();
+    if (currentState.hardwareError || (startupError && typeof startupError === 'object' && startupError.type)) {
+      console.warn('⚠️ Scan visual completed but error detected, not completing scan');
+      return; // Don't complete scan, stay in error state
+    }
+    
     setScanProgress(prev => ({ ...prev, current: prev.total }));
     setCurrentPart(null);
     setScanComplete(true);
@@ -124,7 +137,7 @@ function HardwareScanView({
     if (onScanCompleteCallback) {
       onScanCompleteCallback();
     }
-  }, [onScanCompleteCallback]);
+  }, [onScanCompleteCallback, startupError]);
   
   // Track which parts have been scanned to calculate progress
   const scannedPartsRef = useRef(new Set());
@@ -193,12 +206,13 @@ function HardwareScanView({
         px: 4,
         gap: 1.5,
         bgcolor: 'transparent',
+        position: 'relative', // For absolute positioning of logs
       }}
     >
       <Box
         sx={{
           width: '100%',
-          maxWidth: '450px',
+          maxWidth: '300px', // Reduced by 1/3: 450px * 2/3 = 300px
           position: 'relative',
           bgcolor: 'transparent',
         }}
@@ -206,7 +220,7 @@ function HardwareScanView({
         <Box
           sx={{
             width: '100%',
-            height: '480px',
+            height: '320px', // Reduced by 1/3: 480px * 2/3 = 320px
             position: 'relative',
             bgcolor: 'transparent',
           }}
@@ -434,6 +448,43 @@ function HardwareScanView({
           </Box>
         )}
       </Box>
+
+      {/* ✅ Daemon startup logs - fixed at the bottom, discrete, scrollable */}
+      {/* Always show logs if available, even if not starting (error state) */}
+      {startupLogs.length > 0 && (
+        <Box
+          sx={{
+            position: 'fixed',
+            bottom: 16,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: 'calc(100% - 32px)',
+            maxWidth: '420px',
+            zIndex: 1000,
+            opacity: 0.25, // Discreet by default
+            transition: 'opacity 0.3s ease-in-out',
+            '&:hover': {
+              opacity: 1, // Full opacity on hover
+            },
+          }}
+        >
+          <LogConsole
+            logs={startupLogs}
+            darkMode={darkMode}
+            includeStoreLogs={false}
+            compact={true}
+            showTimestamp={false}
+            height="auto"
+            maxHeight="60px"
+                sx={{
+              bgcolor: darkMode ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 0.05)',
+              border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)'}`,
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
+            }}
+          />
+        </Box>
+      )}
     </Box>
   );
 }

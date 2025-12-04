@@ -97,6 +97,18 @@ fn main() -> ExitCode {
     };
     
     if let Err(e) = patching_pyvenv_cfg(&uv_folder, &cpython_folder) {
+        // Check if this is an AppTranslocation error
+        if e.contains("APP_TRANSLOCATION_ERROR") {
+            eprintln!("❌ AppTranslocation Error: {}", e);
+            eprintln!("");
+            eprintln!("📱 Please move the app to the Applications folder:");
+            eprintln!("   1. Open Finder");
+            eprintln!("   2. Drag 'Reachy Mini Control.app' to Applications");
+            eprintln!("   3. Launch from Applications");
+            eprintln!("");
+            eprintln!("This is required because macOS isolates apps downloaded from the internet.");
+            return ExitCode::FAILURE;
+        }
         eprintln!("⚠️  Warning: Unable to patch pyvenv.cfg: {}", e);
         // Continue anyway, this is not fatal
     }

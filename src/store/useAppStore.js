@@ -1,6 +1,147 @@
 import { create } from 'zustand';
 import { DAEMON_CONFIG } from '../config/daemon';
 
+// ✅ OPTIMIZED: Fast comparison functions (replaces JSON.stringify)
+// These are much faster than JSON.stringify for frequent comparisons
+
+/**
+ * Compare robotStateFull objects efficiently
+ * Structure: { data: any, lastUpdate: number|null, error: string|null }
+ */
+const compareRobotStateFull = (prev, next) => {
+  if (prev === next) return true;
+  if (!prev || !next) return prev === next;
+  
+  // Compare timestamps first (fastest check)
+  if (prev.lastUpdate !== next.lastUpdate) return false;
+  
+  // Compare error strings
+  if (prev.error !== next.error) return false;
+  
+  // Compare data - if both are null/undefined, they're equal
+  if (!prev.data && !next.data) return true;
+  if (!prev.data || !next.data) return false;
+  
+  // For data, do a shallow comparison of keys (most data is nested objects)
+  // This is much faster than deep serialization
+  const prevKeys = Object.keys(prev.data);
+  const nextKeys = Object.keys(next.data);
+  if (prevKeys.length !== nextKeys.length) return false;
+  
+  // Quick check: if keys match, assume equal (data structure is usually stable)
+  // For exact comparison, we'd need to recurse, but this is a good balance
+  return prevKeys.every(key => prev.data[key] === next.data[key]);
+};
+
+/**
+ * Compare arrays of strings (activeMoves: string[])
+ * Much faster than JSON.stringify for simple string arrays
+ */
+const compareStringArray = (prev, next) => {
+  if (prev === next) return true;
+  if (!prev || !next) return prev === next;
+  if (prev.length !== next.length) return false;
+  
+  // For small arrays, direct comparison is fastest
+  for (let i = 0; i < prev.length; i++) {
+    if (prev[i] !== next[i]) return false;
+  }
+  return true;
+};
+
+/**
+ * Compare frontendLogs arrays
+ * Structure: Array<{ timestamp: string, message: string, source: string }>
+ */
+const compareFrontendLogs = (prev, next) => {
+  if (prev === next) return true;
+  if (!prev || !next) return prev === next;
+  if (prev.length !== next.length) return false;
+  
+  // Compare last log entry first (most likely to change)
+  if (prev.length > 0 && next.length > 0) {
+    const lastPrev = prev[prev.length - 1];
+    const lastNext = next[next.length - 1];
+    if (lastPrev.timestamp !== lastNext.timestamp || 
+        lastPrev.message !== lastNext.message ||
+        lastPrev.source !== lastNext.source) {
+      return false;
+    }
+  }
+  
+  // If last entry matches and length is same, assume equal
+  // (logs are append-only, so if last entry and length match, arrays are equal)
+  return true;
+};
+
+/**
+ * Deep equality comparison for objects
+ * Used for other object types that need deep comparison
+ */
+const deepEqual = (a, b) => {
+  if (a === b) return true;
+  if (a == null || b == null) return false;
+  if (typeof a !== 'object' || typeof b !== 'object') return false;
+  
+  // For arrays
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    return a.every((val, idx) => deepEqual(val, b[idx]));
+  }
+  
+  // For objects
+  if (Array.isArray(a) || Array.isArray(b)) return false;
+  
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  
+  return keysA.every(key => deepEqual(a[key], b[key]));
+};
+
+/**
+ * Compare state values and extract changed keys
+ * ✅ OPTIMIZED: Uses fast comparison functions instead of JSON.stringify
+ */
+const extractChangedUpdates = (prevState, newState, relevantKeys) => {
+  const changedUpdates = {};
+  
+  relevantKeys.forEach(key => {
+    const prevValue = prevState[key];
+    const newValue = newState[key];
+    
+    // Fast path: reference equality
+    if (prevValue === newValue) return;
+    
+    // Specialized comparisons for frequently updated objects
+    if (key === 'robotStateFull') {
+      if (!compareRobotStateFull(prevValue, newValue)) {
+        changedUpdates[key] = newValue;
+      }
+    } else if (key === 'activeMoves') {
+      if (!compareStringArray(prevValue, newValue)) {
+        changedUpdates[key] = newValue;
+      }
+    } else if (key === 'frontendLogs') {
+      if (!compareFrontendLogs(prevValue, newValue)) {
+        changedUpdates[key] = newValue;
+      }
+    } else if (typeof prevValue === 'object' && typeof newValue === 'object' && prevValue !== null && newValue !== null) {
+      // For other objects, use deep comparison
+      if (!deepEqual(prevValue, newValue)) {
+        changedUpdates[key] = newValue;
+      }
+    } else {
+      // For primitives, simple comparison
+      if (prevValue !== newValue) {
+        changedUpdates[key] = newValue;
+      }
+    }
+  });
+  
+  return changedUpdates;
+};
+
 // Middleware to sync store state to other windows via Tauri events
 const windowSyncMiddleware = (config) => (set, get, api) => {
   let isMainWindow = false;
@@ -19,7 +160,6 @@ const windowSyncMiddleware = (config) => (set, get, api) => {
         isMainWindow = currentWindow.label === 'main';
         
         if (isMainWindow) {
-          console.log('✅ Window sync initialized for main window');
           emitStoreUpdate = async (updates) => {
             try {
               // Only emit relevant state that secondary windows need
@@ -34,6 +174,7 @@ const windowSyncMiddleware = (config) => (set, get, api) => {
                 'isInstalling',
                 'robotStateFull',
                 'activeMoves',
+                'frontendLogs', // Synchronize logs so they appear in main window
               ];
               
               // Extract only relevant keys from updates
@@ -56,15 +197,11 @@ const windowSyncMiddleware = (config) => (set, get, api) => {
               }
             } catch (error) {
               // Silently fail if not in Tauri or event system not available
-              console.debug('Window sync emit failed (expected in non-Tauri env):', error);
             }
           };
-        } else {
-          console.log('ℹ️ Window sync skipped (not main window)');
         }
       } catch (error) {
         // Not in Tauri environment, skip sync
-        console.debug('Window sync init failed (expected in non-Tauri env):', error);
       }
     })();
     
@@ -74,43 +211,9 @@ const windowSyncMiddleware = (config) => (set, get, api) => {
   // Initialize immediately (fire and forget)
   initWindowSync();
   
-  return config(
-    (updates, replace) => {
-      // Capture state before update
-      const prevState = get();
-      
-      // Apply the update
-      const result = set(updates, replace);
-      
-      // Helper to deep compare objects (for robotStateFull and activeMoves)
-      const deepEqual = (a, b) => {
-        if (a === b) return true;
-        if (a == null || b == null) return false;
-        if (typeof a !== 'object' || typeof b !== 'object') return false;
-        
-        // For arrays
-        if (Array.isArray(a) && Array.isArray(b)) {
-          if (a.length !== b.length) return false;
-          return a.every((val, idx) => deepEqual(val, b[idx]));
-        }
-        
-        // For objects (like robotStateFull)
-        if (Array.isArray(a) || Array.isArray(b)) return false;
-        
-        const keysA = Object.keys(a);
-        const keysB = Object.keys(b);
-        if (keysA.length !== keysB.length) return false;
-        
-        return keysA.every(key => deepEqual(a[key], b[key]));
-      };
-      
-      // Emit updates from main window only (wait for init if needed)
-      if (emitStoreUpdate) {
-        // Get the new state after update
+  // ✅ FACTORIZED: Single function to handle state comparison and emission
+  const processStateUpdate = (prevState) => {
         const newState = get();
-        
-        // Extract only the changed values
-        const changedUpdates = {};
         const relevantKeys = [
           'darkMode',
           'isActive',
@@ -121,31 +224,11 @@ const windowSyncMiddleware = (config) => (set, get, api) => {
           'isInstalling',
           'robotStateFull',
           'activeMoves',
+          'frontendLogs', // Synchronize logs so they appear in main window
         ];
         
-        relevantKeys.forEach(key => {
-          const prevValue = prevState[key];
-          const newValue = newState[key];
-          
-          // For robotStateFull and activeMoves, always check if they changed
-          // These are updated frequently and need to be synced
-          if (key === 'robotStateFull' || key === 'activeMoves') {
-            // For these, compare by serializing to JSON (simple deep comparison)
-            const prevStr = JSON.stringify(prevValue);
-            const newStr = JSON.stringify(newValue);
-            if (prevStr !== newStr) {
-              changedUpdates[key] = newValue;
-            }
-          } else if (typeof prevValue === 'object' && typeof newValue === 'object' && prevValue !== null && newValue !== null) {
-            // For other objects, use deep comparison
-            if (!deepEqual(prevValue, newValue)) {
-              changedUpdates[key] = newValue;
-            }
-          } else if (prevValue !== newValue) {
-            // For primitives, simple comparison
-            changedUpdates[key] = newValue;
-          }
-        });
+    // ✅ OPTIMIZED: Use fast comparison functions instead of JSON.stringify
+    const changedUpdates = extractChangedUpdates(prevState, newState, relevantKeys);
         
         // Always include critical UI state for consistency (even if it didn't change)
         // This ensures secondary windows always have the latest values
@@ -162,79 +245,26 @@ const windowSyncMiddleware = (config) => (set, get, api) => {
         
         // Emit if there are changes (or if we added critical state)
         if (Object.keys(changedUpdates).length > 0) {
-          console.log('📤 Emitting store update from main window:', Object.keys(changedUpdates));
           emitStoreUpdate(changedUpdates);
         }
+  };
+  
+  return config(
+    (updates, replace) => {
+      // Capture state before update
+      const prevState = get();
+      
+      // Apply the update
+      const result = set(updates, replace);
+      
+      // Emit updates from main window only (wait for init if needed)
+      if (emitStoreUpdate) {
+        processStateUpdate(prevState);
       } else if (initPromise) {
         // Wait for init to complete, then emit
         initPromise.then(() => {
           if (emitStoreUpdate) {
-            const newState = get();
-            const changedUpdates = {};
-            const relevantKeys = [
-              'darkMode',
-              'isActive',
-              'robotStatus',
-              'busyReason',
-              'isCommandRunning',
-              'isAppRunning',
-              'isInstalling',
-              'robotStateFull',
-              'activeMoves',
-            ];
-            
-            // Helper to deep compare objects
-            const deepEqual = (a, b) => {
-              if (a === b) return true;
-              if (a == null || b == null) return false;
-              if (typeof a !== 'object' || typeof b !== 'object') return false;
-              if (Array.isArray(a) && Array.isArray(b)) {
-                if (a.length !== b.length) return false;
-                return a.every((val, idx) => deepEqual(val, b[idx]));
-              }
-              if (Array.isArray(a) || Array.isArray(b)) return false;
-              const keysA = Object.keys(a);
-              const keysB = Object.keys(b);
-              if (keysA.length !== keysB.length) return false;
-              return keysA.every(key => deepEqual(a[key], b[key]));
-            };
-            
-            relevantKeys.forEach(key => {
-              const prevValue = prevState[key];
-              const newValue = newState[key];
-              
-              // For robotStateFull and activeMoves, always check if they changed
-              if (key === 'robotStateFull' || key === 'activeMoves') {
-                const prevStr = JSON.stringify(prevValue);
-                const newStr = JSON.stringify(newValue);
-                if (prevStr !== newStr) {
-                  changedUpdates[key] = newValue;
-                }
-              } else if (typeof prevValue === 'object' && typeof newValue === 'object' && prevValue !== null && newValue !== null) {
-                if (!deepEqual(prevValue, newValue)) {
-                  changedUpdates[key] = newValue;
-                }
-              } else if (prevValue !== newValue) {
-                changedUpdates[key] = newValue;
-              }
-            });
-            
-            // Always include critical UI state for consistency
-            const currentState = get();
-            if (!('darkMode' in changedUpdates)) {
-              changedUpdates.darkMode = currentState.darkMode;
-            }
-            if (!('isActive' in changedUpdates)) {
-              changedUpdates.isActive = currentState.isActive;
-            }
-            if (!('robotStatus' in changedUpdates)) {
-              changedUpdates.robotStatus = currentState.robotStatus;
-            }
-            
-            if (Object.keys(changedUpdates).length > 0) {
-              console.log('📤 Emitting store update from main window (after init):', Object.keys(changedUpdates));
-              emitStoreUpdate(changedUpdates);
-            }
+            processStateUpdate(prevState);
           }
         });
       }
@@ -295,6 +325,7 @@ const useAppStore = create(
   hardwareError: null, // Hardware error detected during scan
   isDaemonCrashed: false, // Daemon crashed/stuck detected
   consecutiveTimeouts: 0, // Counter of consecutive timeouts
+  startupTimeoutId: null, // Timeout ID for startup timeout (30s)
   
   // Robot state
   isUsbConnected: false,
@@ -345,6 +376,21 @@ const useAppStore = create(
   // Window management - Track open secondary windows
   openWindows: [], // Array of window labels that are currently open
   
+  // Right panel view management - Controls what's displayed in the right column
+  // Possible values: null (default/applications), 'controller', 'expressions'
+  rightPanelView: null,
+  
+  // 🎯 Apps Management - Centralized app state
+  availableApps: [],              // All available apps (official + installed)
+  installedApps: [],              // Only installed apps (subset of availableApps)
+  currentApp: null,               // Currently running app: { info: { name, ... }, state: 'running'|'starting'|..., error?: string } | null
+  activeJobs: {},                 // Active installation jobs: Object<jobId, { type: 'install'|'remove', appName, status, logs }> (Object instead of Map for Zustand serialization)
+  appsLoading: false,             // Loading state for apps fetch
+  appsError: null,                // Error state for apps fetch
+  appsLastFetch: null,            // Timestamp of last successful fetch (for cache)
+  appsOfficialMode: true,         // Current mode: true = official only, false = all apps
+  appsCacheValid: false,          // Whether cache is still valid (to avoid unnecessary refetch)
+  
   // Actions - Generic DRY setter
   update: (updates) => set(updates),
   
@@ -364,6 +410,9 @@ const useAppStore = create(
     const state = useAppStore.getState();
     return state.openWindows.includes(windowLabel);
   },
+  
+  // Right panel view management actions
+  setRightPanelView: (view) => set({ rightPanelView: view }), // view: null | 'controller' | 'expressions'
   
   // ✨ Transition actions (State Machine)
   // Update robotStatus + busyReason + legacy states (backwards compat)
@@ -405,6 +454,14 @@ const useAppStore = create(
     },
     
     ready: () => {
+      const state = useAppStore.getState();
+      // ✅ CRITICAL: Don't transition to ready if there's a hardware error
+      // This prevents bypassing the error state in scan view
+      if (state.hardwareError) {
+        console.warn('⚠️ Cannot transition to ready while hardwareError is present');
+        return; // Don't transition, stay in error state
+      }
+      
         lastLoggedStatus = 'ready';
       set({
         robotStatus: 'ready',
@@ -632,6 +689,14 @@ const useAppStore = create(
   // Legacy setters (backwards compatible, sync with robotStatus)
   setIsActive: (value) => {
     const state = useAppStore.getState();
+    
+    // ✅ CRITICAL: Don't allow becoming active if there's a hardware error
+    // This prevents bypassing the error state in scan view
+    if (value && state.hardwareError) {
+      console.warn('⚠️ Cannot set isActive=true while hardwareError is present');
+      return; // Early return, don't update state
+    }
+    
     if (value && !state.isStarting && !state.isStopping) {
       // Daemon becomes active → ready (unless already busy)
       if (state.robotStatus !== 'busy') {
@@ -711,7 +776,6 @@ const useAppStore = create(
     const isCrashed = newCount >= 3; // ⚡ Crash after 3 timeouts over 4s (~1.33s × 3)
     
     if (isCrashed && !state.isDaemonCrashed) {
-      console.error(`💥 DAEMON CRASHED - ${newCount} consecutive timeouts`);
       state.transitionTo.crashed();
     }
     
@@ -726,6 +790,16 @@ const useAppStore = create(
   markDaemonCrashed: () => {
     const state = useAppStore.getState();
     state.transitionTo.crashed();
+  },
+  
+  // Startup timeout management
+  setStartupTimeout: (timeoutId) => set({ startupTimeoutId: timeoutId }),
+  clearStartupTimeout: () => {
+    const state = useAppStore.getState();
+    if (state.startupTimeoutId !== null) {
+      clearTimeout(state.startupTimeoutId);
+      set({ startupTimeoutId: null });
+    }
   },
   
   // Trigger 3D visual effect
@@ -754,6 +828,64 @@ const useAppStore = create(
     const systemPreference = getSystemPreference();
     set({ darkMode: systemPreference });
   },
+  
+  // 🎯 Apps Management Actions
+  setAvailableApps: (apps) => set({ 
+    availableApps: apps,
+    appsLastFetch: Date.now(),
+    appsCacheValid: true,
+    appsError: null,
+  }),
+  
+  setInstalledApps: (apps) => set({ installedApps: apps }),
+  
+  setCurrentApp: (app) => set({ currentApp: app }),
+  
+  setActiveJobs: (jobs) => {
+    // Handle both Map and Object, and function updaters
+    if (typeof jobs === 'function') {
+      // Updater function
+      set((state) => {
+        const currentJobs = state.activeJobs instanceof Map 
+          ? Object.fromEntries(state.activeJobs) 
+          : (state.activeJobs || {});
+        const newJobs = jobs(new Map(Object.entries(currentJobs)));
+        // Convert Map to Object for Zustand
+        const jobsObj = newJobs instanceof Map 
+          ? Object.fromEntries(newJobs) 
+          : newJobs;
+        return { activeJobs: jobsObj };
+      });
+    } else {
+      // Direct value
+      const jobsObj = jobs instanceof Map 
+        ? Object.fromEntries(jobs) 
+        : jobs;
+      set({ activeJobs: jobsObj || {} });
+    }
+  },
+  
+  setAppsLoading: (loading) => set({ appsLoading: loading }),
+  
+  setAppsError: (error) => set({ appsError: error }),
+  
+  setAppsOfficialMode: (mode) => set({ 
+    appsOfficialMode: mode,
+    appsCacheValid: false, // Invalidate cache when mode changes
+  }),
+  
+  invalidateAppsCache: () => set({ appsCacheValid: false }),
+  
+  clearApps: () => set({
+    availableApps: [],
+    installedApps: [],
+    currentApp: null,
+    activeJobs: {},
+    appsLoading: false,
+    appsError: null,
+    appsLastFetch: null,
+    appsCacheValid: false,
+  }),
   }))
 );
 

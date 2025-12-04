@@ -65,6 +65,17 @@ pub fn find_cpython_folder(uv_folder: &std::path::Path) -> Result<String, String
     ))
 }
 
+/// Check if the current path is in AppTranslocation (macOS security feature)
+#[cfg(target_os = "macos")]
+pub fn is_app_translocation_path(path: &std::path::Path) -> bool {
+    path.to_string_lossy().contains("AppTranslocation")
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn is_app_translocation_path(_path: &std::path::Path) -> bool {
+    false
+}
+
 pub fn patching_pyvenv_cfg(uv_folder: &std::path::Path, cpython_folder: &str) -> Result<(), String> {
     let pyvenv_cfg_path = uv_folder.join(".venv").join("pyvenv.cfg");
     
@@ -98,9 +109,22 @@ pub fn patching_pyvenv_cfg(uv_folder: &std::path::Path, cpython_folder: &str) ->
         .collect::<Vec<String>>()
         .join("\n");
 
-    std::fs::write(&pyvenv_cfg_path, new_content)
-        .map_err(|e| format!("Unable to write patched pyvenv.cfg: {}", e))?;
+    // Try to write the patched file
+    match std::fs::write(&pyvenv_cfg_path, new_content) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            let error_msg = format!("Unable to write patched pyvenv.cfg: {}", e);
     
-    Ok(())
+            // Check if we're in AppTranslocation and the error is read-only
+            #[cfg(target_os = "macos")]
+            {
+                if is_app_translocation_path(uv_folder) && error_msg.contains("Read-only") {
+                    return Err(format!("APP_TRANSLOCATION_ERROR: {}", error_msg));
+                }
+            }
+            
+            Err(error_msg)
+        }
+    }
 }
 

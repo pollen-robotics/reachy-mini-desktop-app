@@ -7,25 +7,22 @@ import { Box, Typography } from '@mui/material';
 export default function WheelSelectionLabel({ selectedItem, selectedIndex, itemCount, darkMode }) {
   if (!selectedItem) return null;
 
+  const currentNumber = selectedIndex + 1;
+
   return (
     <Box
       sx={{
-        position: 'absolute',
-        bottom: 60,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        zIndex: 100,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        gap: 0.25,
+        gap: 0,
         userSelect: 'none',
       }}
     >
       <Typography
         sx={{
-          fontSize: 16,
-          fontWeight: 500,
+          fontSize: 24,
+          fontWeight: 700,
           color: darkMode ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.9)',
           textAlign: 'center',
           letterSpacing: '0.2px',
@@ -34,18 +31,29 @@ export default function WheelSelectionLabel({ selectedItem, selectedIndex, itemC
       >
         {selectedItem.label}
       </Typography>
-      <Typography
+      <Box
         sx={{
-          fontSize: 12,
-          fontWeight: 400,
-          color: darkMode ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.5)',
-          textAlign: 'center',
-          letterSpacing: '0.1px',
-          userSelect: 'none',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.5,
         }}
       >
-        {selectedIndex + 1} / {itemCount}
-      </Typography>
+        <span style={{ 
+          color: darkMode ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.25)',
+          fontSize: 16,
+          fontWeight: 400,
+        }}>#</span>
+        <Typography
+          component="span"
+          sx={{
+            fontSize: 16,
+            fontWeight: 400,
+            color: darkMode ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.5)',
+          }}
+        >
+          {currentNumber}
+        </Typography>
+      </Box>
     </Box>
   );
 }

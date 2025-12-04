@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
-import { Box, Typography, Switch, TextField } from '@mui/material';
+import { Box, Typography, Switch, TextField, IconButton } from '@mui/material';
 import WifiIcon from '@mui/icons-material/Wifi';
-import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
+import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined';
+import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined';
+import CloseIcon from '@mui/icons-material/Close';
 import FullscreenOverlay from '../FullscreenOverlay';
+import useAppStore from '../../store/useAppStore';
 
 /**
  * Settings Overlay for 3D Viewer Configuration
@@ -15,7 +18,6 @@ export default function SettingsOverlay({
 }) {
   const [wifiSSID, setWifiSSID] = useState('');
   const [wifiPassword, setWifiPassword] = useState('');
-  const [officialModeOnly, setOfficialModeOnly] = useState(false);
 
   return (
     <FullscreenOverlay
@@ -23,10 +25,13 @@ export default function SettingsOverlay({
       onClose={onClose}
       darkMode={darkMode}
       zIndex={10001} // Above everything (Settings overlay)
+      centeredX={true}
+      centeredY={true}
     >
       {/* Centered content */}
       <Box
         sx={{
+          position: 'relative',
           width: '90%',
           maxWidth: '400px',
           display: 'flex',
@@ -35,6 +40,27 @@ export default function SettingsOverlay({
           gap: 3,
         }}
       >
+        {/* Close button - top right */}
+        <IconButton
+          onClick={onClose}
+          sx={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            color: '#FF9500',
+            bgcolor: darkMode ? 'rgba(255, 255, 255, 0.08)' : '#ffffff',
+            border: '1px solid #FF9500',
+            opacity: 0.7,
+            '&:hover': {
+              opacity: 1,
+              bgcolor: darkMode ? 'rgba(255, 255, 255, 0.12)' : '#ffffff',
+            },
+            zIndex: 1,
+          }}
+        >
+          <CloseIcon sx={{ fontSize: 20 }} />
+        </IconButton>
+
         {/* Title */}
         <Typography
           sx={{
@@ -130,7 +156,7 @@ export default function SettingsOverlay({
           />
         </Box>
 
-        {/* Official Mode Toggle */}
+        {/* Dark Mode Toggle */}
         <Box
           sx={{
             width: '100%',
@@ -144,7 +170,11 @@ export default function SettingsOverlay({
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <VerifiedUserIcon sx={{ fontSize: 20, color: darkMode ? '#aaa' : '#666' }} />
+            {darkMode ? (
+              <LightModeOutlinedIcon sx={{ fontSize: 20, color: darkMode ? '#aaa' : '#666' }} />
+            ) : (
+              <DarkModeOutlinedIcon sx={{ fontSize: 20, color: darkMode ? '#aaa' : '#666' }} />
+            )}
             <Box>
               <Typography
                 sx={{
@@ -154,7 +184,7 @@ export default function SettingsOverlay({
                   mb: 0.25,
                 }}
               >
-                Official Apps Only
+                {darkMode ? 'Light Mode' : 'Dark Mode'}
               </Typography>
               <Typography
                 sx={{
@@ -162,13 +192,13 @@ export default function SettingsOverlay({
                   color: darkMode ? '#888' : '#999',
                 }}
               >
-                Show only verified applications
+                {darkMode ? 'Switch to light theme' : 'Switch to dark theme'}
               </Typography>
             </Box>
           </Box>
           <Switch
-            checked={officialModeOnly}
-            onChange={(e) => setOfficialModeOnly(e.target.checked)}
+            checked={darkMode}
+            onChange={() => useAppStore.getState().toggleDarkMode()}
             sx={{
               '& .MuiSwitch-switchBase.Mui-checked': {
                 color: '#FF9500',

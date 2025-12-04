@@ -1,0 +1,51 @@
+name: Deploy to GitHub Pages
+
+on:
+  workflow_run:
+    workflows: ["Release Cross-Platform"]
+    types:
+      - completed
+    branches:
+      - main
+
+jobs:
+  deploy-pages:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+      actions: read
+    
+    steps:
+      - name: Download latest.json artifact from workflow
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          run_id: ${{ github.event.workflow_run.id }}
+          name: latest-json-pages
+          path: docs
+          if_no_artifact_found: fail
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Verify latest.json exists
+        run: |
+          if [ ! -f "docs/latest.json" ]; then
+            echo "❌ docs/latest.json not found"
+            exit 1
+          fi
+          echo "✅ docs/latest.json found"
+          cat docs/latest.json
+      
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+      
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+

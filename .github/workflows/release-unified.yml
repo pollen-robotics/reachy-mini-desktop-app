@@ -157,21 +157,85 @@ jobs:
         shell: bash
         env:
           TAURI_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_KEY }}
-          TAURI_PUBLIC_KEY: ${{ secrets.TAURI_PUBLIC_KEY }}
         run: |
           mkdir -p ~/.tauri
           if [ -n "$TAURI_SIGNING_KEY" ]; then
-            CLEANED_KEY=$(echo -n "$TAURI_SIGNING_KEY" | tr -d '\n\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            printf '%s' "$CLEANED_KEY" > ~/.tauri/reachy-mini.key
-            chmod 600 ~/.tauri/reachy-mini.key
-            if [ -n "$TAURI_PUBLIC_KEY" ]; then
-              CLEANED_PUBKEY=$(echo -n "$TAURI_PUBLIC_KEY" | tr -d '\n\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-              printf '%s' "$CLEANED_PUBKEY" > ~/.tauri/reachy-mini.key.pub
-            else
-              PUBKEY=$(grep -o '"pubkey": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
-              if [ -n "$PUBKEY" ]; then
-                printf '%s' "$PUBKEY" > ~/.tauri/reachy-mini.key.pub
+            # The key in GitHub Secrets can be either:
+            # 1. Raw format (starts with "untrusted comment: rsign encrypted secret key")
+            # 2. Base64-encoded format
+            # We detect the format and handle accordingly
+            
+            # Check if it's raw format (starts with "untrusted comment")
+            # Use the first 50 chars to check, avoiding issues with leading whitespace
+            FIRST_CHARS=$(printf '%s' "$TAURI_SIGNING_KEY" | head -c 50)
+            
+            if echo "$FIRST_CHARS" | grep -q "untrusted comment"; then
+              # Raw format in GitHub Secrets - encode to base64 for file storage
+              # tauri signer expects the key file to be base64-encoded
+              # Clean the raw key first (remove leading/trailing whitespace)
+              CLEANED_RAW=$(printf '%s' "$TAURI_SIGNING_KEY" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+              # Encode to base64 and remove ALL newlines/whitespace (tauri signer is strict)
+              if [[ "$OSTYPE" == "darwin"* ]]; then
+                # macOS: base64 -b 0 or pipe to tr -d '\n'
+                printf '%s' "$CLEANED_RAW" | base64 | tr -d '\n\r' > ~/.tauri/reachy-mini.key
+              else
+                # Linux: base64 -w 0
+                printf '%s' "$CLEANED_RAW" | base64 -w 0 | tr -d '\n\r' > ~/.tauri/reachy-mini.key
               fi
+              echo "✅ Encoded raw format private key to base64 (for tauri signer)"
+            else
+              # Already base64 format - use directly (remove ALL whitespace including newlines)
+              CLEANED_KEY=$(printf '%s' "$TAURI_SIGNING_KEY" | tr -d '\n\r\t ' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            printf '%s' "$CLEANED_KEY" > ~/.tauri/reachy-mini.key
+              echo "✅ Using base64 format private key (from GitHub Secrets)"
+            fi
+            chmod 600 ~/.tauri/reachy-mini.key
+            
+            # ✅ Extract public key from tauri.conf.json (standard practice - ensures they match)
+            echo "🔑 Extracting public key from tauri.conf.json..."
+            
+            # The public key in tauri.conf.json is base64-encoded
+            # We decode it to get the raw public key format that minisign expects
+            PUBKEY=$(grep -o '"pubkey": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
+            if [ -n "$PUBKEY" ]; then
+              # Decode base64 to get raw public key format (what minisign expects)
+              echo "$PUBKEY" | base64 -d > ~/.tauri/reachy-mini.key.pub
+              echo "✅ Extracted public key from tauri.conf.json (decoded from base64)"
+            else
+              echo "❌ No public key found in tauri.conf.json"
+              exit 1
+            fi
+            
+            # ✅ Verify the key pair matches by testing signature
+            if [ -f ~/.tauri/reachy-mini.key.pub ]; then
+              echo "🔍 Verifying key pair match..."
+              TEST_FILE="/tmp/test-key-match-$$.txt"
+              echo "test" > "$TEST_FILE"
+              if yarn tauri signer sign -f ~/.tauri/reachy-mini.key -p "" "$TEST_FILE" 2>/dev/null; then
+                # Try to verify with the extracted public key using minisign
+                if command -v minisign &> /dev/null && [ -f "$TEST_FILE.sig" ]; then
+                  if minisign -V -p ~/.tauri/reachy-mini.key.pub -m "$TEST_FILE" -x "$TEST_FILE.sig" 2>/dev/null; then
+                    echo "✅ Key pair verified - public key matches private key"
+                  else
+                    echo "⚠️ Warning: Public key verification failed - keys may not match"
+                    echo "   This could cause 'invalid encoding in minisign data' errors"
+                  fi
+                fi
+                rm -f "$TEST_FILE" "$TEST_FILE.sig" 2>/dev/null || true
+              else
+                echo "⚠️ Could not test key pair (private key may require password)"
+              fi
+            fi
+            
+            # ✅ Verify the private key is valid by attempting a test sign
+            echo "🔍 Verifying private key validity..."
+            TEST_FILE="/tmp/test-sign-verify-$$.txt"
+            echo "test" > "$TEST_FILE"
+            if yarn tauri signer sign -f ~/.tauri/reachy-mini.key -p "" "$TEST_FILE" 2>/dev/null; then
+              echo "✅ Private key is valid and can sign files"
+              rm -f "$TEST_FILE" "$TEST_FILE.sig" 2>/dev/null || true
+            else
+              echo "⚠️ Warning: Could not verify private key (may require password or key mismatch)"
             fi
           else
             echo "⚠️ No signing key provided, generating temporary key..."
@@ -431,7 +495,78 @@ jobs:
             exit 1
           }
 
-      - name: Notarize app (macOS only)
+      - name: Create DMG installer (macOS only)
+        if: matrix.os == 'macos-latest'
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        shell: bash
+        run: |
+          APP_BUNDLE="src-tauri/target/${{ matrix.target }}/release/bundle/macos/Reachy Mini Control.app"
+          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
+          
+          if [ ! -d "$APP_BUNDLE" ]; then
+            echo "❌ App bundle not found: $APP_BUNDLE"
+            exit 1
+          fi
+          
+          # Ensure signing keychain is in search list for DMG signing
+          if [ -n "$KEYCHAIN_PATH" ]; then
+            echo "🔓 Ensuring signing keychain is in search list for DMG signing..."
+            EXISTING_KEYCHAINS=$(security list-keychains -d user | sed 's/^[[:space:]]*//' | tr '\n' ' ')
+            if ! echo "$EXISTING_KEYCHAINS" | grep -q "$KEYCHAIN_PATH"; then
+              security list-keychains -d user -s "$KEYCHAIN_PATH" $EXISTING_KEYCHAINS || true
+            fi
+            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" || true
+          fi
+          
+          cd "$BUNDLE_DIR"
+          
+          # Create DMG with signed app (standard macOS installer)
+          echo "💿 Creating DMG installer..."
+          ARCH_SUFFIX="${{ matrix.target == 'aarch64-apple-darwin' && 'arm64' || 'x64' }}"
+          DMG_NAME="Reachy.Mini.Control_${{ steps.version.outputs.version }}_${ARCH_SUFFIX}.dmg"
+          DMG_TEMP_NAME="Reachy.Mini.Control.temp.dmg"
+          
+          # Remove old DMG if exists
+          rm -f "$DMG_NAME" "$DMG_TEMP_NAME" *.dmg
+          
+          # Create DMG with hdiutil
+          # -volname: Volume name shown in Finder
+          # -fs: File system (HFS+)
+          # -srcfolder: Source folder (the app)
+          # -format: Format (UDZO = compressed read-only)
+          # -ov: Overwrite existing
+          hdiutil create -volname "Reachy Mini Control" \
+            -srcfolder "Reachy Mini Control.app" \
+            -fs HFS+ \
+            -format UDZO \
+            -ov "$DMG_TEMP_NAME"
+          
+          if [ ! -f "$DMG_TEMP_NAME" ]; then
+            echo "❌ Failed to create DMG file"
+            exit 1
+          fi
+          
+          # Sign the DMG (required before notarization)
+          # Use the same signing identity as the app
+          echo "✍️ Signing DMG with identity: $APPLE_SIGNING_IDENTITY"
+          if ! codesign --force --sign "$APPLE_SIGNING_IDENTITY" \
+            --timestamp \
+            --options runtime \
+            "$DMG_TEMP_NAME"; then
+            echo "❌ DMG signing failed"
+            echo "   Available identities:"
+            security find-identity -v -p codesigning || true
+            exit 1
+          fi
+          
+          # Rename to final name
+          mv "$DMG_TEMP_NAME" "$DMG_NAME"
+          
+          echo "✅ DMG created and signed: $DMG_NAME ($(du -h "$DMG_NAME" | cut -f1))"
+          echo "RELEASE_DMG_PATH=$BUNDLE_DIR/$DMG_NAME" >> $GITHUB_ENV
+
+      - name: Notarize DMG (macOS only)
         if: matrix.os == 'macos-latest'
         env:
           APPLE_API_ISSUER: ${{ env.APPLE_API_ISSUER }}
@@ -439,41 +574,24 @@ jobs:
           APPLE_API_KEY_PATH: ${{ env.APPLE_API_KEY_PATH }}
         shell: bash
         run: |
-          APP_BUNDLE="src-tauri/target/${{ matrix.target }}/release/bundle/macos/Reachy Mini Control.app"
-          
-          if [ ! -d "$APP_BUNDLE" ]; then
-            echo "❌ App bundle not found: $APP_BUNDLE"
-            exit 1
-          fi
-          
-          # Create ZIP for notarization
           BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
-          ZIP_NAME="Reachy Mini Control.zip"
-          ZIP_PATH="$BUNDLE_DIR/$ZIP_NAME"
+          ARCH_SUFFIX="${{ matrix.target == 'aarch64-apple-darwin' && 'arm64' || 'x64' }}"
+          DMG_NAME="Reachy.Mini.Control_${{ steps.version.outputs.version }}_${ARCH_SUFFIX}.dmg"
+          DMG_PATH="$BUNDLE_DIR/$DMG_NAME"
           
-          echo "📦 Creating ZIP for notarization..."
-          echo "   Bundle: $APP_BUNDLE"
-          echo "   ZIP: $ZIP_PATH"
-          
-          # Change to bundle directory and create ZIP
-          cd "$BUNDLE_DIR"
-          ditto -c -k --keepParent "Reachy Mini Control.app" "$ZIP_NAME"
-          
-          # Verify ZIP was created (check in current directory after cd)
-          if [ ! -f "$ZIP_NAME" ]; then
-            echo "❌ Failed to create ZIP file: $ZIP_NAME"
-            echo "   Current directory: $(pwd)"
-            echo "   Files in directory:"
-            ls -la || true
+          if [ ! -f "$DMG_PATH" ]; then
+            echo "❌ DMG not found: $DMG_PATH"
             exit 1
           fi
+          
+          cd "$BUNDLE_DIR"
           
           # Get absolute path for notarytool
-          ABS_ZIP_PATH="$(pwd)/$ZIP_NAME"
-          echo "✅ ZIP created: $ABS_ZIP_PATH ($(du -h "$ZIP_NAME" | cut -f1))"
+          ABS_DMG_PATH="$(pwd)/$DMG_NAME"
+          echo "📦 Submitting DMG for notarization..."
+          echo "   DMG: $ABS_DMG_PATH ($(du -h "$DMG_NAME" | cut -f1))"
           
-          echo "📦 Submitting app for notarization..."
-          NOTARIZATION_OUTPUT=$(xcrun notarytool submit "$ABS_ZIP_PATH" \
+          NOTARIZATION_OUTPUT=$(xcrun notarytool submit "$ABS_DMG_PATH" \
             --key "$APPLE_API_KEY_PATH" \
             --key-id "$APPLE_API_KEY" \
             --issuer "$APPLE_API_ISSUER" \
@@ -484,58 +602,34 @@ jobs:
           
           # Check if notarization was successful
           if echo "$NOTARIZATION_OUTPUT" | grep -q "status: Accepted"; then
-            echo "✅ Notarization successful!"
+            echo "✅ DMG notarization successful!"
             
-            # Return to project root for stapler (APP_BUNDLE is relative to root)
-            cd "$GITHUB_WORKSPACE"
-            
-            # Staple the notarization ticket
-            echo "📎 Stapling notarization ticket..."
-            if ! xcrun stapler staple "$APP_BUNDLE"; then
-              echo "❌ Failed to staple notarization ticket"
+            # Staple the notarization ticket to the DMG
+            echo "📎 Stapling notarization ticket to DMG..."
+            if ! xcrun stapler staple "$DMG_NAME"; then
+              echo "❌ Failed to staple notarization ticket to DMG"
               exit 1
             fi
             
             # Validate that the ticket was stapled correctly
             echo "🔍 Validating stapled ticket..."
-            if ! xcrun stapler validate "$APP_BUNDLE"; then
+            if ! xcrun stapler validate "$DMG_NAME"; then
               echo "❌ Ticket validation failed - ticket may not be stapled correctly"
               exit 1
             fi
-            echo "✅ Ticket successfully stapled and validated"
+            echo "✅ Ticket successfully stapled and validated on DMG"
             
-            # Clean up notarization ZIP (no longer needed)
-            echo "🧹 Cleaning up notarization ZIP..."
-            cd "$BUNDLE_DIR"
-            rm -f "Reachy Mini Control.zip"
-            
-            # Create a ZIP file for GitHub release upload (after notarization)
-            echo "📦 Creating ZIP file for GitHub release..."
-            ARCH_SUFFIX="${{ matrix.target == 'aarch64-apple-darwin' && 'arm64' || 'x64' }}"
+            # Also create ZIP as fallback (for users who prefer ZIP)
+            # Note: ZIP is not notarized, but contains the signed app
+            echo "📦 Creating ZIP file as fallback..."
+            APP_BUNDLE="Reachy Mini Control.app"
             RELEASE_ZIP_NAME="Reachy.Mini.Control_${{ steps.version.outputs.version }}_${ARCH_SUFFIX}.zip"
-            # Remove old ZIP if exists
             rm -f "$RELEASE_ZIP_NAME"
-            # Create new ZIP with the notarized and stapled app
-            # Use ditto with --norsrc to avoid resource forks that might interfere with ticket
-            ditto -c -k --norsrc --keepParent "Reachy Mini Control.app" "$RELEASE_ZIP_NAME"
-            
-            # Verify the ticket is still present in the app before ZIP (should still be valid)
-            echo "🔍 Verifying ticket is still present in app bundle..."
-            if ! xcrun stapler validate "Reachy Mini Control.app"; then
-              echo "❌ Ticket validation failed after ZIP creation - ticket may have been lost"
-              exit 1
-            fi
-            echo "✅ Ticket is still valid in app bundle"
-            
-            if [ ! -f "$RELEASE_ZIP_NAME" ]; then
-              echo "❌ Failed to create release ZIP file"
-              exit 1
-            fi
-            
+            ditto -c -k --norsrc --keepParent "$APP_BUNDLE" "$RELEASE_ZIP_NAME"
             echo "✅ Release ZIP created: $RELEASE_ZIP_NAME ($(du -h "$RELEASE_ZIP_NAME" | cut -f1))"
             echo "RELEASE_ZIP_PATH=$BUNDLE_DIR/$RELEASE_ZIP_NAME" >> $GITHUB_ENV
           else
-            echo "❌ Notarization failed!"
+            echo "❌ DMG notarization failed!"
             echo ""
             echo "🔍 Checking notarization logs..."
             
@@ -566,6 +660,7 @@ jobs:
           files: |
             src-tauri/target/*/release/bundle/appimage/*.AppImage
             src-tauri/target/*/release/bundle/msi/*.msi
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.dmg
             src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -578,6 +673,7 @@ jobs:
           files: |
             ${{ matrix.os == 'windows-latest' && format('src-tauri/target/{0}/release/bundle/msi/*.msi', matrix.target) || '' }}
             ${{ matrix.os == 'ubuntu-latest' && format('src-tauri/target/{0}/release/bundle/appimage/*.AppImage', matrix.target) || '' }}
+            ${{ matrix.os == 'macos-latest' && format('src-tauri/target/{0}/release/bundle/macos/*.dmg', matrix.target) || '' }}
             ${{ matrix.os == 'macos-latest' && format('src-tauri/target/{0}/release/bundle/macos/*.zip', matrix.target) || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -604,6 +700,9 @@ jobs:
     needs: build-and-release
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
+      actions: read
 
     steps:
       - name: Checkout code
@@ -670,4 +769,17 @@ jobs:
           prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'alpha') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare latest.json for GitHub Pages
+        run: |
+          mkdir -p docs
+          cp latest.json docs/latest.json
+          echo "✅ Prepared latest.json for GitHub Pages"
+
+      - name: Upload latest.json artifact for GitHub Pages
+        uses: actions/upload-artifact@v4
+        with:
+          name: latest-json-pages
+          path: docs/latest.json
+          retention-days: 1
 

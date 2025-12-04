@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Box, Typography, Tooltip } from '@mui/material';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import useAppStore from '@store/useAppStore';
-import { useApps, useAppHandlers, useAppInstallation } from '@hooks/apps';
+import { useApps, useAppHandlers, useAppInstallation } from '../../application-store/hooks';
 import { InstalledAppsSection } from '../../application-store/installed';
 import { Modal as DiscoverModal } from '../../application-store/discover';
 import { CreateAppTutorial as CreateAppTutorialModal } from '../../application-store/modals';
@@ -205,7 +205,7 @@ export default function ApplicationsSection({
 
   return (
     <>
-      <Box sx={{ mt: 0 }}>
+      <Box>
         <Box
           sx={{
             px: 3,
@@ -256,7 +256,7 @@ export default function ApplicationsSection({
             </Typography>
           </Box>
         </Box>
-        <Box sx={{ px: 0, pt: 0, pb: 0, bgcolor: 'transparent' }}>
+        <Box sx={{ px: 0, mb: 0, bgcolor: 'transparent' }}>
           <InstalledAppsSection
             installedApps={installedApps}
             darkMode={effectiveDarkMode}

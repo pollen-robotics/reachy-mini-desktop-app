@@ -65,7 +65,7 @@ export const DAEMON_CONFIG = {
   
   // Minimum display times for views (UX smoothness)
   MIN_DISPLAY_TIMES: {
-    UPDATE_CHECK: 2500,          // Minimum time to show update check (2.5s)
+    UPDATE_CHECK: 2000,          // Minimum time to show update check (2s)
     USB_CHECK: 2000,              // Minimum time to show USB check (2s)
     USB_CHECK_FIRST: 1500,        // Minimum delay for first USB check (1.5s)
     APP_UNINSTALL: 4000,         // Minimum display time for uninstall result (4s)
@@ -76,6 +76,7 @@ export const DAEMON_CONFIG = {
     INTERVAL: 3600000,            // Check for updates every hour (1h)
     STARTUP_DELAY: 2000,          // Delay before first check on startup (2s)
     RETRY_DELAY: 1000,            // Delay between retry attempts (1s)
+    CHECK_TIMEOUT: 30000,         // Timeout for check() call (30s) - prevents infinite blocking
   },
   
   // Robot movement and commands
@@ -195,12 +196,39 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions 
     const duration = Date.now() - startTime;
     
     // Log result if not silent (only show completion, not start to avoid redundancy)
-    if (!shouldBeSilent && appStoreInstance) {
+    if (!shouldBeSilent) {
       const logLabel = label || `${method} ${baseEndpoint}`;
-      if (response.ok) {
-        appStoreInstance.getState().addFrontendLog(`✓ ${logLabel}`);
-      } else {
-        appStoreInstance.getState().addFrontendLog(`✗ ${logLabel} (${response.status})`);
+      const logMessage = response.ok ? `✓ ${logLabel}` : `✗ ${logLabel} (${response.status})`;
+      
+      // Détecter si on est dans la fenêtre principale
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const currentWindow = await getCurrentWindow();
+        const isMain = currentWindow.label === 'main';
+        
+        if (isMain) {
+          // Fenêtre principale : log direct
+          if (appStoreInstance) {
+            const store = appStoreInstance.getState();
+            const addLog = store?.addFrontendLog;
+            if (typeof addLog === 'function') {
+              addLog(logMessage);
+            }
+          }
+        } else {
+          // Fenêtre secondaire : émettre événement vers la fenêtre principale
+          const { emit } = await import('@tauri-apps/api/event');
+          await emit('add-log', { message: logMessage });
+        }
+      } catch (error) {
+        // Fallback : utiliser appStoreInstance si détection échoue
+        if (appStoreInstance) {
+          const store = appStoreInstance.getState();
+          const addLog = store?.addFrontendLog;
+          if (typeof addLog === 'function') {
+            addLog(logMessage);
+          }
+        }
       }
     }
     
@@ -214,9 +242,37 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions 
       permissionError.name = 'PermissionDeniedError';
       permissionError.originalError = error;
       
-      if (!shouldBeSilent && appStoreInstance) {
+      if (!shouldBeSilent) {
         const logLabel = label || `${method} ${baseEndpoint}`;
-        appStoreInstance.getState().addFrontendLog(`🔒 ${logLabel} (permission denied)`);
+        const logMessage = `🔒 ${logLabel} (permission denied)`;
+        
+        // Détecter si on est dans la fenêtre principale
+        try {
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          const currentWindow = await getCurrentWindow();
+          const isMain = currentWindow.label === 'main';
+          
+          if (isMain) {
+            if (appStoreInstance) {
+              const store = appStoreInstance.getState();
+              const addLog = store?.addFrontendLog;
+              if (typeof addLog === 'function') {
+                addLog(logMessage);
+              }
+            }
+          } else {
+            const { emit } = await import('@tauri-apps/api/event');
+            await emit('add-log', { message: logMessage });
+          }
+        } catch (error) {
+          if (appStoreInstance) {
+            const store = appStoreInstance.getState();
+            const addLog = store?.addFrontendLog;
+            if (typeof addLog === 'function') {
+              addLog(logMessage);
+            }
+          }
+        }
       }
       
       throw permissionError;
@@ -229,21 +285,77 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions 
       popupError.originalError = error;
       popupError.duration = duration;
       
-      if (!shouldBeSilent && appStoreInstance) {
+      if (!shouldBeSilent) {
         const logLabel = label || `${method} ${baseEndpoint}`;
-        appStoreInstance.getState().addFrontendLog(`⏱️ ${logLabel} (timeout - check system permissions)`);
+        const logMessage = `⏱️ ${logLabel} (timeout - check system permissions)`;
+        
+        // Détecter si on est dans la fenêtre principale
+        try {
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          const currentWindow = await getCurrentWindow();
+          const isMain = currentWindow.label === 'main';
+          
+          if (isMain) {
+            if (appStoreInstance) {
+              const store = appStoreInstance.getState();
+              const addLog = store?.addFrontendLog;
+              if (typeof addLog === 'function') {
+                addLog(logMessage);
+              }
+            }
+          } else {
+            const { emit } = await import('@tauri-apps/api/event');
+            await emit('add-log', { message: logMessage });
+          }
+        } catch (error) {
+          if (appStoreInstance) {
+            const store = appStoreInstance.getState();
+            const addLog = store?.addFrontendLog;
+            if (typeof addLog === 'function') {
+              addLog(logMessage);
+            }
+          }
+        }
       }
       
       throw popupError;
     }
     
     // Log standard error if not silent
-    if (!shouldBeSilent && appStoreInstance) {
+    if (!shouldBeSilent) {
       const logLabel = label || `${method} ${baseEndpoint}`;
       const errorMsg = error.name === 'AbortError' || error.name === 'TimeoutError' 
         ? 'timeout' 
         : error.message;
-      appStoreInstance.getState().addFrontendLog(`✗ ${logLabel} (${errorMsg})`);
+      const logMessage = `✗ ${logLabel} (${errorMsg})`;
+      
+      // Détecter si on est dans la fenêtre principale
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const currentWindow = await getCurrentWindow();
+        const isMain = currentWindow.label === 'main';
+        
+        if (isMain) {
+          if (appStoreInstance) {
+            const store = appStoreInstance.getState();
+            const addLog = store?.addFrontendLog;
+            if (typeof addLog === 'function') {
+              addLog(logMessage);
+            }
+          }
+        } else {
+          const { emit } = await import('@tauri-apps/api/event');
+          await emit('add-log', { message: logMessage });
+        }
+      } catch (error) {
+        if (appStoreInstance) {
+          const store = appStoreInstance.getState();
+          const addLog = store?.addFrontendLog;
+          if (typeof addLog === 'function') {
+            addLog(logMessage);
+          }
+        }
+      }
     }
     
     throw error;

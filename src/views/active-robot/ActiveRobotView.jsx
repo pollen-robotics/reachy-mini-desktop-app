@@ -1,6 +1,9 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Box, Typography, IconButton, Button, CircularProgress, Snackbar, Alert, LinearProgress, ButtonGroup, Switch, Tooltip } from '@mui/material';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 import { getAppWindow } from '../../utils/windowUtils';
 import { open } from '@tauri-apps/plugin-shell';
 import Viewer3D from '../../components/viewer3d';
@@ -11,8 +14,9 @@ import { RightPanel } from './right-panel';
 import RobotHeader from './RobotHeader';
 import { PowerButton } from './controls';
 import AudioControls from './audio/AudioControls';
-import { useRobotPowerState, useRobotMovementStatus } from '../../hooks/robot';
-import { useAudioControls, useAppLogs } from '../../hooks/system';
+import { useRobotPowerState, useRobotMovementStatus } from './hooks';
+import { useAudioControls } from './audio/hooks';
+import { useAppLogs } from './application-store/hooks';
 import useAppStore from '../../store/useAppStore';
 import { CHOREOGRAPHY_DATASETS, DANCES, QUICK_ACTIONS } from '../../constants/choreographies';
 import { buildApiUrl, fetchWithTimeout, DAEMON_CONFIG } from '../../config/daemon';
@@ -311,45 +315,12 @@ function ActiveRobotView({
           </Box>
         </Box>
       )}
-      {/* Titlebar */}
-      <Box
-        onMouseDown={async (e) => {
-          // If clicking on a button or its children, do nothing
-          const target = e.target;
-          const isButton = target.tagName === 'BUTTON' || 
-                          target.closest('button') !== null ||
-                          target.tagName === 'svg' || 
-                          target.tagName === 'path';
-          
-          if (!isButton) {
-            e.preventDefault();
-            try {
-              await appWindow.startDragging();
-            } catch (err) {
-              console.error('Drag error:', err);
-            }
-          }
-        }}
-        sx={{
-          height: 33,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'flex-end',
-          px: 2,
-          cursor: 'move',
-          userSelect: 'none',
-          bgcolor: 'transparent',
-        }}
-      >
-        {/* Empty titlebar */}
-      </Box>
-
       {/* Content - 2 columns */}
       <Box
         sx={{
           display: 'flex',
           flexDirection: 'row',
-          height: 'calc(100% - 33px)',
+          height: '100%',
           gap: 0,
           position: 'relative',
           bgcolor: 'transparent',
@@ -364,6 +335,7 @@ function ActiveRobotView({
             flexDirection: 'column',
             alignItems: 'center',
             px: 3,
+            pt: '33px', // Padding top to account for AppTopBar
             overflowY: 'auto',
             overflowX: 'hidden',
             scrollbarGutter: 'stable',
@@ -371,6 +343,15 @@ function ActiveRobotView({
             // z-index hierarchy: 1-2 = layout base elements
             zIndex: 1,
             height: '100%',
+            // Slightly darker background for left column
+            bgcolor: darkMode 
+              ? 'rgba(20, 20, 20, 0.6)' // Slightly darker than main background
+              : 'rgba(245, 245, 247, 0.7)', // Slightly darker than main background
+            // Gradient shadow on the right to show separation between columns
+            borderRight: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)'}`,
+            boxShadow: darkMode
+              ? '2px 0 8px -2px rgba(0, 0, 0, 0.3)'
+              : '2px 0 8px -2px rgba(0, 0, 0, 0.1)',
             // Scrollbar styling
             '&::-webkit-scrollbar': {
               width: '6px',
@@ -494,11 +475,9 @@ function ActiveRobotView({
                     flexShrink: 0,
                     display: 'flex',
                     flexDirection: 'column',
-                    borderLeft: darkMode
-                      ? '1px solid rgba(255, 255, 255, 0.15)'
-                      : '1px solid rgba(0, 0, 0, 0.12)',
                     position: 'relative',
                     zIndex: 2,
+                    pt: '33px', // Padding top to account for AppTopBar
                     transform: 'translateY(-8px)',
                     bgcolor: 'transparent !important',
                     backgroundColor: 'transparent !important',
@@ -542,84 +521,111 @@ function ActiveRobotView({
           sx={{ 
             position: 'relative', 
             overflow: 'hidden', 
-            borderRadius: '14px',
+            borderRadius: '12px',
             backdropFilter: 'blur(20px)',
             WebkitBackdropFilter: 'blur(20px)',
             boxShadow: darkMode 
-              ? '0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3)'
-              : '0 8px 24px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.1)',
-            zIndex: 100000, // Ensure toast content is above everything
+              ? '0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3)'
+              : '0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08)',
+            zIndex: 100000,
           }}
         >
           {/* Main content */}
           <Box
             sx={{
               position: 'relative',
-              borderRadius: '14px',
-              fontSize: 14,
-              fontWeight: 600,
+              borderRadius: '12px',
+              fontSize: 13,
+              fontWeight: 500,
               letterSpacing: '-0.01em',
               background: darkMode
                 ? (toast.severity === 'success'
-                  ? 'rgba(34, 197, 94, 0.25)'
-                  : toast.severity === 'error'
-                  ? 'rgba(239, 68, 68, 0.25)'
-                  : 'rgba(255, 149, 0, 0.25)')
-                : (toast.severity === 'success'
-                  ? 'rgba(34, 197, 94, 0.2)'
-                  : toast.severity === 'error'
-                  ? 'rgba(239, 68, 68, 0.2)'
-                  : 'rgba(255, 149, 0, 0.2)'),
-              border: `1px solid ${toast.severity === 'success'
-                ? darkMode ? 'rgba(34, 197, 94, 0.85)' : 'rgba(34, 197, 94, 0.75)'
-                : toast.severity === 'error'
-                ? darkMode ? 'rgba(239, 68, 68, 0.85)' : 'rgba(239, 68, 68, 0.75)'
-                : darkMode ? 'rgba(255, 149, 0, 0.85)' : 'rgba(255, 149, 0, 0.75)'}`,
-              color: toast.severity === 'success'
-                ? darkMode ? '#4ade80' : '#15803d'
-                : toast.severity === 'error'
-                ? darkMode ? '#f87171' : '#b91c1c'
-                : darkMode ? '#ffb340' : '#c2410c',
-              minWidth: 200,
-              px: 2.5,
-              py: 1.5,
-              pt: 2,
-              textAlign: 'center',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              overflow: 'hidden',
-            }}
-          >
-            {/* Animated time bar - Full surface */}
-            <Box
-              sx={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                bottom: 0,
-                right: 0,
-                width: `${toastProgress}%`,
-                height: '100%',
-                background: toast.severity === 'success' 
                   ? 'rgba(34, 197, 94, 0.15)'
                   : toast.severity === 'error'
                   ? 'rgba(239, 68, 68, 0.15)'
-                  : 'rgba(255, 149, 0, 0.15)',
+                  : 'rgba(255, 149, 0, 0.15)')
+                : (toast.severity === 'success'
+                  ? 'rgba(34, 197, 94, 0.1)'
+                  : toast.severity === 'error'
+                  ? 'rgba(239, 68, 68, 0.1)'
+                  : 'rgba(255, 149, 0, 0.1)'),
+              border: `1px solid ${toast.severity === 'success'
+                ? darkMode ? 'rgba(34, 197, 94, 0.4)' : 'rgba(34, 197, 94, 0.3)'
+                : toast.severity === 'error'
+                ? darkMode ? 'rgba(239, 68, 68, 0.4)' : 'rgba(239, 68, 68, 0.3)'
+                : darkMode ? 'rgba(255, 149, 0, 0.4)' : 'rgba(255, 149, 0, 0.3)'}`,
+              color: toast.severity === 'success'
+                ? darkMode ? '#86efac' : '#16a34a'
+                : toast.severity === 'error'
+                ? darkMode ? '#fca5a5' : '#dc2626'
+                : darkMode ? '#fbbf24' : '#d97706',
+              minWidth: 240,
+              maxWidth: 400,
+              px: 3,
+              py: 2,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 1.5,
+              overflow: 'hidden',
+            }}
+          >
+            {/* Animated time bar - Bottom border style */}
+            <Box
+              sx={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                height: '2px',
+                width: `${toastProgress}%`,
+                background: toast.severity === 'success' 
+                  ? darkMode ? 'rgba(34, 197, 94, 0.8)' : 'rgba(34, 197, 94, 0.7)'
+                  : toast.severity === 'error'
+                  ? darkMode ? 'rgba(239, 68, 68, 0.8)' : 'rgba(239, 68, 68, 0.7)'
+                  : darkMode ? 'rgba(255, 149, 0, 0.8)' : 'rgba(255, 149, 0, 0.7)',
                 zIndex: 0,
                 transition: 'width 0.02s linear',
-                borderTopLeftRadius: '14px',
-                borderBottomLeftRadius: '14px',
-                borderTopRightRadius: 0,
-                borderBottomRightRadius: 0,
+                borderRadius: '0 0 12px 12px',
               }}
             />
             
-            {/* Text content - Above the progress bar */}
+            {/* Icon - Outlined style */}
+            {toast.severity === 'success' && (
+              <CheckCircleOutlinedIcon 
+                sx={{ 
+                  fontSize: 20, 
+                  flexShrink: 0,
+                  color: 'inherit',
+                }} 
+              />
+            )}
+            {toast.severity === 'error' && (
+              <ErrorOutlineIcon 
+                sx={{ 
+                  fontSize: 20, 
+                  flexShrink: 0,
+                  color: 'inherit',
+                }} 
+              />
+            )}
+            {(toast.severity === 'warning' || toast.severity === 'info') && (
+              <WarningAmberOutlinedIcon 
+                sx={{ 
+                  fontSize: 20, 
+                  flexShrink: 0,
+                  color: 'inherit',
+              }}
+            />
+            )}
+            
+            {/* Text content */}
             <Box
               sx={{
                 position: 'relative',
                 zIndex: 1,
+                lineHeight: 1.5,
+                textAlign: 'left',
+                flex: 1,
             }}
           >
             {toast.message}

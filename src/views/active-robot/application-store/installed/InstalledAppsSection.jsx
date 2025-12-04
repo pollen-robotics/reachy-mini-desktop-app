@@ -44,6 +44,7 @@ export default function InstalledAppsSection({
               ? '1px dashed rgba(255, 255, 255, 0.3)' 
               : '1px dashed rgba(0, 0, 0, 0.3)',
             gap: 1.5,
+            minHeight: '280px', // Fixed height to match apps container
           }}
         >
           {/* Reachies Carousel - Scrolling images */}
@@ -111,7 +112,21 @@ export default function InstalledAppsSection({
       {/* Installed Apps List */}
       {installedApps.length > 0 && (
         <>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+          <Box 
+            sx={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              gap: 1, 
+              mb: 0,
+              minHeight: '280px', // Same height as empty state box
+              borderRadius: '14px',
+              bgcolor: 'transparent',
+              border: darkMode 
+                ? '1px solid rgba(255, 255, 255, 0.08)' 
+                : '1px solid rgba(0, 0, 0, 0.08)',
+              p: 2,
+            }}
+          >
           {installedApps.map(app => {
             const isExpanded = expandedApp === app.name;
             const isRemoving = isJobRunning(app.name, 'remove');
@@ -399,7 +414,6 @@ export default function InstalledAppsSection({
               </Box>
             );
           })}
-        </Box>
 
           {/* Compact version: Discover apps / Build your own */}
           <Box
@@ -416,7 +430,7 @@ export default function InstalledAppsSection({
               border: darkMode 
                 ? '1px dashed rgba(255, 255, 255, 0.2)' 
                 : '1px dashed rgba(0, 0, 0, 0.2)',
-              mb: 2.5,
+              mt: 1,
             }}
           >
             {/* Discover apps button */}
@@ -446,6 +460,7 @@ export default function InstalledAppsSection({
             >
               or build your own
             </Typography>
+          </Box>
           </Box>
         </>
       )}

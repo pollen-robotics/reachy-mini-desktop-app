@@ -12,43 +12,14 @@ import useAppStore from '../store/useAppStore';
  * - Robust error handling with retry logic
  * - Window state validation
  * - Event-driven architecture
+ * 
+ * NOTE: Controller and Expressions are now displayed in the right panel instead of separate windows.
+ * This code is kept for potential future use or if window-based display is needed again.
+ * Currently, no secondary windows are configured.
  */
 
 // Window configuration registry
-const WINDOW_CONFIGS = {
-  'quick-actions': {
-    url: '/#quick-actions',
-    title: 'Expressions',
-    width: 500,
-    height: 400,
-    minWidth: 500,
-    minHeight: 400,
-    maxWidth: 500,
-    maxHeight: 400,
-    center: true,
-    resizable: false,
-    decorations: true,
-    transparent: false,
-    hiddenTitle: true,
-    titleBarStyle: 'Transparent',
-  },
-  'position-control': {
-    url: '/#position-control',
-    title: 'Controller',
-    width: 450,
-    height: 680,
-    minWidth: 450,
-    minHeight: 680,
-    maxWidth: 450,
-    maxHeight: 680,
-    center: true,
-    resizable: false,
-    decorations: true,
-    transparent: false,
-    hiddenTitle: true,
-    titleBarStyle: 'Transparent',
-  },
-};
+const WINDOW_CONFIGS = {};
 
 // Window references cache (for fast access)
 const windowRefs = new Map();
@@ -183,6 +154,7 @@ async function sendInitialStateToWindow(windowLabel) {
       isInstalling: state.isInstalling ?? false,
       robotStateFull: state.robotStateFull ?? { data: null, lastUpdate: null, error: null },
       activeMoves: state.activeMoves ?? [],
+      frontendLogs: state.frontendLogs ?? [], // Include logs in initial state
     };
     
     // Send initial state immediately and also after a short delay to ensure it's received
@@ -294,44 +266,6 @@ async function createWindow(windowLabel) {
 }
 
 /**
- * Public API: Open or toggle a window
- */
-export async function openQuickActionsWindow() {
-  try {
-    const existingWindow = await getWindowReference('quick-actions');
-    if (existingWindow) {
-      // Toggle: close if exists
-      await closeWindow('quick-actions');
-    } else {
-      // Open: create new window
-      await createWindow('quick-actions');
-    }
-  } catch (error) {
-    console.error('❌ Failed to open Expressions window:', error);
-    throw error;
-  }
-}
-
-/**
- * Public API: Open or toggle a window
- */
-export async function openPositionControlWindow() {
-  try {
-    const existingWindow = await getWindowReference('position-control');
-    if (existingWindow) {
-      // Toggle: close if exists
-      await closeWindow('position-control');
-    } else {
-      // Open: create new window
-      await createWindow('position-control');
-    }
-  } catch (error) {
-    console.error('❌ Failed to open Position Control window:', error);
-    throw error;
-  }
-}
-
-/**
  * Public API: Close a window
  */
 export async function closeWindow(windowLabel) {
@@ -363,7 +297,7 @@ export async function isWindowOpen(windowLabel) {
  * Public API: Close all secondary windows
  */
 export async function closeAllSecondaryWindows() {
-  const secondaryWindows = ['quick-actions', 'position-control'];
+    const secondaryWindows = [];
   const closePromises = secondaryWindows.map(label => closeWindow(label).catch(error => {
     console.error(`Failed to close ${label}:`, error);
   }));
@@ -376,7 +310,7 @@ export async function closeAllSecondaryWindows() {
 export async function initializeWindowManager() {
   try {
     const allWindows = await getAllWindows();
-    const secondaryLabels = ['quick-actions', 'position-control'];
+    const secondaryLabels = [];
     
     for (const label of secondaryLabels) {
       const window = allWindows.find(w => w.label === label);

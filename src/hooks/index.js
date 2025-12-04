@@ -1,17 +1,19 @@
 /**
- * Main barrel export for all hooks
- * Organized by category: apps, daemon, robot, system
+ * Main barrel export for global hooks
+ * Hooks specific to components/views are now located near their usage
+ * 
+ * Global hooks (used across multiple areas):
+ * - daemon: App lifecycle management
+ * - robot: Core robot commands and state (used globally)
+ * - system: System-level utilities (logs, updater, USB, window resize)
  */
-
-// Apps
-export { useApps, useAppHandlers, useAppInstallation } from './apps';
 
 // Daemon
 export { useDaemon, useDaemonHealthCheck } from './daemon';
 
-// Robot
-export { useRobotCommands, useRobotPowerState, useRobotState, useRobotWebSocket } from './robot';
+// Robot (core - used globally)
+export { useRobotCommands, useRobotState } from './robot';
 
-// System
+// System (global utilities)
 export { useLogs, useUpdater, useUsbDetection, useWindowResize } from './system';
 

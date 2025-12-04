@@ -215,6 +215,9 @@ macro_rules! spawn_sidecar_monitor {
                                 println!("[tauri] [{}] Process terminated with status: {:?}", p, status);
                             } else {
                                 println!("[tauri] Sidecar process terminated with status: {:?}", status);
+                                // ✅ Emit event to frontend so it can detect the crash
+                                let status_str = format!("{:?}", status);
+                                let _ = app_handle_clone.emit("sidecar-terminated", status_str);
                             }
                         }
                         _ => {}
@@ -324,9 +327,16 @@ fn start_daemon(app_handle: tauri::AppHandle, state: State<DaemonState>, sim_mod
                 std::thread::sleep(std::time::Duration::from_secs(5));
             }
             Err(e) => {
-                // Log warning but continue (MuJoCo might already be installed)
-                add_log(&state, format!("⚠️ MuJoCo installation: {}", e));
-                println!("[tauri] ⚠️ Continuing anyway - MuJoCo might already be installed");
+                // ✅ Improved error handling: Log detailed error but continue
+                // MuJoCo might already be installed, or installation might be in progress
+                let error_msg = format!("⚠️ MuJoCo installation warning: {}", e);
+                add_log(&state, error_msg.clone());
+                println!("[tauri] ⚠️ MuJoCo installation returned error: {}", e);
+                println!("[tauri] ⚠️ Continuing anyway - MuJoCo might already be installed or installation in progress");
+                // Note: We continue because:
+                // 1. MuJoCo might already be installed (uv pip install is idempotent)
+                // 2. Installation runs asynchronously, error might be transient
+                // 3. If MuJoCo is truly missing, the daemon will fail to start and we'll catch it via sidecar-terminated
             }
         }
     }

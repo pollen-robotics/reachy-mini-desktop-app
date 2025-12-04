@@ -3,7 +3,7 @@ import { Box, Typography, LinearProgress, CircularProgress } from '@mui/material
 import reachyUpdateBoxSvg from '../../assets/reachy-update-box.svg';
 import useAppStore from '../../store/useAppStore';
 import { DAEMON_CONFIG } from '../../config/daemon';
-import { useInternetHealthcheck } from '../../hooks/system/useInternetHealthcheck';
+import { useInternetHealthcheck } from './hooks';
 
 /**
  * Update view component
@@ -23,7 +23,9 @@ export default function UpdateView({
   const checkStartTimeRef = useRef(Date.now());
   const { isOnline: isInternetOnline, hasChecked: hasInternetChecked } = useInternetHealthcheck({ interval: 5000, timeout: 5000 });
 
-  // Timer to guarantee minimum display time (uses centralized config)
+  // ✅ Timer to guarantee minimum display time (uses centralized config)
+  // Reset timer when component mounts to ensure "Looking for updates..." is visible for at least 2 seconds
+  // This works in both DEV mode (where isChecking stays false) and PRODUCTION (where check may complete quickly)
   useEffect(() => {
     checkStartTimeRef.current = Date.now();
     setMinDisplayTimeElapsed(false);
@@ -33,7 +35,7 @@ export default function UpdateView({
     }, DAEMON_CONFIG.MIN_DISPLAY_TIMES.UPDATE_CHECK);
 
     return () => clearTimeout(timer);
-  }, []); // Triggers only once on component mount
+  }, []); // ✅ Only reset on mount - ensures consistent 2s display regardless of check speed
 
   // Automatic installation if update available and minimum time elapsed
   useEffect(() => {
@@ -102,8 +104,10 @@ export default function UpdateView({
           px: 4,
         }}
       >
-        {isChecking && !updateAvailable ? (
-          // State: Checking in progress - subtle and centered design
+        {/* ✅ Show "Looking for updates..." if checking OR if minimum time not elapsed yet
+            This ensures the message is visible for at least 2 seconds, even if check completes quickly */}
+        {(isChecking || !minDisplayTimeElapsed) && !updateAvailable && !updateError ? (
+          // State: Checking in progress OR minimum display time not elapsed - subtle and centered design
           <Box
             sx={{
               display: 'flex',
@@ -274,7 +278,7 @@ export default function UpdateView({
                 </Typography>
               </Box>
 
-              {/* Error title */}
+              {/* Error title - more specific based on error type */}
               <Typography
                 sx={{
                   fontSize: 18,
@@ -283,22 +287,30 @@ export default function UpdateView({
                   mb: 1,
                 }}
               >
-                {isNetworkError(updateError) ? 'No Internet Connection' : 'Update Check Failed'}
+                {updateError.includes('timed out') || updateError.includes('timeout')
+                  ? 'Update Check Timed Out'
+                  : updateError.includes('Network error') || updateError.includes('DNS error')
+                  ? 'Connection Problem'
+                  : updateError.includes('Server error')
+                  ? 'Server Error'
+                  : updateError.includes('Security error') || updateError.includes('certificate')
+                  ? 'Security Error'
+                  : isNetworkError(updateError)
+                  ? 'No Internet Connection'
+                  : 'Update Check Failed'}
               </Typography>
 
-              {/* Error message */}
+              {/* Error message - use the detailed error message directly */}
               <Typography
                 sx={{
                   fontSize: 13,
                   color: darkMode ? '#aaa' : '#666',
                   lineHeight: 1.6,
                   mb: 2,
+                  maxWidth: 400,
                 }}
               >
-                {isNetworkError(updateError) 
-                  ? 'Unable to check for updates. Please check your internet connection and try again.'
-                  : updateError
-                }
+                {updateError}
               </Typography>
 
             </Box>

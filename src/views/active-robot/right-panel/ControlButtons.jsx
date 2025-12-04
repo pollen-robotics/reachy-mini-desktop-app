@@ -1,86 +1,134 @@
 import React from 'react';
-import { Box, Button, Typography, Chip } from '@mui/material';
+import { Box, Typography, Button, Chip } from '@mui/material';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import CloseIcon from '@mui/icons-material/Close';
-import RocketIcon from '@assets/rocket.svg';
+import ExpressionIcon from '@assets/expression.svg';
 import JoystickIcon from '@assets/joystick.svg';
-import { openQuickActionsWindow, openPositionControlWindow } from '../../../utils/windowManager';
 import useAppStore from '../../../store/useAppStore';
 
 /**
- * Control Buttons Component
- * Replaces Expressions and Position Control sections with grouped buttons
- * Each button opens the corresponding component in a new Tauri window
+ * Control Cards Component
+ * Displays Expressions and Controller as cards with open/close buttons
+ * Similar design to Applications cards
  */
 export default function ControlButtons({ 
   darkMode = false,
   isActive = false,
 }) {
-  const openWindows = useAppStore(state => state.openWindows);
-  const isQuickActionsOpen = openWindows.includes('quick-actions');
-  const isPositionControlOpen = openWindows.includes('position-control');
+  const rightPanelView = useAppStore(state => state.rightPanelView);
+  const setRightPanelView = useAppStore(state => state.setRightPanelView);
+  const isExpressionsOpen = rightPanelView === 'expressions';
+  const isControllerOpen = rightPanelView === 'controller';
+  
+  const handleExpressionsClick = () => {
+    if (isExpressionsOpen) {
+      setRightPanelView(null); // Close: return to applications
+    } else {
+      setRightPanelView('expressions'); // Open expressions in right panel
+    }
+  };
+  
+  const handleControllerClick = () => {
+    if (isControllerOpen) {
+      setRightPanelView(null); // Close: return to applications
+    } else {
+      setRightPanelView('controller'); // Open controller in right panel
+    }
+  };
 
-  const buttonStyle = {
-    flex: 1,
-    aspectRatio: '1 / 1', // Make buttons square
-    py: 1.5,
-    px: 2,
-    borderRadius: '12px',
-    textTransform: 'none',
-    fontWeight: 600,
-    fontSize: 13,
-    letterSpacing: '-0.2px',
+  const cardStyle = {
+    borderRadius: '14px',
+    bgcolor: darkMode ? 'rgba(255, 255, 255, 0.02)' : 'white',
+    border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)'}`,
+    p: 2.1,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 0.5,
+    gap: 1.5,
     transition: 'all 0.2s ease',
-    border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'}`,
-    bgcolor: darkMode ? '#1a1a1a' : '#ffffff',
-    color: darkMode ? '#f5f5f5' : '#333',
+    opacity: !isActive ? 0.5 : 1,
+    flex: 1,
+    position: 'relative',
+  };
+
+  const buttonStyle = {
+    textTransform: 'none',
+    fontWeight: 600,
+    fontSize: 12,
+    borderRadius: '8px',
+    px: 2,
+    py: 0.75,
+    minWidth: 'auto',
+    transition: 'all 0.2s ease',
+  };
+
+  const openButtonStyle = {
+    ...buttonStyle,
+    border: '1px solid #FF9500',
+    color: '#FF9500',
+    bgcolor: 'transparent',
+    position: 'relative',
+    overflow: 'visible',
+    // Pulse animation - same as Discover Apps button
+    animation: 'controlPulse 3s ease-in-out infinite',
+    '@keyframes controlPulse': {
+      '0%, 100%': {
+        boxShadow: darkMode
+          ? '0 0 0 0 rgba(255, 149, 0, 0.4)'
+          : '0 0 0 0 rgba(255, 149, 0, 0.3)',
+      },
+      '50%': {
+        boxShadow: darkMode
+          ? '0 0 0 8px rgba(255, 149, 0, 0)'
+          : '0 0 0 8px rgba(255, 149, 0, 0)',
+      },
+    },
     '&:hover': {
-      bgcolor: darkMode ? 'rgba(255, 149, 0, 0.15)' : 'rgba(255, 149, 0, 0.1)',
-      border: `1px solid ${darkMode ? 'rgba(255, 149, 0, 0.3)' : 'rgba(255, 149, 0, 0.3)'}`,
+      bgcolor: 'rgba(255, 149, 0, 0.1)',
+      border: '1px solid #FF9500',
       transform: 'translateY(-2px)',
-      boxShadow: darkMode 
-        ? '0 4px 12px rgba(255, 149, 0, 0.2)' 
-        : '0 4px 12px rgba(255, 149, 0, 0.15)',
+      boxShadow: darkMode
+        ? '0 6px 16px rgba(255, 149, 0, 0.2)'
+        : '0 6px 16px rgba(255, 149, 0, 0.15)',
+      animation: 'none', // Stop pulse on hover
+    },
+    '&:active': {
+      transform: 'translateY(0)',
+      boxShadow: darkMode
+        ? '0 2px 8px rgba(255, 149, 0, 0.2)'
+        : '0 2px 8px rgba(255, 149, 0, 0.15)',
+    },
+    '&:disabled': {
+      border: `1px solid ${darkMode ? 'rgba(255, 149, 0, 0.3)' : 'rgba(255, 149, 0, 0.4)'}`,
+      color: darkMode ? 'rgba(255, 149, 0, 0.3)' : 'rgba(255, 149, 0, 0.4)',
+      animation: 'none',
+    },
+  };
+
+  const closeButtonStyle = {
+    ...buttonStyle,
+    border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.2)'}`,
+    color: darkMode ? '#f5f5f5' : '#333',
+    bgcolor: 'transparent',
+    transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+    '&:hover': {
+      bgcolor: darkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)',
+      transform: 'translateY(-2px)',
     },
     '&:active': {
       transform: 'translateY(0)',
     },
-    '&:disabled': {
-      opacity: 0.4,
-      cursor: 'not-allowed',
-      border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)'}`,
-      bgcolor: darkMode ? 'rgba(26, 26, 26, 0.5)' : 'rgba(255, 255, 255, 0.5)',
-    },
-  };
-
-  const activeButtonStyle = {
-    ...buttonStyle,
-    bgcolor: darkMode ? 'rgba(255, 149, 0, 0.2)' : 'rgba(255, 149, 0, 0.1)',
-    border: `1px solid ${darkMode ? 'rgba(255, 149, 0, 0.4)' : 'rgba(255, 149, 0, 0.4)'}`,
-    boxShadow: darkMode 
-      ? '0 2px 8px rgba(255, 149, 0, 0.3)' 
-      : '0 2px 8px rgba(255, 149, 0, 0.2)',
-  };
-
-  const iconStyle = {
-    width: 72,
-    height: 72,
-    mb: 0.5,
   };
 
   return (
     <Box
       sx={{
         px: 3,
-        pt: 2,
+        pt: 4,
         pb: 3,
         display: 'flex',
         flexDirection: 'column',
-        gap: 2,
+        gap: 1.5,
       }}
     >
       {/* Title Section */}
@@ -89,7 +137,6 @@ export default function ControlButtons({
           display: 'flex',
           alignItems: 'center',
           gap: 1.5,
-          mb: 1,
         }}
       >
         <Typography
@@ -100,165 +147,132 @@ export default function ControlButtons({
             letterSpacing: '-0.3px',
           }}
         >
-          Controls
+          Quick Actions
         </Typography>
       </Box>
 
-      {/* Buttons Row */}
+      {/* Cards Row */}
       <Box
         sx={{
           display: 'flex',
-          gap: 3,
+          flexDirection: 'row',
+          gap: 1.5,
           width: '100%',
         }}
       >
-        {/* Expressions Button */}
-        <Button
-          onClick={openQuickActionsWindow}
-          disabled={!isActive}
-          sx={{
-            ...(isQuickActionsOpen ? activeButtonStyle : buttonStyle),
-            position: 'relative',
-            '&:hover .close-icon': {
-              opacity: 1,
-            },
-          }}
-        >
-          {isQuickActionsOpen && (
-            <>
-              <CloseIcon 
-                className="close-icon"
-                sx={{ 
-                  position: 'absolute',
-                  top: 4,
-                  left: 4,
-                  fontSize: 16, 
-                  color: '#FF9500',
-                  opacity: 0,
-                  transition: 'opacity 0.2s ease',
-                }} 
-              />
-              <Chip
-                label="Close"
-                size="small"
-                sx={{
-                  position: 'absolute',
-                  top: 4,
-                  right: 4,
-                  height: 18,
-                  fontSize: 9,
-                  fontWeight: 600,
-                  bgcolor: '#FF9500',
-                  color: '#fff',
-                  '& .MuiChip-label': {
-                    px: 0.75,
-                    py: 0,
-                  },
-                }}
-              />
-            </>
+        {/* Expressions Card */}
+        <Box sx={cardStyle}>
+          {isExpressionsOpen && (
+            <Chip
+              label="Open"
+              size="small"
+              sx={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                height: 18,
+                fontSize: 9,
+                fontWeight: 600,
+                bgcolor: 'rgba(34, 197, 94, 0.15)',
+                color: '#22c55e',
+                '& .MuiChip-label': {
+                  px: 0.75,
+                  py: 0,
+                },
+              }}
+            />
           )}
           <Box
             component="img"
-            src={RocketIcon}
-            alt="Rocket"
-            sx={iconStyle}
+            src={ExpressionIcon}
+            alt="Expressions"
+            sx={{
+              width: 64,
+              height: 64,
+              mb: 0.5,
+            }}
           />
           <Typography
             sx={{
-              fontSize: 13,
-              fontWeight: 700,
-              color: '#FF9500',
-              letterSpacing: '-0.3px',
+              fontSize: 15,
+              fontWeight: 600,
+              color: darkMode ? '#f5f5f5' : '#333',
+              letterSpacing: '-0.2px',
+              textAlign: 'center',
             }}
           >
-                    Expressions
+            Expressions
           </Typography>
-          <Typography
+          <Button
+            onClick={handleExpressionsClick}
+            disabled={!isActive}
+            variant="outlined"
+            startIcon={isExpressionsOpen ? <CloseIcon sx={{ fontSize: 14 }} /> : <OpenInNewIcon sx={{ fontSize: 14 }} />}
             sx={{
-              fontSize: 10,
-              color: darkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)',
-              fontWeight: 400,
-              mt: -0.25,
+              ...(isExpressionsOpen ? closeButtonStyle : openButtonStyle),
+              width: 'auto',
             }}
           >
-            Express emotions
-          </Typography>
-        </Button>
+            {isExpressionsOpen ? 'Close' : 'Open'}
+          </Button>
+        </Box>
 
-        {/* Position Control Button */}
-        <Button
-          onClick={openPositionControlWindow}
-          disabled={!isActive}
-          sx={{
-            ...(isPositionControlOpen ? activeButtonStyle : buttonStyle),
-            position: 'relative',
-            '&:hover .close-icon': {
-              opacity: 1,
-            },
-          }}
-        >
-          {isPositionControlOpen && (
-            <>
-              <CloseIcon 
-                className="close-icon"
-                sx={{ 
-                  position: 'absolute',
-                  top: 4,
-                  left: 4,
-                  fontSize: 16, 
-                  color: '#FF9500',
-                  opacity: 0,
-                  transition: 'opacity 0.2s ease',
-                }} 
-              />
-              <Chip
-                label="Close"
-                size="small"
-                sx={{
-                  position: 'absolute',
-                  top: 4,
-                  right: 4,
-                  height: 18,
-                  fontSize: 9,
-                  fontWeight: 600,
-                  bgcolor: '#FF9500',
-                  color: '#fff',
-                  '& .MuiChip-label': {
-                    px: 0.75,
-                    py: 0,
-                  },
-                }}
-              />
-            </>
+        {/* Controller Card */}
+        <Box sx={cardStyle}>
+          {isControllerOpen && (
+            <Chip
+              label="Open"
+              size="small"
+              sx={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                height: 18,
+                fontSize: 9,
+                fontWeight: 600,
+                bgcolor: 'rgba(34, 197, 94, 0.15)',
+                color: '#22c55e',
+                '& .MuiChip-label': {
+                  px: 0.75,
+                  py: 0,
+                },
+              }}
+            />
           )}
           <Box
             component="img"
             src={JoystickIcon}
-            alt="Joystick"
-            sx={iconStyle}
+            alt="Controller"
+            sx={{
+              width: 64,
+              height: 64,
+              mb: 0.5,
+            }}
           />
           <Typography
             sx={{
-              fontSize: 13,
-              fontWeight: 700,
-              color: '#FF9500',
-              letterSpacing: '-0.3px',
+              fontSize: 15,
+              fontWeight: 600,
+              color: darkMode ? '#f5f5f5' : '#333',
+              letterSpacing: '-0.2px',
+              textAlign: 'center',
             }}
           >
             Controller
           </Typography>
-          <Typography
+          <Button
+            onClick={handleControllerClick}
+            disabled={!isActive}
+            variant="outlined"
+            startIcon={isControllerOpen ? <CloseIcon sx={{ fontSize: 14 }} /> : <OpenInNewIcon sx={{ fontSize: 14 }} />}
             sx={{
-              fontSize: 10,
-              color: darkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)',
-              fontWeight: 400,
-              mt: -0.25,
+              ...(isControllerOpen ? closeButtonStyle : openButtonStyle),
+              width: 'auto',
             }}
           >
-            Control movement
-          </Typography>
-        </Button>
+            {isControllerOpen ? 'Close' : 'Open'}
+          </Button>
+        </Box>
       </Box>
     </Box>
   );

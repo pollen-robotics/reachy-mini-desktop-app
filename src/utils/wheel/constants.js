@@ -23,6 +23,9 @@ export const FRICTION = 0.95; // Deceleration factor for momentum (5% loss per f
 export const MIN_VELOCITY = 0.1; // Minimum velocity to continue spinning (degrees/frame)
 export const MIN_MOMENTUM = 0.5; // Minimum velocity to apply momentum after drag
 
+// Random spin
+export const MIN_RANDOM_DIFFERENCE = 20; // Minimum items difference for random spin (ensures significant visual change)
+
 // Performance
 export const RESIZE_DEBOUNCE_MS = 150; // Debounce delay for resize events
 export const DRAG_THROTTLE_MS = 16; // Throttle delay for drag (60fps = ~16ms)
