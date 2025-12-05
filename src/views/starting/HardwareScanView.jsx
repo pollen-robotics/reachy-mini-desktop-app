@@ -10,6 +10,7 @@ import { getTotalScanParts, getCurrentScanPart, mapMeshToScanPart } from '../../
 import { useDaemonStartupLogs } from '../../hooks/daemon/useDaemonStartupLogs';
 import LogConsole from '../active-robot/LogConsole';
 import { DAEMON_CONFIG, fetchWithTimeout, buildApiUrl } from '../../config/daemon';
+import { detectMovementChanges } from '../../utils/movementDetection';
 
 /**
  * Generate text shadow for better readability on transparent backgrounds
@@ -34,7 +35,7 @@ function HardwareScanView({
   onScanComplete: onScanCompleteCallback,
   startDaemon,
 }) {
-  const { setHardwareError, darkMode, setIsStarting, isStarting } = useAppStore();
+  const { setHardwareError, darkMode, setIsStarting, isStarting, setRobotStateFull } = useAppStore();
   const theme = useTheme();
   const { logs: startupLogs, hasError: hasStartupError, lastMessage } = useDaemonStartupLogs(isStarting);
   const totalScanParts = getTotalScanParts(); // Static total from scan parts list
@@ -45,9 +46,24 @@ function HardwareScanView({
   const [isRetrying, setIsRetrying] = useState(false);
   const [scanComplete, setScanComplete] = useState(false);
   const [waitingForDaemon, setWaitingForDaemon] = useState(false);
+  const [waitingForMovements, setWaitingForMovements] = useState(false);
   const [allMeshes, setAllMeshes] = useState([]);
   const robotRefRef = useRef(null);
   const healthCheckIntervalRef = useRef(null);
+  const movementCheckIntervalRef = useRef(null);
+  const lastMovementStateRef = useRef(null); // Track last movement state to detect changes
+  
+  // ✅ Helper to clear all intervals (DRY)
+  const clearAllIntervals = useCallback(() => {
+    if (healthCheckIntervalRef.current) {
+      clearInterval(healthCheckIntervalRef.current);
+      healthCheckIntervalRef.current = null;
+    }
+    if (movementCheckIntervalRef.current) {
+      clearInterval(movementCheckIntervalRef.current);
+      movementCheckIntervalRef.current = null;
+    }
+  }, []);
   
   // Memoize text shadow based on dark mode
   const textShadow = useMemo(() => {
@@ -102,13 +118,12 @@ function HardwareScanView({
       setCurrentPart(null);
       setScanComplete(false);
       setWaitingForDaemon(false);
+      setWaitingForMovements(false);
       scannedPartsRef.current.clear(); // Reset scanned parts tracking
       
-      // Clear healthcheck interval if active
-      if (healthCheckIntervalRef.current) {
-        clearInterval(healthCheckIntervalRef.current);
-        healthCheckIntervalRef.current = null;
-      }
+      // Clear all intervals
+      clearAllIntervals();
+      lastMovementStateRef.current = null; // Reset movement tracking
       
       // ✅ Don't reset hardwareError here - let startDaemon handle it
       // If the error persists, it will be re-detected by the stderr listener
@@ -130,14 +145,17 @@ function HardwareScanView({
       // ✅ Keep scan view active - don't reload, let the error be handled by startDaemon
       // startDaemon will set hardwareError if it fails, keeping us in scan view
     }
-  }, [setIsStarting, startDaemon]);
+  }, [setIsStarting, startDaemon, clearAllIntervals]);
   
   /**
-   * Check daemon health status
-   * Returns true if daemon is ready, false otherwise
+   * Check daemon health status AND robot ready state
+   * Returns { ready: boolean, hasMovements: boolean } 
+   * Polls /api/state/full directly (doesn't depend on useRobotState which only polls when isActive=true)
+   * ✅ Also updates robotStateFull in store so it's available immediately when transitioning to active view
    */
   const checkDaemonHealth = useCallback(async () => {
     try {
+      // 1. Check daemon responds
       const healthCheck = await fetchWithTimeout(
         buildApiUrl('/api/daemon/status'),
         {},
@@ -145,64 +163,194 @@ function HardwareScanView({
         { silent: true }
       );
       
-      return healthCheck.ok;
+      if (!healthCheck.ok) {
+        return { ready: false, hasMovements: false };
+      }
+      
+      // 2. Poll /api/state/full directly to check if control_mode is available
+      // (useRobotState doesn't poll when isActive=false, so we poll here)
+      const stateResponse = await fetchWithTimeout(
+        buildApiUrl('/api/state/full?with_control_mode=true&with_head_joints=true&with_body_yaw=true&with_antenna_positions=true'),
+        {},
+        DAEMON_CONFIG.TIMEOUTS.STATE_FULL,
+        { silent: true }
+      );
+      
+      if (!stateResponse.ok) {
+        return { ready: false, hasMovements: false };
+      }
+      
+      const stateData = await stateResponse.json();
+      
+      // control_mode must be defined (enabled or disabled, but not undefined)
+      if (stateData.control_mode === undefined) {
+        return { ready: false, hasMovements: false };
+      }
+      
+      // ✅ Update robotStateFull in store so it's available immediately when transitioning to active view
+      // This prevents the "Connected" state flash when arriving in ActiveRobotView
+      setRobotStateFull({
+        data: stateData,
+        lastUpdate: Date.now(),
+        error: null,
+      });
+      
+      // 3. Check if movements are available (head_joints, body_yaw, antennas)
+      const hasMovements = (
+        stateData.head_joints && 
+        Array.isArray(stateData.head_joints) && 
+        stateData.head_joints.length === 7 &&
+        stateData.body_yaw !== undefined &&
+        stateData.antennas_position &&
+        Array.isArray(stateData.antennas_position) &&
+        stateData.antennas_position.length === 2
+      );
+      
+      // 4. Detect if movements are available (robot data is being updated)
+      // ✅ ROBUST: Accept if values are changing OR if we have 2+ consecutive valid readings
+      // (robot might be static but data stream is active)
+      let movementsDetected = false;
+      if (hasMovements) {
+        const currentState = {
+          headJoints: stateData.head_joints,
+          bodyYaw: stateData.body_yaw,
+          antennas: stateData.antennas_position,
+          timestamp: Date.now(),
+          readCount: (lastMovementStateRef.current?.readCount || 0) + 1,
+        };
+        
+        if (lastMovementStateRef.current) {
+          // ✅ Use centralized helper for movement detection
+          const changes = detectMovementChanges(
+            currentState,
+            lastMovementStateRef.current,
+            DAEMON_CONFIG.MOVEMENT.TOLERANCE_SMALL
+          );
+          
+          // ✅ Movements detected if:
+          // - Any value changed (robot is moving/updating), OR
+          // - We have at least 2 consecutive valid readings (data stream is active, robot might be static)
+          movementsDetected = changes.anyChanged || currentState.readCount >= 2;
+        } else {
+          // First reading - store it but don't consider movements detected yet
+          lastMovementStateRef.current = currentState;
+          movementsDetected = false; // Need at least 2 readings
+        }
+        
+        // Update last state
+        lastMovementStateRef.current = currentState;
+      }
+      
+      return { 
+        ready: true, 
+        hasMovements: hasMovements && movementsDetected 
+      };
     } catch (err) {
-      return false;
+      return { ready: false, hasMovements: false };
     }
-  }, []);
+  }, [setRobotStateFull]);
 
   /**
    * Start polling daemon health after scan completes
-   * Only proceed to transition when healthcheck is valid
+   * Waits for: 1) daemon ready with control_mode, 2) movements detected
+   * Only proceed to transition when both are valid
+   * ✅ If timeout reached, sets startupError instead of continuing
    */
   const startDaemonHealthCheck = useCallback(() => {
-    // Clear any existing interval
-    if (healthCheckIntervalRef.current) {
-      clearInterval(healthCheckIntervalRef.current);
-      healthCheckIntervalRef.current = null;
-    }
+    // Clear any existing intervals
+    clearAllIntervals();
 
     setWaitingForDaemon(true);
+    setWaitingForMovements(false);
     let attemptCount = 0;
-    const MAX_ATTEMPTS = 30; // 30 attempts × 500ms = 15s max wait
+    let daemonReady = false;
+    const MAX_ATTEMPTS = 60; // 60 attempts × 500ms = 30s max wait for daemon
+    const MAX_MOVEMENT_ATTEMPTS = 40; // 40 attempts × 500ms = 20s max wait for movements
     const CHECK_INTERVAL = 500; // Check every 500ms
 
+    // Step 1: Wait for daemon to be ready
     const checkHealth = async () => {
       attemptCount++;
       
-      const isHealthy = await checkDaemonHealth();
+      const result = await checkDaemonHealth();
       
-      if (isHealthy) {
-        // ✅ Daemon is ready, proceed to transition
-        console.log(`✅ Daemon healthcheck passed after ${attemptCount} attempts`);
+      if (result.ready && !daemonReady) {
+        // ✅ Daemon is ready AND robot has control_mode
+        console.log(`✅ Robot ready (with control_mode) after ${attemptCount} attempts`);
+        daemonReady = true;
         setWaitingForDaemon(false);
+        setWaitingForMovements(true);
         
+        // Clear health check interval
         if (healthCheckIntervalRef.current) {
           clearInterval(healthCheckIntervalRef.current);
           healthCheckIntervalRef.current = null;
         }
         
-        // Now we can safely call the callback
-        if (onScanCompleteCallback) {
-          onScanCompleteCallback();
-        }
+        // Start checking for movements
+        let movementAttemptCount = 0;
+        const checkMovements = async () => {
+          movementAttemptCount++;
+          
+          const result = await checkDaemonHealth();
+          
+          if (result.hasMovements) {
+            // ✅ Movements detected, proceed to transition
+            console.log(`✅ Robot movements detected after ${movementAttemptCount} attempts`);
+            setWaitingForMovements(false);
+            clearAllIntervals();
+            
+            // Now we can safely call the callback
+            if (onScanCompleteCallback) {
+              onScanCompleteCallback();
+            }
+            return;
+          }
+          
+          // ✅ If max attempts reached, set timeout error instead of continuing
+          if (movementAttemptCount >= MAX_MOVEMENT_ATTEMPTS) {
+            console.error(`❌ Movement check timeout after ${MAX_MOVEMENT_ATTEMPTS} attempts (${MAX_MOVEMENT_ATTEMPTS * CHECK_INTERVAL / 1000}s)`);
+            setWaitingForMovements(false);
+            clearAllIntervals();
+            
+            // Set timeout error
+            const timeoutError = {
+              type: 'timeout',
+              message: 'Robot movements not detected within timeout period',
+              messageParts: {
+                text: 'Robot movements',
+                bold: 'not detected',
+                suffix: 'within timeout period. Please check the robot connection.'
+              },
+            };
+            setHardwareError(timeoutError);
+            return;
+          }
+        };
+        
+        // Start checking movements immediately, then every interval
+        checkMovements();
+        movementCheckIntervalRef.current = setInterval(checkMovements, CHECK_INTERVAL);
         return;
       }
 
-      // If max attempts reached, continue anyway (retry logic elsewhere will handle it)
-      if (attemptCount >= MAX_ATTEMPTS) {
-        console.warn(`⚠️ Daemon healthcheck timeout after ${MAX_ATTEMPTS} attempts, proceeding anyway...`);
+      // ✅ If max attempts reached for daemon, set timeout error instead of continuing
+      if (attemptCount >= MAX_ATTEMPTS && !daemonReady) {
+        console.error(`❌ Daemon healthcheck timeout after ${MAX_ATTEMPTS} attempts (${MAX_ATTEMPTS * CHECK_INTERVAL / 1000}s)`);
         setWaitingForDaemon(false);
+        clearAllIntervals();
         
-        if (healthCheckIntervalRef.current) {
-          clearInterval(healthCheckIntervalRef.current);
-          healthCheckIntervalRef.current = null;
-        }
-        
-        // Proceed anyway - the app fetching logic will retry
-        if (onScanCompleteCallback) {
-          onScanCompleteCallback();
-        }
+        // Set timeout error
+        const timeoutError = {
+          type: 'timeout',
+          message: 'Daemon did not become ready within timeout period',
+          messageParts: {
+            text: 'Daemon did not become',
+            bold: 'ready',
+            suffix: 'within timeout period. Please check the robot connection.'
+          },
+        };
+        setHardwareError(timeoutError);
         return;
       }
     };
@@ -210,7 +358,7 @@ function HardwareScanView({
     // Start checking immediately, then every interval
     checkHealth();
     healthCheckIntervalRef.current = setInterval(checkHealth, CHECK_INTERVAL);
-  }, [checkDaemonHealth, onScanCompleteCallback]);
+  }, [checkDaemonHealth, onScanCompleteCallback, clearAllIntervals, setHardwareError]);
   
   const handleScanComplete = useCallback(() => {
     // ✅ Don't mark scan as complete if there's an error - stay in error state
@@ -286,15 +434,13 @@ function HardwareScanView({
     }
   }, [scanComplete, startupError, scanError]);
 
-  // Cleanup healthcheck interval on unmount
+  // Cleanup intervals on unmount
   useEffect(() => {
     return () => {
-      if (healthCheckIntervalRef.current) {
-        clearInterval(healthCheckIntervalRef.current);
-        healthCheckIntervalRef.current = null;
-      }
+      clearAllIntervals();
+      lastMovementStateRef.current = null;
     };
-  }, []);
+  }, [clearAllIntervals]);
 
   return (
     <Box
@@ -485,7 +631,13 @@ function HardwareScanView({
                 textTransform: 'uppercase',
                   }}
             >
-              {waitingForDaemon ? 'Starting Software' : scanComplete ? 'Scan Complete' : 'Scanning Hardware'}
+              {waitingForMovements 
+                ? 'Waiting for Movements' 
+                : waitingForDaemon 
+                ? 'Starting Software' 
+                : scanComplete 
+                ? 'Scan Complete' 
+                : 'Scanning Hardware'}
             </Typography>
             
             {!scanComplete && !waitingForDaemon && scanProgress.total > 0 && (
@@ -530,7 +682,7 @@ function HardwareScanView({
               </>
             )}
             
-            {waitingForDaemon && (
+            {waitingForDaemon && !waitingForMovements && (
               <Box sx={{ textAlign: 'center' }}>
                 <Typography
                   component="span"
@@ -546,7 +698,7 @@ function HardwareScanView({
               </Box>
             )}
             
-            {scanComplete && !waitingForDaemon && (
+            {waitingForMovements && (
               <Box sx={{ textAlign: 'center' }}>
                 <Typography
                   component="span"
@@ -557,10 +709,11 @@ function HardwareScanView({
                     lineHeight: 1.5,
                   }}
                 >
-                  <Box component="span" sx={{ fontWeight: 700 }}>Hardware scan</Box> completed successfully
+                  <Box component="span" sx={{ fontWeight: 700 }}>Software ready</Box>. Waiting for robot movements...
                 </Typography>
               </Box>
-              )}
+            )}
+            
           </Box>
         )}
       </Box>

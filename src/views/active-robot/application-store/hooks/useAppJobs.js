@@ -197,7 +197,9 @@ export function useAppJobs(setActiveJobs, fetchAvailableApps) {
             // ✅ macOS: Re-sign Python binaries after successful installation
             // This fixes Team ID mismatch issues with pip-installed packages
             // The Rust command handles platform detection, so safe to call on all platforms
+            // Run asynchronously to avoid blocking the UI (signing can take 10-30s)
             if (jobInfo.type === 'install') {
+              // Don't await - let it run in background to avoid UI freeze
               invoke('sign_python_binaries')
                 .then((result) => {
                   console.log('[AppJobs] Python binaries re-signed:', result);

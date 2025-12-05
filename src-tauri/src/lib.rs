@@ -452,15 +452,19 @@ fn check_usb_robot() -> Result<Option<String>, String> {
 /// Re-sign Python binaries (.so, .dylib) in .venv after pip install
 /// This fixes the Team ID mismatch issue on macOS where pip-installed binaries
 /// are not signed with the same Team ID as the app bundle
+/// 
+/// Runs asynchronously in a background thread to avoid blocking the UI
 #[cfg(target_os = "macos")]
 #[tauri::command]
-fn sign_python_binaries() -> Result<String, String> {
+async fn sign_python_binaries() -> Result<String, String> {
     use std::process::Command;
     use std::env;
     
-    println!("[tauri] 🔐 Starting Python binaries re-signing...");
-    
-    // 1. Find app bundle path or dev mode path
+    // Run the signing work in a blocking thread to avoid blocking the async runtime
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        println!("[tauri] 🔐 Starting Python binaries re-signing...");
+        
+        // 1. Find app bundle path or dev mode path
     let exe_path = env::current_exe()
         .map_err(|e| format!("Failed to get current executable path: {}", e))?;
     
@@ -616,11 +620,50 @@ fn sign_python_binaries() -> Result<String, String> {
         "-".to_string()
     };
     
-    // 3. Find and sign all .so and .dylib files in .venv
+    // 3. Find and sign all binaries in .venv
+    // IMPORTANT: Sign in order: libpython first, then executables, then extensions
     let mut signed_count = 0;
     let mut error_count = 0;
     
-    // Sign all .so files
+    // Priority 1: Sign libpython*.dylib FIRST (critical for Python to load)
+    let libpython_dylib = venv_dir.join("lib/libpython3.12.dylib");
+    if libpython_dylib.exists() {
+        println!("[tauri] 🔐 Signing libpython3.12.dylib (priority)...");
+        if sign_binary(&libpython_dylib, &signing_identity)? {
+            signed_count += 1;
+        } else {
+            error_count += 1;
+        }
+    }
+    
+    // Priority 2: Sign Python executables (python3, python3.12)
+    let python_bin = venv_dir.join("bin/python3");
+    if python_bin.exists() {
+        println!("[tauri] 🔐 Signing python3 executable...");
+        if sign_binary(&python_bin, &signing_identity)? {
+            signed_count += 1;
+        } else {
+            error_count += 1;
+        }
+    }
+    
+    // Priority 3: Sign all other .dylib files (including libpython in other locations)
+    let dylib_files = find_files(&venv_dir, "*.dylib")
+        .map_err(|e| format!("Failed to find .dylib files: {}", e))?;
+    
+    for dylib_file in dylib_files {
+        // Skip libpython3.12.dylib if already signed above
+        if dylib_file == libpython_dylib {
+            continue;
+        }
+        if sign_binary(&dylib_file, &signing_identity)? {
+            signed_count += 1;
+        } else {
+            error_count += 1;
+        }
+    }
+    
+    // Priority 4: Sign all .so files (Python extensions)
     let so_files = find_files(&venv_dir, "*.so")
         .map_err(|e| format!("Failed to find .so files: {}", e))?;
     
@@ -632,26 +675,19 @@ fn sign_python_binaries() -> Result<String, String> {
         }
     }
     
-    // Sign all .dylib files
-    let dylib_files = find_files(&venv_dir, "*.dylib")
-        .map_err(|e| format!("Failed to find .dylib files: {}", e))?;
-    
-    for dylib_file in dylib_files {
-        if sign_binary(&dylib_file, &signing_identity)? {
-            signed_count += 1;
+        let result_msg = if error_count == 0 {
+            format!("✅ Successfully signed {} Python binaries", signed_count)
         } else {
-            error_count += 1;
-        }
-    }
+            format!("⚠️  Signed {} binaries, {} failed", signed_count, error_count)
+        };
+        
+        println!("[tauri] {}", result_msg);
+        Ok(result_msg)
+    })
+    .await
+    .map_err(|e| format!("Failed to execute signing task: {}", e))?;
     
-    let result_msg = if error_count == 0 {
-        format!("✅ Successfully signed {} Python binaries", signed_count)
-    } else {
-        format!("⚠️  Signed {} binaries, {} failed", signed_count, error_count)
-    };
-    
-    println!("[tauri] {}", result_msg);
-    Ok(result_msg)
+    result
 }
 
 #[cfg(not(target_os = "macos"))]
