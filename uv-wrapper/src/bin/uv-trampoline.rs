@@ -187,42 +187,78 @@ fn main() -> ExitCode {
                             // Production: Detect Developer ID from app bundle and re-sign
                             // Even if binaries are signed, they might have wrong Team ID
                             // We need to ensure they match the app bundle's Developer ID
+                            // Find app bundle: uv-trampoline is in Contents/MacOS/
+                            // So we need to go up 3 levels: MacOS -> Contents -> .app
                             let app_bundle_path = std::env::current_exe()
                                 .ok()
                                 .and_then(|exe| {
-                                    let mut path = exe;
-                                    // Navigate up: MacOS -> Contents -> .app
-                                    for _ in 0..3 {
-                                        path = path.parent()?.to_path_buf();
-                                    }
-                                    Some(path)
+                                    // exe is like: /Applications/Reachy Mini Control.app/Contents/MacOS/uv-trampoline-...
+                                    let path = exe
+                                        .parent()? // Contents/MacOS/
+                                        .parent()? // Contents/
+                                        .parent()?; // .app bundle
+                                    Some(path.to_path_buf())
                                 });
                             
-                            let signing_identity = if let Some(app_bundle) = app_bundle_path {
+                            let signing_identity = if let Some(app_bundle) = &app_bundle_path {
+                                println!("   🔍 Detecting Developer ID from app bundle: {:?}", app_bundle);
                                 // Try to detect Developer ID from app bundle
                                 let detect_output = Command::new("codesign")
                                     .arg("-d")
                                     .arg("-v")
-                                    .arg(&app_bundle)
+                                    .arg(app_bundle)
                                     .output();
                                 
                                 match detect_output {
                                     Ok(output) => {
-                                        let output_str = String::from_utf8_lossy(&output.stderr);
-                                        // Look for "Authority=" line
-                                        let identity = output_str
+                                        // codesign -d -v outputs to stderr
+                                        let stderr_str = String::from_utf8_lossy(&output.stderr);
+                                        
+                                        // Look for "Authority=" line with "Developer ID Application"
+                                        let dev_id = stderr_str
                                             .lines()
-                                            .find(|line| line.contains("Authority="))
+                                            .find(|line| line.contains("Authority=") && line.contains("Developer ID Application"))
                                             .and_then(|line| {
+                                                // Extract from line like: "Authority=Developer ID Application: Name (TEAM_ID)"
                                                 line.split("Authority=").nth(1).map(|s| s.trim().to_string())
                                             });
                                         
-                                        if let Some(id) = identity {
+                                        if let Some(id) = dev_id {
                                             println!("   ✅ Detected Developer ID: {}", id);
                                             id
                                         } else {
-                                            println!("   ⚠️  No Developer ID found, using ad-hoc");
-                                            "-".to_string()
+                                            println!("   ⚠️  No Developer ID found in codesign output, trying security find-identity...");
+                                            // Fallback: use security find-identity
+                                            let sec_output = Command::new("security")
+                                                .arg("find-identity")
+                                                .arg("-v")
+                                                .arg("-p")
+                                                .arg("codesigning")
+                                                .output();
+                                            
+                                            match sec_output {
+                                                Ok(sec_out) => {
+                                                    let sec_str = String::from_utf8_lossy(&sec_out.stdout);
+                                                    let dev_id = sec_str
+                                                        .lines()
+                                                        .find(|line| line.contains("Developer ID Application"))
+                                                        .and_then(|line| {
+                                                            line.split('"').nth(1).map(|s| s.to_string())
+                                                        });
+                                                    
+                                                    if let Some(id) = dev_id {
+                                                        println!("   ✅ Found Developer ID via security: {}", id);
+                                                        id
+                                                    } else {
+                                                        println!("   ⚠️  No Developer ID found, using ad-hoc");
+                                                        "-".to_string()
+                                                    }
+                                                }
+                                                Err(_) => {
+                                                    println!("   ⚠️  Failed to query security, using ad-hoc");
+                                                    "-".to_string()
+                                                }
+                                            }
                                         }
                                     }
                                     Err(_) => {
