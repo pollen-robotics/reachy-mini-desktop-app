@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Script to create a customized DMG with background image and Applications link
-# Uses appdmg (used by create-dmg) for reliable background image support
+# Uses create-dmg (shell script) - the recommended tool for macOS DMG creation
+# https://github.com/create-dmg/create-dmg
 # Usage: ./customize-dmg.sh <app-bundle> <output-dmg> <background-image> <volume-name>
 
 set -e
@@ -26,16 +27,49 @@ if [ ! -f "$BACKGROUND_IMAGE" ]; then
   exit 1
 fi
 
-# Check if appdmg is installed
-if ! command -v appdmg &> /dev/null; then
-  echo "📦 Installing appdmg..."
-  npm install -g appdmg
+# Check if create-dmg is installed
+# Try Homebrew version first, then fallback to npm version (but warn)
+CREATE_DMG_CMD=""
+if command -v /opt/homebrew/bin/create-dmg &> /dev/null; then
+  CREATE_DMG_CMD="/opt/homebrew/bin/create-dmg"
+elif command -v /usr/local/bin/create-dmg &> /dev/null; then
+  CREATE_DMG_CMD="/usr/local/bin/create-dmg"
+elif command -v create-dmg &> /dev/null; then
+  # Check if it's the npm version (which is different)
+  if create-dmg --version 2>&1 | grep -q "^[0-9]\+\.[0-9]\+\.[0-9]\+$"; then
+    CREATE_DMG_CMD="create-dmg"
+  else
+    echo "⚠️  Found npm create-dmg package, but we need the shell script version"
+    echo "   Install with: brew install create-dmg"
+    exit 1
+  fi
+else
+  echo "📦 create-dmg not found. Installing via Homebrew..."
+  if command -v brew &> /dev/null; then
+    brew install create-dmg
+    CREATE_DMG_CMD="/opt/homebrew/bin/create-dmg"
+    if [ ! -f "$CREATE_DMG_CMD" ]; then
+      CREATE_DMG_CMD="/usr/local/bin/create-dmg"
+    fi
+  else
+    echo "❌ Homebrew not found. Please install create-dmg manually:"
+    echo "   brew install create-dmg"
+    exit 1
+  fi
 fi
 
 # Get absolute paths
 APP_BUNDLE_ABS=$(cd "$(dirname "$APP_BUNDLE")" && pwd)/$(basename "$APP_BUNDLE")
 OUTPUT_DMG_ABS=$(cd "$(dirname "$OUTPUT_DMG")" && pwd)/$(basename "$OUTPUT_DMG")
 BACKGROUND_IMAGE_ABS=$(cd "$(dirname "$BACKGROUND_IMAGE")" && pwd)/$(basename "$BACKGROUND_IMAGE")
+BUNDLE_DIR=$(dirname "$APP_BUNDLE_ABS")
+APP_NAME=$(basename "$APP_BUNDLE_ABS")
+
+# Remove existing DMG to force fresh creation
+if [ -f "$OUTPUT_DMG_ABS" ]; then
+  echo "🧹 Removing existing DMG: $OUTPUT_DMG_ABS"
+  rm -f "$OUTPUT_DMG_ABS"
+fi
 
 # Try to find .icns file for volume icon (optional)
 ICON_ICNS=""
@@ -45,10 +79,13 @@ if [ -f "$PROJECT_ROOT/src-tauri/icons/icon.icns" ]; then
   ICON_ICNS="$PROJECT_ROOT/src-tauri/icons/icon.icns"
 fi
 
-# Simple fixed configuration for 800×600 image
-# No Retina detection, no size detection, just simple and straightforward
+# Standard macOS DMG configuration
+# Window size: 800×600 points (logical size)
+# Background image: 800×600 px
 WINDOW_WIDTH=800
 WINDOW_HEIGHT=600
+WINDOW_X=400
+WINDOW_Y=100
 
 # Standard icon positions for 800×600 window
 ICON_SIZE=128
@@ -56,47 +93,33 @@ ICON_Y=236  # Vertically centered: (600 - 128) / 2 = 236
 APP_X=200   # Standard position from left
 APPS_X=550  # Standard position from left
 
-# Create temporary JSON config for appdmg
-# Note: appdmg coordinates are from bottom-left (0,0) in points
-TEMP_CONFIG=$(mktemp /tmp/dmg-config-$$.json)
-
-# Build JSON config
-cat > "$TEMP_CONFIG" <<EOF
-{
-  "title": "$VOLUME_NAME",
-  $(if [ -n "$ICON_ICNS" ] && [ -f "$ICON_ICNS" ]; then echo "  \"icon\": \"$ICON_ICNS\","; fi)
-  "background": "$BACKGROUND_IMAGE_ABS",
-  "contents": [
-    {
-      "x": $APP_X,
-      "y": $ICON_Y,
-      "type": "file",
-      "path": "$APP_BUNDLE_ABS"
-    },
-    {
-      "x": $APPS_X,
-      "y": $ICON_Y,
-      "type": "link",
-      "path": "/Applications"
-    }
-  ],
-  "window": {
-    "size": {
-      "width": $WINDOW_WIDTH,
-      "height": $WINDOW_HEIGHT
-    }
-  },
-  "format": "UDZO"
-}
-EOF
-
-echo "💿 Creating customized DMG with appdmg..."
-echo "   Config: $TEMP_CONFIG"
+echo "💿 Creating customized DMG with create-dmg..."
+echo "   App: $APP_BUNDLE_ABS"
 echo "   Background: $BACKGROUND_IMAGE_ABS"
-appdmg "$TEMP_CONFIG" "$OUTPUT_DMG_ABS"
+echo "   Output: $OUTPUT_DMG_ABS"
 
-# Clean up
-rm -f "$TEMP_CONFIG"
+# Build create-dmg command
+CREATE_DMG_ARGS=(
+  --volname "$VOLUME_NAME"
+  --background "$BACKGROUND_IMAGE_ABS"
+  --window-pos $WINDOW_X $WINDOW_Y
+  --window-size $WINDOW_WIDTH $WINDOW_HEIGHT
+  --icon-size $ICON_SIZE
+  --icon "$APP_NAME" $APP_X $ICON_Y
+  --app-drop-link $APPS_X $ICON_Y
+  --hdiutil-quiet
+)
+
+# Add volume icon if available
+if [ -n "$ICON_ICNS" ] && [ -f "$ICON_ICNS" ]; then
+  CREATE_DMG_ARGS+=(--volicon "$ICON_ICNS")
+fi
+
+# Execute create-dmg
+# Note: create-dmg expects the source folder, not the app bundle directly
+# We need to pass the directory containing the app
+cd "$BUNDLE_DIR"
+"$CREATE_DMG_CMD" "${CREATE_DMG_ARGS[@]}" "$OUTPUT_DMG_ABS" .
 
 if [ ! -f "$OUTPUT_DMG_ABS" ]; then
   echo "❌ Failed to create DMG"
