@@ -113,9 +113,6 @@ fn main() -> ExitCode {
         // Continue anyway, this is not fatal
     }
 
-    // Build the full path to the executable
-    let uv_exe_path = uv_folder.join(uv_exe);
-    
     // Get the absolute working directory for environment variables
     let working_dir = match env::current_dir() {
         Ok(dir) => dir,
@@ -125,17 +122,182 @@ fn main() -> ExitCode {
         }
     };
 
+    // Check if the first argument is a Python executable path (e.g., .venv/bin/python3)
+    // If so, execute it directly instead of passing through uv
+    println!("🔍 Checking args: {:?}", args);
+    let mut cmd = if !args.is_empty() && (args[0].contains("python") || args[0].contains("mjpython")) {
+        println!("✅ Detected Python executable: {}", args[0]);
+        // First argument is a Python executable - execute it directly
+        let python_path = if args[0].starts_with("/") || args[0].starts_with(".") {
+            // Relative or absolute path - resolve relative to working_dir
+            let python_exe = working_dir.join(&args[0]);
+            println!("🔍 Resolved Python path: {:?}", python_exe);
+            if !python_exe.exists() {
+                eprintln!("❌ Error: Python executable not found at {:?}", python_exe);
+                return ExitCode::FAILURE;
+            }
+            python_exe
+        } else {
+            // Just a name like "python" or "python3" - use as-is
+            println!("🔍 Using Python from PATH: {}", args[0]);
+            PathBuf::from(&args[0])
+        };
+        
+        // On macOS, check if python3 needs signing before launching
+        // In production, binaries are already signed with Developer ID at build time
+        // In dev, we sign with ad-hoc and disable Library Validation
+        #[cfg(target_os = "macos")]
+        {
+            if let Some(python_parent) = python_path.parent() {
+                // python_parent is .venv/bin, so parent is .venv
+                if let Some(venv_dir) = python_parent.parent() {
+                    // Check if we're in production (app bundle) or dev mode
+                    let is_production = std::env::current_exe()
+                        .ok()
+                        .map(|exe| exe.to_string_lossy().contains(".app/Contents"))
+                        .unwrap_or(false);
+                    
+                    // Check if python3 is already signed with a Developer ID (production)
+                    let check_signature = Command::new("codesign")
+                        .arg("-d")
+                        .arg("-v")
+                        .arg(&python_path)
+                        .output();
+                    
+                    let needs_signing = match check_signature {
+                        Ok(output) => {
+                            let output_str = String::from_utf8_lossy(&output.stderr);
+                            // If already signed with Developer ID, don't re-sign
+                            // Only sign if unsigned or signed with ad-hoc
+                            !output_str.contains("Authority=") || output_str.contains("adhoc")
+                        }
+                        Err(_) => true, // Not signed, needs signing
+                    };
+                    
+                    if needs_signing {
+                        println!("🔐 Pre-signing Python binaries for macOS Library Validation...");
+                        
+                        if is_production {
+                            // Production: Try to detect Developer ID from app bundle
+                            // But in practice, binaries should already be signed at build time
+                            // This is a fallback in case they're not
+                            println!("   ℹ️  Production mode detected - binaries should already be signed");
+                            // Don't sign in production - they should be signed at build time
+                            // If they're not, sign_python_binaries will handle it after app install
+                        } else {
+                            // Dev mode: Sign with ad-hoc and disable Library Validation
+                            let entitlements = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+</dict>
+</plist>"#;
+                            
+                            let temp_entitlements = std::env::temp_dir().join(format!("python3_entitlements_{}.plist", std::process::id()));
+                            std::fs::write(&temp_entitlements, entitlements)
+                                .map_err(|e| eprintln!("   ⚠️  Failed to write entitlements: {}", e))
+                                .ok();
+                            
+                            let sign_python_result = if temp_entitlements.exists() {
+                                Command::new("codesign")
+                                    .arg("--force")
+                                    .arg("--sign")
+                                    .arg("-") // Ad-hoc signature for dev
+                                    .arg("--options")
+                                    .arg("runtime")
+                                    .arg("--entitlements")
+                                    .arg(&temp_entitlements)
+                                    .arg(&python_path)
+                                    .output()
+                            } else {
+                                Command::new("codesign")
+                                    .arg("--force")
+                                    .arg("--sign")
+                                    .arg("-")
+                                    .arg("--options")
+                                    .arg("runtime")
+                                    .arg(&python_path)
+                                    .output()
+                            };
+                            
+                            match sign_python_result {
+                                Ok(output) => {
+                                    if output.status.success() {
+                                        println!("   ✓ Signed python3 executable (dev mode, Library Validation disabled)");
+                                    } else {
+                                        let error = String::from_utf8_lossy(&output.stderr);
+                                        eprintln!("   ⚠️  Failed to sign python3: {}", error);
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("   ⚠️  Error signing python3: {}", e);
+                                }
+                            }
+                            
+                            // Clean up temp entitlements file
+                            if temp_entitlements.exists() {
+                                let _ = std::fs::remove_file(&temp_entitlements);
+                            }
+                            
+                            // Sign libpython3.12.dylib with same ad-hoc signature
+                            let libpython = venv_dir.join("lib/libpython3.12.dylib");
+                            if libpython.exists() {
+                                let sign_lib_result = Command::new("codesign")
+                                    .arg("--force")
+                                    .arg("--sign")
+                                    .arg("-") // Same ad-hoc signature
+                                    .arg("--options")
+                                    .arg("runtime")
+                                    .arg(&libpython)
+                                    .output();
+                                
+                                match sign_lib_result {
+                                    Ok(output) => {
+                                        if output.status.success() {
+                                            println!("   ✓ Signed libpython3.12.dylib");
+                                        } else {
+                                            let error = String::from_utf8_lossy(&output.stderr);
+                                            eprintln!("   ⚠️  Failed to sign libpython3.12.dylib: {}", error);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        eprintln!("   ⚠️  Error signing libpython3.12.dylib: {}", e);
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        println!("   ✓ Python binaries already signed (production)");
+                    }
+                }
+            }
+        }
+        
+        println!("🐍 Direct Python execution: {:?} with args: {:?}", python_path, &args[1..]);
+        let mut cmd = Command::new(&python_path);
+        cmd.env("UV_WORKING_DIR", &working_dir)
+           .env("UV_PYTHON_INSTALL_DIR", &working_dir)
+           .args(&args[1..]); // Pass remaining arguments
+        cmd
+    } else {
+        println!("ℹ️  Using normal uv command execution");
+        // Normal uv command execution
+        let uv_exe_path = uv_folder.join(uv_exe);
     let mut cmd = Command::new(&uv_exe_path);
     cmd.env("UV_WORKING_DIR", &working_dir)
        .env("UV_PYTHON_INSTALL_DIR", &working_dir)
        .args(&args);
+        cmd
+    };
     
     println!("🚀 Launching process: {:?}", cmd);
     
     let mut child = match cmd.spawn() {
         Ok(child) => child,
         Err(e) => {
-            eprintln!("❌ Error: Unable to spawn process '{}': {}", uv_exe_path.display(), e);
+            eprintln!("❌ Error: Unable to spawn process: {}", e);
             return ExitCode::FAILURE;
         }
     };
