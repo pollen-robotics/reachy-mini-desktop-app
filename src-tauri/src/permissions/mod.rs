@@ -20,6 +20,8 @@ pub fn request_all_permissions() {
     println!("");
     println!("ℹ️  Note: Permissions granted to the main app will propagate to child processes");
     println!("   (Python daemon and its apps)");
+    println!("");
+    println!("ℹ️  Note: App will appear in System Settings > Privacy after first permission request");
 }
 
 /// Check if camera and microphone permissions are granted
@@ -70,34 +72,99 @@ pub fn check_permissions() -> Result<(bool, bool), String> {
     // 2 = Denied (user denied)
     // 3 = Authorized (user granted)
     
-    // In development mode, if status is NotDetermined (0), we assume access is granted
-    // because in dev, apps launched from terminal/Xcode often have implicit access
-    // In production, we require explicit authorization (status == 3)
-    let is_debug = cfg!(debug_assertions);
-    
-    let camera_granted = if is_debug {
-        // In dev: NotDetermined (0) or Authorized (3) = granted
-        camera_status == 0 || camera_status == 3
-    } else {
-        // In prod: only Authorized (3) = granted
-        camera_status == 3
-    };
-    
-    let microphone_granted = if is_debug {
-        // In dev: NotDetermined (0) or Authorized (3) = granted
-        microphone_status == 0 || microphone_status == 3
-    } else {
-        // In prod: only Authorized (3) = granted
-        microphone_status == 3
-    };
+    // Always use strict mode: only Authorized (3) = granted
+    // This ensures consistent behavior between dev and production
+    let camera_granted = camera_status == 3;
+    let microphone_granted = microphone_status == 3;
     
     // Debug logging
+    let is_debug = cfg!(debug_assertions);
     if is_debug {
-        println!("🔐 Permission check (dev mode): camera={} (status: {}), microphone={} (status: {})", 
+        println!("🔐 Permission check (dev mode, strict): camera={} (status: {}), microphone={} (status: {})", 
             camera_granted, camera_status, microphone_granted, microphone_status);
     }
     
     Ok((camera_granted, microphone_granted))
+}
+
+/// Request camera permission directly (triggers macOS permission dialog)
+#[tauri::command]
+#[cfg(target_os = "macos")]
+pub fn request_camera_permission() -> Result<bool, String> {
+    use objc::runtime::{Class, Object};
+    use objc::{msg_send, sel, sel_impl};
+    use std::ffi::CString;
+    use block::ConcreteBlock;
+    
+    let av_capture_device_class = Class::get("AVCaptureDevice")
+        .ok_or("AVCaptureDevice class not found")?;
+    
+    let av_media_type_video = unsafe {
+        let ns_string_class = Class::get("NSString").ok_or("NSString class not found")?;
+        let video_str = CString::new("vide").map_err(|e| format!("Failed to create CString: {}", e))?;
+        let video_type: *const Object = msg_send![ns_string_class, stringWithUTF8String: video_str.as_ptr()];
+        video_type
+    };
+    
+    // Check current status
+    let status: i64 = unsafe {
+        msg_send![av_capture_device_class, authorizationStatusForMediaType: av_media_type_video]
+    };
+    
+    // Only request if not yet determined
+    if status == 0 {
+        // Create completion block that does nothing (async request)
+        let block = ConcreteBlock::new(|| {});
+        let block_ptr = block.copy();
+        
+        unsafe {
+            let _: () = msg_send![av_capture_device_class, requestAccessForMediaType: av_media_type_video completionHandler: block_ptr];
+        }
+        
+        Ok(true) // Request triggered
+    } else {
+        Ok(false) // Already asked or authorized/denied
+    }
+}
+
+/// Request microphone permission directly (triggers macOS permission dialog)
+#[tauri::command]
+#[cfg(target_os = "macos")]
+pub fn request_microphone_permission() -> Result<bool, String> {
+    use objc::runtime::{Class, Object};
+    use objc::{msg_send, sel, sel_impl};
+    use std::ffi::CString;
+    use block::ConcreteBlock;
+    
+    let av_capture_device_class = Class::get("AVCaptureDevice")
+        .ok_or("AVCaptureDevice class not found")?;
+    
+    let av_media_type_audio = unsafe {
+        let ns_string_class = Class::get("NSString").ok_or("NSString class not found")?;
+        let audio_str = CString::new("soun").map_err(|e| format!("Failed to create CString: {}", e))?;
+        let audio_type: *const Object = msg_send![ns_string_class, stringWithUTF8String: audio_str.as_ptr()];
+        audio_type
+    };
+    
+    // Check current status
+    let status: i64 = unsafe {
+        msg_send![av_capture_device_class, authorizationStatusForMediaType: av_media_type_audio]
+    };
+    
+    // Only request if not yet determined
+    if status == 0 {
+        // Create completion block that does nothing (async request)
+        let block = ConcreteBlock::new(|| {});
+        let block_ptr = block.copy();
+        
+        unsafe {
+            let _: () = msg_send![av_capture_device_class, requestAccessForMediaType: av_media_type_audio completionHandler: block_ptr];
+        }
+        
+        Ok(true) // Request triggered
+    } else {
+        Ok(false) // Already asked or authorized/denied
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -114,10 +181,42 @@ pub fn check_permissions() -> Result<(bool, bool), String> {
 }
 
 /// Open System Settings to Privacy & Security > Camera
+/// Also triggers a permission request to make the app appear in the list
 #[tauri::command]
 #[cfg(target_os = "macos")]
 pub fn open_camera_settings() -> Result<(), String> {
     use std::process::Command;
+    use objc::runtime::{Class, Object};
+    use objc::{msg_send, sel, sel_impl};
+    use std::ffi::CString;
+    use block::ConcreteBlock;
+    
+    // First, trigger a permission request so the app appears in System Settings
+    // This is safe because we're just checking/requesting, not accessing
+    if let Some(av_capture_device_class) = Class::get("AVCaptureDevice") {
+        let av_media_type_video = unsafe {
+            let ns_string_class = Class::get("NSString").ok_or("NSString class not found")?;
+            let video_str = CString::new("vide").map_err(|e| format!("Failed to create CString: {}", e))?;
+            let video_type: *const Object = msg_send![ns_string_class, stringWithUTF8String: video_str.as_ptr()];
+            video_type
+        };
+        
+        // Check current status first
+        let status: i64 = unsafe {
+            msg_send![av_capture_device_class, authorizationStatusForMediaType: av_media_type_video]
+        };
+        
+        // Only request if not yet determined (to avoid unnecessary dialogs)
+        if status == 0 {
+            // Create an empty completion block
+            let block = ConcreteBlock::new(|| {});
+            let block_ptr = block.copy();
+            
+            unsafe {
+                let _: () = msg_send![av_capture_device_class, requestAccessForMediaType: av_media_type_video completionHandler: block_ptr];
+            }
+        }
+    }
     
     // Open System Settings to Privacy & Security > Camera
     let output = Command::new("open")
@@ -134,10 +233,42 @@ pub fn open_camera_settings() -> Result<(), String> {
 }
 
 /// Open System Settings to Privacy & Security > Microphone
+/// Also triggers a permission request to make the app appear in the list
 #[tauri::command]
 #[cfg(target_os = "macos")]
 pub fn open_microphone_settings() -> Result<(), String> {
     use std::process::Command;
+    use objc::runtime::{Class, Object};
+    use objc::{msg_send, sel, sel_impl};
+    use std::ffi::CString;
+    use block::ConcreteBlock;
+    
+    // First, trigger a permission request so the app appears in System Settings
+    // This is safe because we're just checking/requesting, not accessing
+    if let Some(av_capture_device_class) = Class::get("AVCaptureDevice") {
+        let av_media_type_audio = unsafe {
+            let ns_string_class = Class::get("NSString").ok_or("NSString class not found")?;
+            let audio_str = CString::new("soun").map_err(|e| format!("Failed to create CString: {}", e))?;
+            let audio_type: *const Object = msg_send![ns_string_class, stringWithUTF8String: audio_str.as_ptr()];
+            audio_type
+        };
+        
+        // Check current status first
+        let status: i64 = unsafe {
+            msg_send![av_capture_device_class, authorizationStatusForMediaType: av_media_type_audio]
+        };
+        
+        // Only request if not yet determined (to avoid unnecessary dialogs)
+        if status == 0 {
+            // Create an empty completion block
+            let block = ConcreteBlock::new(|| {});
+            let block_ptr = block.copy();
+            
+            unsafe {
+                let _: () = msg_send![av_capture_device_class, requestAccessForMediaType: av_media_type_audio completionHandler: block_ptr];
+            }
+        }
+    }
     
     // Open System Settings to Privacy & Security > Microphone
     let output = Command::new("open")
@@ -151,6 +282,18 @@ pub fn open_microphone_settings() -> Result<(), String> {
     }
     
     Ok(())
+}
+
+#[tauri::command]
+#[cfg(not(target_os = "macos"))]
+pub fn request_camera_permission() -> Result<bool, String> {
+    Ok(false)
+}
+
+#[tauri::command]
+#[cfg(not(target_os = "macos"))]
+pub fn request_microphone_permission() -> Result<bool, String> {
+    Ok(false)
 }
 
 #[tauri::command]

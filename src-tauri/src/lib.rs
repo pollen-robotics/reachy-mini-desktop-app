@@ -182,6 +182,8 @@ pub fn run() {
             window::close_window,
             signing::sign_python_binaries,
             permissions::check_permissions,
+            permissions::request_camera_permission,
+            permissions::request_microphone_permission,
             permissions::open_camera_settings,
             permissions::open_microphone_settings
         ])

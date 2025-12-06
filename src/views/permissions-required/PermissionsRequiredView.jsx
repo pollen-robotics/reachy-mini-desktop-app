@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Box, Typography, Button, Stack } from '@mui/material';
 import CameraAltOutlinedIcon from '@mui/icons-material/CameraAltOutlined';
 import MicNoneOutlinedIcon from '@mui/icons-material/MicNoneOutlined';
+import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
 import { invoke } from '@tauri-apps/api/core';
 import useAppStore from '../../store/useAppStore';
 import HowToCreateApp from '../../assets/reachy-how-to-create-app.svg';
@@ -14,6 +15,8 @@ export default function PermissionsRequiredView() {
   const { darkMode } = useAppStore();
   const [cameraGranted, setCameraGranted] = useState(false);
   const [microphoneGranted, setMicrophoneGranted] = useState(false);
+  const [cameraRequested, setCameraRequested] = useState(false);
+  const [microphoneRequested, setMicrophoneRequested] = useState(false);
 
   useEffect(() => {
     const checkPermissions = async () => {
@@ -32,6 +35,34 @@ export default function PermissionsRequiredView() {
     const interval = setInterval(checkPermissions, 2000);
     return () => clearInterval(interval);
   }, []);
+
+  const requestCameraPermission = async () => {
+    try {
+      const requested = await invoke('request_camera_permission');
+      if (requested) {
+        setCameraRequested(true);
+      } else {
+        // Already asked, open settings instead
+        await invoke('open_camera_settings');
+      }
+    } catch (error) {
+      console.error('Failed to request Camera permission:', error);
+    }
+  };
+
+  const requestMicrophonePermission = async () => {
+    try {
+      const requested = await invoke('request_microphone_permission');
+      if (requested) {
+        setMicrophoneRequested(true);
+      } else {
+        // Already asked, open settings instead
+        await invoke('open_microphone_settings');
+      }
+    } catch (error) {
+      console.error('Failed to request Microphone permission:', error);
+    }
+  };
 
   const openCameraSettings = async () => {
     try {
@@ -134,11 +165,11 @@ export default function PermissionsRequiredView() {
               padding: 3,
               borderRadius: 2,
               backgroundColor: cameraGranted
-                ? (darkMode ? 'rgba(76, 175, 80, 0.1)' : 'rgba(76, 175, 80, 0.05)')
-                : (darkMode ? '#2a2a2a' : '#fff'),
+                ? (darkMode ? 'rgba(34, 197, 94, 0.06)' : 'rgba(34, 197, 94, 0.04)')
+                : 'transparent',
               border: cameraGranted
-                ? `2px solid ${darkMode ? '#4caf50' : '#2e7d32'}`
-                : `1px solid ${darkMode ? '#444' : '#ddd'}`,
+                ? `1px solid ${darkMode ? 'rgba(34, 197, 94, 0.5)' : 'rgba(34, 197, 94, 0.4)'}`
+                : `2px dashed ${darkMode ? '#555' : '#ccc'}`,
               transition: 'all 0.3s ease',
             }}
           >
@@ -146,7 +177,7 @@ export default function PermissionsRequiredView() {
               sx={{
                 fontSize: 20,
                 color: cameraGranted
-                  ? (darkMode ? '#4caf50' : '#2e7d32')
+                  ? (darkMode ? '#22c55e' : '#16a34a')
                   : (darkMode ? '#666' : '#999'),
                 mb: 1.5,
                 transition: 'color 0.3s ease',
@@ -157,26 +188,57 @@ export default function PermissionsRequiredView() {
               sx={{
                 fontWeight: 600,
                 color: cameraGranted
-                  ? (darkMode ? '#4caf50' : '#2e7d32')
+                  ? (darkMode ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.85)')
                   : (darkMode ? '#fff' : '#1a1a1a'),
                 mb: 2,
                 textAlign: 'center',
               }}
             >
-              {cameraGranted ? '✓ Camera' : 'Camera'}
+              Camera
             </Typography>
-            {!cameraGranted && (
+            {cameraGranted ? (
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 0.75,
+                  width: '100%',
+                  px: 2,
+                  py: 0.75,
+                  borderRadius: '10px',
+                  bgcolor: 'transparent',
+                  border: `1px solid ${darkMode ? 'rgba(34, 197, 94, 0.5)' : 'rgba(34, 197, 94, 0.4)'}`,
+                }}
+              >
+                <CheckCircleOutlinedIcon
+                  sx={{
+                    fontSize: 16,
+                    color: darkMode ? '#22c55e' : '#16a34a',
+                  }}
+                />
+                <Typography
+                  sx={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: darkMode ? '#22c55e' : '#16a34a',
+                    textTransform: 'none',
+                  }}
+                >
+                  Granted
+                </Typography>
+              </Box>
+            ) : (
               <Button
                 variant="outlined"
                 color="primary"
-                size="small"
-                onClick={openCameraSettings}
+                onClick={cameraRequested ? openCameraSettings : requestCameraPermission}
                 sx={{
                   fontSize: 11,
                   fontWeight: 600,
                   textTransform: 'none',
                   borderRadius: '10px',
-                  bgcolor: darkMode ? '#1a1a1a' : '#f5f5f5',
+                  bgcolor: darkMode ? '#121212' : '#ffffff',
                   color: '#FF9500',
                   border: '1px solid #FF9500',
                   width: '100%',
@@ -199,7 +261,7 @@ export default function PermissionsRequiredView() {
                     },
                   },
                   '&:hover': {
-                    bgcolor: 'rgba(255, 149, 0, 0.08)',
+                    bgcolor: darkMode ? '#1a1a1a' : '#f5f5f5',
                     borderColor: '#FF9500',
                     transform: 'translateY(-2px)',
                     boxShadow: darkMode
@@ -215,7 +277,7 @@ export default function PermissionsRequiredView() {
                   },
                 }}
               >
-                Open Settings
+                {cameraRequested ? 'Open Settings' : 'Ask Access'}
               </Button>
             )}
           </Box>
@@ -231,11 +293,11 @@ export default function PermissionsRequiredView() {
               padding: 3,
               borderRadius: 2,
               backgroundColor: microphoneGranted
-                ? (darkMode ? 'rgba(76, 175, 80, 0.1)' : 'rgba(76, 175, 80, 0.05)')
-                : (darkMode ? '#2a2a2a' : '#fff'),
+                ? (darkMode ? 'rgba(34, 197, 94, 0.06)' : 'rgba(34, 197, 94, 0.04)')
+                : 'transparent',
               border: microphoneGranted
-                ? `2px solid ${darkMode ? '#4caf50' : '#2e7d32'}`
-                : `1px solid ${darkMode ? '#444' : '#ddd'}`,
+                ? `1px solid ${darkMode ? 'rgba(34, 197, 94, 0.5)' : 'rgba(34, 197, 94, 0.4)'}`
+                : `2px dashed ${darkMode ? '#555' : '#ccc'}`,
               transition: 'all 0.3s ease',
             }}
           >
@@ -243,7 +305,7 @@ export default function PermissionsRequiredView() {
               sx={{
                 fontSize: 20,
                 color: microphoneGranted
-                  ? (darkMode ? '#4caf50' : '#2e7d32')
+                  ? (darkMode ? '#22c55e' : '#16a34a')
                   : (darkMode ? '#666' : '#999'),
                 mb: 1.5,
                 transition: 'color 0.3s ease',
@@ -254,26 +316,57 @@ export default function PermissionsRequiredView() {
               sx={{
                 fontWeight: 600,
                 color: microphoneGranted
-                  ? (darkMode ? '#4caf50' : '#2e7d32')
+                  ? (darkMode ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.85)')
                   : (darkMode ? '#fff' : '#1a1a1a'),
                 mb: 2,
                 textAlign: 'center',
               }}
             >
-              {microphoneGranted ? '✓ Microphone' : 'Microphone'}
+              Microphone
             </Typography>
-            {!microphoneGranted && (
+            {microphoneGranted ? (
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 0.75,
+                  width: '100%',
+                  px: 2,
+                  py: 0.75,
+                  borderRadius: '10px',
+                  bgcolor: 'transparent',
+                  border: `1px solid ${darkMode ? 'rgba(34, 197, 94, 0.5)' : 'rgba(34, 197, 94, 0.4)'}`,
+                }}
+              >
+                <CheckCircleOutlinedIcon
+                  sx={{
+                    fontSize: 16,
+                    color: darkMode ? '#22c55e' : '#16a34a',
+                  }}
+                />
+                <Typography
+                  sx={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: darkMode ? '#22c55e' : '#16a34a',
+                    textTransform: 'none',
+                  }}
+                >
+                  Granted
+                </Typography>
+              </Box>
+            ) : (
               <Button
                 variant="outlined"
                 color="primary"
-                size="small"
-                onClick={openMicrophoneSettings}
+                onClick={microphoneRequested ? openMicrophoneSettings : requestMicrophonePermission}
                 sx={{
                   fontSize: 11,
                   fontWeight: 600,
                   textTransform: 'none',
                   borderRadius: '10px',
-                  bgcolor: darkMode ? '#1a1a1a' : '#f5f5f5',
+                  bgcolor: darkMode ? '#121212' : '#ffffff',
                   color: '#FF9500',
                   border: '1px solid #FF9500',
                   width: '100%',
@@ -296,7 +389,7 @@ export default function PermissionsRequiredView() {
                     },
                   },
                   '&:hover': {
-                    bgcolor: 'rgba(255, 149, 0, 0.08)',
+                    bgcolor: darkMode ? '#1a1a1a' : '#f5f5f5',
                     borderColor: '#FF9500',
                     transform: 'translateY(-2px)',
                     boxShadow: darkMode
@@ -312,7 +405,7 @@ export default function PermissionsRequiredView() {
                   },
                 }}
               >
-                Open Settings
+                {microphoneRequested ? 'Open Settings' : 'Ask Access'}
               </Button>
             )}
           </Box>

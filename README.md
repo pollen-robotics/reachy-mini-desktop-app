@@ -155,6 +155,15 @@ yarn check-daemon          # Check daemon status and health
 yarn kill-daemon           # Stop all running daemon processes
 ```
 
+**macOS Permissions (Development):**
+```bash
+yarn reset-permissions     # Reset Camera and Microphone permissions for testing
+```
+Note: 
+- Dev mode uses strict permission checking (same as production): only Authorized (3) = granted
+- Use `yarn reset-permissions` to test the permission flow
+- You may need to run `yarn reset-permissions` with `sudo` if you get permission errors
+
 ### 🎭 Simulation Mode
 
 To develop or test the application without a USB-connected robot, use simulation mode:
