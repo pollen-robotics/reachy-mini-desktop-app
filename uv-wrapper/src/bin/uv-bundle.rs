@@ -16,7 +16,7 @@ struct Args {
     #[arg(short, long, value_delimiter = ' ', num_args = 1..)]
     dependencies: Vec<String>,
 
-    /// Source for reachy-mini package: 'pypi' (default) or 'develop' (from GitHub)
+    /// Source for reachy-mini package: 'pypi' (default) or any GitHub branch name (e.g., 'develop', 'main', 'my_branch')
     #[arg(long, default_value = "pypi")]
     reachy_mini_source: String,
 }
@@ -66,9 +66,9 @@ fn main() {
     if !args.dependencies.is_empty() {
         let mut deps = args.dependencies;
         
-        // Replace reachy-mini with GitHub version if develop source is requested
-        if args.reachy_mini_source == "develop" {
-            let github_url = "git+https://github.com/pollen-robotics/reachy_mini.git@develop";
+        // Replace reachy-mini with GitHub version if non-pypi source is requested
+        if args.reachy_mini_source != "pypi" {
+            let github_url = format!("git+https://github.com/pollen-robotics/reachy_mini.git@{}", args.reachy_mini_source);
             deps = deps
                 .iter()
                 .map(|dep| {
@@ -93,7 +93,7 @@ fn main() {
         #[cfg(not(target_os = "windows"))]
         {
             // For GitHub installs, configure git to skip LFS smudge to avoid errors with missing LFS files
-            let git_lfs_skip = if args.reachy_mini_source == "develop" {
+            let git_lfs_skip = if args.reachy_mini_source != "pypi" {
                 "GIT_LFS_SKIP_SMUDGE=1 "
             } else {
                 ""
@@ -107,7 +107,7 @@ fn main() {
         #[cfg(target_os = "windows")]
         {
             // For GitHub installs, configure git to skip LFS smudge to avoid errors with missing LFS files
-            let git_lfs_skip = if args.reachy_mini_source == "develop" {
+            let git_lfs_skip = if args.reachy_mini_source != "pypi" {
                 "$env:GIT_LFS_SKIP_SMUDGE='1'; "
             } else {
                 ""
