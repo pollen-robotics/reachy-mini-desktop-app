@@ -1,6 +1,7 @@
 use std::env;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
+use std::fs;
 
 use uv_wrapper::{find_cpython_folder, lookup_bin_folder, patching_pyvenv_cfg};
 
@@ -54,6 +55,128 @@ fn get_possible_bin_folders() -> Vec<&'static str> {
     }
     
     folders
+}
+
+/// Re-sign all Python binaries (.so, .dylib) in .venv after pip install
+/// This fixes Team ID mismatch issues on macOS
+#[cfg(target_os = "macos")]
+fn resign_all_venv_binaries(venv_dir: &PathBuf, signing_identity: &str) -> Result<(), String> {
+    use std::process::Command;
+    
+    if signing_identity == "-" {
+        // No valid Developer ID, skip signing
+        return Ok(());
+    }
+    
+    println!("🔐 Re-signing all Python binaries in .venv after pip install...");
+    
+    // Helper to find files recursively
+    fn find_files(dir: &PathBuf, pattern: &str) -> Result<Vec<PathBuf>, String> {
+        let mut files = Vec::new();
+        
+        if !dir.exists() {
+            return Ok(files);
+        }
+        
+        let entries = fs::read_dir(dir)
+            .map_err(|e| format!("Failed to read directory {}: {}", dir.display(), e))?;
+        
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+            let path = entry.path();
+            
+            if path.is_dir() {
+                let mut sub_files = find_files(&path, pattern)?;
+                files.append(&mut sub_files);
+            } else if path.is_file() {
+                if let Some(file_name) = path.file_name() {
+                    if file_name.to_string_lossy().ends_with(&pattern[2..]) {
+                        files.push(path);
+                    }
+                }
+            }
+        }
+        
+        Ok(files)
+    }
+    
+    // Helper to sign a binary
+    fn sign_binary(binary_path: &PathBuf, signing_identity: &str) -> Result<bool, String> {
+        // Check if it's a Mach-O binary
+        let file_output = Command::new("file")
+            .arg(binary_path)
+            .output()
+            .map_err(|e| format!("Failed to check file type: {}", e))?;
+        
+        let file_str = String::from_utf8_lossy(&file_output.stdout);
+        if !file_str.contains("Mach-O") && !file_str.contains("dynamically linked") && !file_str.contains("shared library") {
+            return Ok(false);
+        }
+        
+        // Sign the binary
+        let sign_result = Command::new("codesign")
+            .arg("--force")
+            .arg("--sign")
+            .arg(signing_identity)
+            .arg("--options")
+            .arg("runtime")
+            .arg("--timestamp")
+            .arg(binary_path)
+            .output();
+        
+        match sign_result {
+            Ok(output) => {
+                if output.status.success() {
+                    Ok(true)
+                } else {
+                    let error = String::from_utf8_lossy(&output.stderr);
+                    eprintln!("   ⚠️  Failed to sign {}: {}", binary_path.display(), error);
+                    Ok(false)
+                }
+            }
+            Err(e) => {
+                eprintln!("   ⚠️  Error signing {}: {}", binary_path.display(), e);
+                Ok(false)
+            }
+        }
+    }
+    
+    let mut signed_count = 0;
+    let mut error_count = 0;
+    
+    // Sign all .dylib files
+    let dylib_files = find_files(venv_dir, "*.dylib")?;
+    for dylib_file in dylib_files {
+        if sign_binary(&dylib_file, signing_identity)? {
+            signed_count += 1;
+        } else {
+            error_count += 1;
+        }
+    }
+    
+    // Sign all .so files (Python extensions)
+    let so_files = find_files(venv_dir, "*.so")?;
+    for so_file in so_files {
+        if sign_binary(&so_file, signing_identity)? {
+            signed_count += 1;
+        } else {
+            error_count += 1;
+        }
+    }
+    
+    if error_count == 0 {
+        println!("   ✅ Successfully re-signed {} binaries", signed_count);
+    } else {
+        println!("   ⚠️  Re-signed {} binaries, {} failed", signed_count, error_count);
+    }
+    
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn resign_all_venv_binaries(_venv_dir: &PathBuf, _signing_identity: &str) -> Result<(), String> {
+    // No-op on non-macOS
+    Ok(())
 }
 
 fn main() -> ExitCode {
@@ -112,7 +235,7 @@ fn main() -> ExitCode {
         eprintln!("⚠️  Warning: Unable to patch pyvenv.cfg: {}", e);
         // Continue anyway, this is not fatal
     }
-
+    
     // Get the absolute working directory for environment variables
     let working_dir = match env::current_dir() {
         Ok(dir) => dir,
@@ -202,16 +325,16 @@ fn main() -> ExitCode {
                             
                             let signing_identity = if let Some(app_bundle) = &app_bundle_path {
                                 println!("   🔍 Detecting Developer ID from app bundle: {:?}", app_bundle);
-                                // Try to detect Developer ID from app bundle
+                                // Use -vv (double verbose) to get Authority= lines
                                 let detect_output = Command::new("codesign")
                                     .arg("-d")
-                                    .arg("-v")
+                                    .arg("-vv")
                                     .arg(app_bundle)
                                     .output();
                                 
                                 match detect_output {
                                     Ok(output) => {
-                                        // codesign -d -v outputs to stderr
+                                        // codesign -d -vv outputs to stderr
                                         let stderr_str = String::from_utf8_lossy(&output.stderr);
                                         
                                         // Look for "Authority=" line with "Developer ID Application"
@@ -250,78 +373,83 @@ fn main() -> ExitCode {
                                                         println!("   ✅ Found Developer ID via security: {}", id);
                                                         id
                                                     } else {
-                                                        println!("   ⚠️  No Developer ID found, using ad-hoc");
+                                                        println!("   ⚠️  No Developer ID found, skipping signing (binaries should be signed at build time)");
                                                         "-".to_string()
                                                     }
                                                 }
                                                 Err(_) => {
-                                                    println!("   ⚠️  Failed to query security, using ad-hoc");
+                                                    println!("   ⚠️  Failed to query security, skipping signing (binaries should be signed at build time)");
                                                     "-".to_string()
                                                 }
                                             }
                                         }
                                     }
-                                    Err(_) => {
-                                        println!("   ⚠️  Failed to detect Developer ID, using ad-hoc");
+                                    Err(e) => {
+                                        println!("   ⚠️  Failed to run codesign on app bundle: {:?}, skipping signing", e);
                                         "-".to_string()
                                     }
                                 }
                             } else {
-                                println!("   ⚠️  Could not find app bundle, using ad-hoc");
+                                println!("   ⚠️  Could not find app bundle, skipping signing");
                                 "-".to_string()
                             };
                             
-                            // Sign python3 with detected identity
-                            let sign_python_result = Command::new("codesign")
-                                .arg("--force")
-                                .arg("--sign")
-                                .arg(&signing_identity)
-                                .arg("--options")
-                                .arg("runtime")
-                                .arg("--timestamp")
-                                .arg(&python_path)
-                                .output();
-                            
-                            match sign_python_result {
-                                Ok(output) => {
-                                    if output.status.success() {
-                                        println!("   ✓ Signed python3 executable with Developer ID");
-                                    } else {
-                                        let error = String::from_utf8_lossy(&output.stderr);
-                                        eprintln!("   ⚠️  Failed to sign python3: {}", error);
-                                    }
-                                }
-                                Err(e) => {
-                                    eprintln!("   ⚠️  Error signing python3: {}", e);
-                                }
-                            }
-                            
-                            // Sign libpython3.12.dylib with same identity
-                            let libpython = venv_dir.join("lib/libpython3.12.dylib");
-                            if libpython.exists() {
-                                let sign_lib_result = Command::new("codesign")
+                            // Only sign if we have a valid Developer ID (not ad-hoc or empty)
+                            if signing_identity != "-" {
+                                // Sign python3 with detected Developer ID
+                                let sign_python_result = Command::new("codesign")
                                     .arg("--force")
                                     .arg("--sign")
                                     .arg(&signing_identity)
                                     .arg("--options")
                                     .arg("runtime")
                                     .arg("--timestamp")
-                                    .arg(&libpython)
+                                    .arg(&python_path)
                                     .output();
                                 
-                                match sign_lib_result {
+                                match sign_python_result {
                                     Ok(output) => {
                                         if output.status.success() {
-                                            println!("   ✓ Signed libpython3.12.dylib with Developer ID");
+                                            println!("   ✓ Signed python3 executable with Developer ID");
                                         } else {
                                             let error = String::from_utf8_lossy(&output.stderr);
-                                            eprintln!("   ⚠️  Failed to sign libpython3.12.dylib: {}", error);
+                                            eprintln!("   ⚠️  Failed to sign python3: {}", error);
                                         }
                                     }
                                     Err(e) => {
-                                        eprintln!("   ⚠️  Error signing libpython3.12.dylib: {}", e);
+                                        eprintln!("   ⚠️  Error signing python3: {}", e);
                                     }
                                 }
+                                
+                                // Sign libpython3.12.dylib with same Developer ID
+                                let libpython = venv_dir.join("lib/libpython3.12.dylib");
+                                if libpython.exists() {
+                                    let sign_lib_result = Command::new("codesign")
+                                        .arg("--force")
+                                        .arg("--sign")
+                                        .arg(&signing_identity)
+                                        .arg("--options")
+                                        .arg("runtime")
+                                        .arg("--timestamp")
+                                        .arg(&libpython)
+                                        .output();
+                                    
+                                    match sign_lib_result {
+                                        Ok(output) => {
+                                            if output.status.success() {
+                                                println!("   ✓ Signed libpython3.12.dylib with Developer ID");
+                                            } else {
+                                                let error = String::from_utf8_lossy(&output.stderr);
+                                                eprintln!("   ⚠️  Failed to sign libpython3.12.dylib: {}", error);
+                                            }
+                                        }
+                                        Err(e) => {
+                                            eprintln!("   ⚠️  Error signing libpython3.12.dylib: {}", e);
+                                        }
+                                    }
+                                }
+                            } else {
+                                println!("   ⚠️  No Developer ID available, skipping signing (binaries should be signed at build time)");
                             }
                         } else {
                             // Dev mode: Sign with ad-hoc and disable Library Validation
@@ -431,6 +559,13 @@ fn main() -> ExitCode {
         cmd
     };
     
+    // Check if this is a pip install command (for auto-signing after installation)
+    #[cfg(target_os = "macos")]
+    let is_pip_install = !args.is_empty() && args[0] == "pip" && args.len() >= 2 && args[1] == "install";
+    
+    #[cfg(not(target_os = "macos"))]
+    let is_pip_install = false;
+    
     println!("🚀 Launching process: {:?}", cmd);
     
     let mut child = match cmd.spawn() {
@@ -469,6 +604,64 @@ fn main() -> ExitCode {
                     if exit_code != 0 {
                         eprintln!("⚠️  Process exited with code: {}", exit_code);
                     }
+                    
+                    // If pip install succeeded, re-sign all binaries in .venv
+                    #[cfg(target_os = "macos")]
+                    {
+                        if is_pip_install && exit_code == 0 {
+                            // Detect Developer ID and re-sign all binaries
+                            let is_production = std::env::current_exe()
+                                .ok()
+                                .map(|exe| exe.to_string_lossy().contains(".app/Contents"))
+                                .unwrap_or(false);
+                            
+                            if is_production {
+                                // Find app bundle and detect Developer ID
+                                let app_bundle_path = std::env::current_exe()
+                                    .ok()
+                                    .and_then(|exe| {
+                                        let path = exe
+                                            .parent()? // Contents/MacOS/
+                                            .parent()? // Contents/
+                                            .parent()?; // .app bundle
+                                        Some(path.to_path_buf())
+                                    });
+                                
+                                if let Some(app_bundle) = &app_bundle_path {
+                                    // Detect Developer ID
+                                    let detect_output = Command::new("codesign")
+                                        .arg("-d")
+                                        .arg("-vv")
+                                        .arg(app_bundle)
+                                        .output();
+                                    
+                                    if let Ok(output) = detect_output {
+                                        let stderr_str = String::from_utf8_lossy(&output.stderr);
+                                        let dev_id = stderr_str
+                                            .lines()
+                                            .find(|line| line.contains("Authority=") && line.contains("Developer ID Application"))
+                                            .and_then(|line| {
+                                                line.split("Authority=").nth(1).map(|s| s.trim().to_string())
+                                            });
+                                        
+                                        if let Some(signing_identity) = dev_id {
+                                            // Find .venv directory (working_dir is already set to Contents/Resources in production)
+                                            let venv_dir = working_dir.join(".venv");
+                                            
+                                            if venv_dir.exists() {
+                                                // Re-sign all binaries
+                                                if let Err(e) = resign_all_venv_binaries(&venv_dir, &signing_identity) {
+                                                    eprintln!("⚠️  Failed to re-sign binaries after pip install: {}", e);
+                                                    // Don't fail the pip install, just log the error
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
                     return ExitCode::from(exit_code as u8);
                 }
                 Ok(None) => {
