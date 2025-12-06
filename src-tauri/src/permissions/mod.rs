@@ -88,6 +88,7 @@ pub fn check_permissions() -> Result<(bool, bool), String> {
 }
 
 /// Request camera permission directly (triggers macOS permission dialog)
+/// Note: Tauri commands execute on the main thread, so this should work correctly
 #[tauri::command]
 #[cfg(target_os = "macos")]
 pub fn request_camera_permission() -> Result<bool, String> {
@@ -95,6 +96,8 @@ pub fn request_camera_permission() -> Result<bool, String> {
     use objc::{msg_send, sel, sel_impl};
     use std::ffi::CString;
     use block::ConcreteBlock;
+    
+    println!("🔐 [request_camera_permission] Starting...");
     
     let av_capture_device_class = Class::get("AVCaptureDevice")
         .ok_or("AVCaptureDevice class not found")?;
@@ -111,23 +114,29 @@ pub fn request_camera_permission() -> Result<bool, String> {
         msg_send![av_capture_device_class, authorizationStatusForMediaType: av_media_type_video]
     };
     
-    // Only request if not yet determined
-    if status == 0 {
-        // Create completion block that does nothing (async request)
-        let block = ConcreteBlock::new(|| {});
-        let block_ptr = block.copy();
-        
-        unsafe {
-            let _: () = msg_send![av_capture_device_class, requestAccessForMediaType: av_media_type_video completionHandler: block_ptr];
-        }
-        
-        Ok(true) // Request triggered
-    } else {
-        Ok(false) // Already asked or authorized/denied
+    println!("🔐 [request_camera_permission] Current status: {} (0=NotDetermined, 1=Restricted, 2=Denied, 3=Authorized)", status);
+    
+    // Always request to ensure app appears in System Settings
+    // This is safe: if already authorized/denied, macOS will just ignore the request
+    // But it ensures the app is registered in System Settings
+    let block = ConcreteBlock::new(|| {
+        println!("🔐 [request_camera_permission] Completion handler called");
+    });
+    let block_ptr = block.copy();
+    
+    println!("🔐 [request_camera_permission] Calling requestAccessForMediaType...");
+    unsafe {
+        let _: () = msg_send![av_capture_device_class, requestAccessForMediaType: av_media_type_video completionHandler: block_ptr];
     }
+    println!("🔐 [request_camera_permission] requestAccessForMediaType called successfully");
+    
+    // Return true if status was NotDetermined (will show dialog)
+    // Return false if already asked (will just register in Settings)
+    Ok(status == 0)
 }
 
 /// Request microphone permission directly (triggers macOS permission dialog)
+/// Note: Tauri commands execute on the main thread, so this should work correctly
 #[tauri::command]
 #[cfg(target_os = "macos")]
 pub fn request_microphone_permission() -> Result<bool, String> {
@@ -135,6 +144,8 @@ pub fn request_microphone_permission() -> Result<bool, String> {
     use objc::{msg_send, sel, sel_impl};
     use std::ffi::CString;
     use block::ConcreteBlock;
+    
+    println!("🔐 [request_microphone_permission] Starting...");
     
     let av_capture_device_class = Class::get("AVCaptureDevice")
         .ok_or("AVCaptureDevice class not found")?;
@@ -151,20 +162,25 @@ pub fn request_microphone_permission() -> Result<bool, String> {
         msg_send![av_capture_device_class, authorizationStatusForMediaType: av_media_type_audio]
     };
     
-    // Only request if not yet determined
-    if status == 0 {
-        // Create completion block that does nothing (async request)
-        let block = ConcreteBlock::new(|| {});
-        let block_ptr = block.copy();
-        
-        unsafe {
-            let _: () = msg_send![av_capture_device_class, requestAccessForMediaType: av_media_type_audio completionHandler: block_ptr];
-        }
-        
-        Ok(true) // Request triggered
-    } else {
-        Ok(false) // Already asked or authorized/denied
+    println!("🔐 [request_microphone_permission] Current status: {} (0=NotDetermined, 1=Restricted, 2=Denied, 3=Authorized)", status);
+    
+    // Always request to ensure app appears in System Settings
+    // This is safe: if already authorized/denied, macOS will just ignore the request
+    // But it ensures the app is registered in System Settings
+    let block = ConcreteBlock::new(|| {
+        println!("🔐 [request_microphone_permission] Completion handler called");
+    });
+    let block_ptr = block.copy();
+    
+    println!("🔐 [request_microphone_permission] Calling requestAccessForMediaType...");
+    unsafe {
+        let _: () = msg_send![av_capture_device_class, requestAccessForMediaType: av_media_type_audio completionHandler: block_ptr];
     }
+    println!("🔐 [request_microphone_permission] requestAccessForMediaType called successfully");
+    
+    // Return true if status was NotDetermined (will show dialog)
+    // Return false if already asked (will just register in Settings)
+    Ok(status == 0)
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -191,8 +207,9 @@ pub fn open_camera_settings() -> Result<(), String> {
     use std::ffi::CString;
     use block::ConcreteBlock;
     
-    // First, trigger a permission request so the app appears in System Settings
-    // This is safe because we're just checking/requesting, not accessing
+    // Always trigger a permission request so the app appears in System Settings
+    // This is safe: if already authorized/denied, macOS will just ignore the request
+    // But it ensures the app is registered in System Settings
     if let Some(av_capture_device_class) = Class::get("AVCaptureDevice") {
         let av_media_type_video = unsafe {
             let ns_string_class = Class::get("NSString").ok_or("NSString class not found")?;
@@ -201,20 +218,14 @@ pub fn open_camera_settings() -> Result<(), String> {
             video_type
         };
         
-        // Check current status first
-        let status: i64 = unsafe {
-            msg_send![av_capture_device_class, authorizationStatusForMediaType: av_media_type_video]
-        };
+        // Always request to ensure app appears in System Settings
+        let block = ConcreteBlock::new(|| {
+            println!("🔐 Camera permission request triggered for System Settings");
+        });
+        let block_ptr = block.copy();
         
-        // Only request if not yet determined (to avoid unnecessary dialogs)
-        if status == 0 {
-            // Create an empty completion block
-            let block = ConcreteBlock::new(|| {});
-            let block_ptr = block.copy();
-            
-            unsafe {
-                let _: () = msg_send![av_capture_device_class, requestAccessForMediaType: av_media_type_video completionHandler: block_ptr];
-            }
+        unsafe {
+            let _: () = msg_send![av_capture_device_class, requestAccessForMediaType: av_media_type_video completionHandler: block_ptr];
         }
     }
     
@@ -243,8 +254,9 @@ pub fn open_microphone_settings() -> Result<(), String> {
     use std::ffi::CString;
     use block::ConcreteBlock;
     
-    // First, trigger a permission request so the app appears in System Settings
-    // This is safe because we're just checking/requesting, not accessing
+    // Always trigger a permission request so the app appears in System Settings
+    // This is safe: if already authorized/denied, macOS will just ignore the request
+    // But it ensures the app is registered in System Settings
     if let Some(av_capture_device_class) = Class::get("AVCaptureDevice") {
         let av_media_type_audio = unsafe {
             let ns_string_class = Class::get("NSString").ok_or("NSString class not found")?;
@@ -253,20 +265,14 @@ pub fn open_microphone_settings() -> Result<(), String> {
             audio_type
         };
         
-        // Check current status first
-        let status: i64 = unsafe {
-            msg_send![av_capture_device_class, authorizationStatusForMediaType: av_media_type_audio]
-        };
+        // Always request to ensure app appears in System Settings
+        let block = ConcreteBlock::new(|| {
+            println!("🔐 Microphone permission request triggered for System Settings");
+        });
+        let block_ptr = block.copy();
         
-        // Only request if not yet determined (to avoid unnecessary dialogs)
-        if status == 0 {
-            // Create an empty completion block
-            let block = ConcreteBlock::new(|| {});
-            let block_ptr = block.copy();
-            
-            unsafe {
-                let _: () = msg_send![av_capture_device_class, requestAccessForMediaType: av_media_type_audio completionHandler: block_ptr];
-            }
+        unsafe {
+            let _: () = msg_send![av_capture_device_class, requestAccessForMediaType: av_media_type_audio completionHandler: block_ptr];
         }
     }
     

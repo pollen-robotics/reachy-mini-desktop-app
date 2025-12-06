@@ -43,6 +43,15 @@ function App() {
     silent: false,
   });
   
+  // 🔍 DEBUG: Force update check in dev mode for testing
+  useEffect(() => {
+    if (isDev) {
+      console.log('🔍 DEV MODE: Update check disabled by default');
+      console.log('   To test update check, call checkForUpdates() manually in DevTools console');
+      console.log('   Or temporarily set autoCheck: true in useUpdater hook');
+    }
+  }, [isDev, checkForUpdates]);
+  
   // 🕐 USB check tracking - track when first USB check happens
   const [usbCheckStartTime, setUsbCheckStartTime] = useState(null);
   const { isFirstCheck } = useAppStore();

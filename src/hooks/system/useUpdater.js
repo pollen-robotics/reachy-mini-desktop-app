@@ -63,6 +63,7 @@ export const useUpdater = ({
 
     // ✅ Try to fetch latest.json directly - if it works, we have internet + we know if there's an update
     // No need for separate healthcheck - the update check itself tells us about connectivity
+    console.log('🔍 Starting update check...', { retryCount, maxRetries });
     isCheckingRef.current = true;
     setIsChecking(true);
     setError(null);
@@ -89,6 +90,15 @@ export const useUpdater = ({
         timeoutId = null;
       }
       
+      // 🔍 DEBUG: Log update check result
+      console.log('🔍 Update check result:', {
+        hasUpdate: !!update,
+        updateVersion: update?.version || null,
+        updateDate: update?.date || null,
+        currentVersion: update?.currentVersion || 'unknown',
+        updateAvailable: update ? 'YES' : 'NO',
+      });
+      
       // Reset retry count on success
       retryCountRef.current = 0;
       lastCheckTimeRef.current = Date.now();
@@ -96,9 +106,11 @@ export const useUpdater = ({
       setIsChecking(false); // ✅ Ensure isChecking is always set to false on success
       
       if (update) {
+        console.log('✅ Update available:', update.version);
         setUpdateAvailable(update);
         return update;
       } else {
+        console.log('ℹ️ No update available (current version is up to date or newer)');
         setUpdateAvailable(null);
         return null;
       }
