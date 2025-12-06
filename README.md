@@ -1,9 +1,17 @@
-# Reachy Mini Control
-
-![Version](https://img.shields.io/badge/version-0.2.6-blue.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
-![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)
-![Tauri](https://img.shields.io/badge/tauri-2.0-FFC131?logo=tauri&logoColor=white)
+<div align="center">
+  <a href="https://huggingface.co/spaces?q=reachy_mini">
+    <img src="src/assets/reachy-update-box.svg" alt="Reachy Mini" width="200" />
+  </a>
+  
+  <h1>Reachy Mini Control</h1>
+  
+  <p>
+    <img src="https://img.shields.io/badge/version-0.3.3-blue.svg" alt="Version" />
+    <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" />
+    <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg" alt="Platform" />
+    <img src="https://img.shields.io/badge/tauri-2.0-FFC131?logo=tauri&logoColor=white" alt="Tauri" />
+  </p>
+</div>
 
 A modern desktop application for controlling and monitoring your Reachy Mini robot. Built with Tauri and React for a native, performant experience.
 
@@ -26,7 +34,7 @@ A modern desktop application for controlling and monitoring your Reachy Mini rob
   - Responsive design
 - 🔌 **USB Detection** - Automatic detection of Reachy Mini via USB
 - 🎭 **Simulation Mode** - Test and develop without hardware using MuJoCo simulation
-- 📱 **Cross-platform** - Works on macOS and Windows
+- 📱 **Cross-platform** - Works on macOS, Windows, and Linux
 
 ## 🚀 Quick Start
 
@@ -40,8 +48,8 @@ A modern desktop application for controlling and monitoring your Reachy Mini rob
 
 ```bash
 # Clone the repository
-git clone https://github.com/pollen-robotics/reachy-mini-control.git
-cd reachy-mini-control/tauri-app
+git clone https://github.com/pollen-robotics/reachy-mini-desktop-app.git
+cd reachy-mini-desktop-app/tauri-app
 
 # Install dependencies
 yarn install
@@ -58,6 +66,7 @@ yarn tauri:dev
 # 1. Build the sidecar (required first step)
 yarn build:sidecar-macos    # macOS
 yarn build:sidecar-linux    # Linux
+yarn build:sidecar-windows  # Windows
 
 # 2. Build the application
 yarn tauri:build            # Build for production (uses PyPI release by default)
@@ -66,6 +75,7 @@ yarn tauri:build            # Build for production (uses PyPI release by default
 yarn tauri build --target aarch64-apple-darwin
 yarn tauri build --target x86_64-apple-darwin
 yarn tauri build --target x86_64-pc-windows-msvc
+yarn tauri build --target x86_64-unknown-linux-gnu
 ```
 
 #### Installing the daemon from different sources
@@ -116,8 +126,10 @@ yarn tauri:dev:sim          # Run Tauri app in simulation mode (skip USB detecti
 ```bash
 yarn build:sidecar-macos    # Build sidecar for macOS (PyPI)
 yarn build:sidecar-linux    # Build sidecar for Linux (PyPI)
-yarn build:sidecar-macos:develop    # Build sidecar with GitHub develop branch
-yarn build:sidecar-linux:develop    # Build sidecar with GitHub develop branch
+yarn build:sidecar-windows  # Build sidecar for Windows (PyPI)
+yarn build:sidecar-macos:develop    # Build sidecar with GitHub develop branch (macOS)
+yarn build:sidecar-linux:develop    # Build sidecar with GitHub develop branch (Linux)
+yarn build:sidecar-windows:develop  # Build sidecar with GitHub develop branch (Windows)
 yarn tauri:build            # Build production bundle (requires sidecar built first)
 ```
 
@@ -142,6 +154,15 @@ yarn test:all              # Run all tests
 yarn check-daemon          # Check daemon status and health
 yarn kill-daemon           # Stop all running daemon processes
 ```
+
+**macOS Permissions (Development):**
+```bash
+yarn reset-permissions     # Reset Camera and Microphone permissions for testing
+```
+Note: 
+- Dev mode uses strict permission checking (same as production): only Authorized (3) = granted
+- Use `yarn reset-permissions` to test the permission flow
+- You may need to run `yarn reset-permissions` with `sudo` if you get permission errors
 
 ### 🎭 Simulation Mode
 
@@ -234,8 +255,10 @@ tauri-app/
 
 The application includes automatic update functionality:
 
+- **Automatic Updates**: Checks for updates on startup and periodically (every hour)
 - **Development**: Test updates locally with `yarn build:update:dev` and `yarn serve:updates`
-- **Production**: Updates are automatically built and signed via GitHub Actions
+- **Production**: Updates are automatically built, signed, and deployed to GitHub Pages via GitHub Actions
+- **Update Endpoint**: `https://pollen-robotics.github.io/reachy-mini-desktop-app/latest.json`
 
 See [UPDATE_PIPELINES.md](./docs/UPDATE_PIPELINES.md) for detailed information.
 

@@ -16,7 +16,7 @@ jobs:
     permissions:
       contents: write
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include:
           - os: macos-latest
@@ -495,6 +495,12 @@ jobs:
             exit 1
           }
 
+      - name: Install create-dmg (macOS only)
+        if: matrix.os == 'macos-latest'
+        run: |
+          echo "📦 Installing create-dmg..."
+          brew install create-dmg
+
       - name: Create DMG installer (macOS only)
         if: matrix.os == 'macos-latest'
         env:
@@ -519,30 +525,24 @@ jobs:
             security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" || true
           fi
           
-          cd "$BUNDLE_DIR"
-          
-          # Create DMG with signed app (standard macOS installer)
-          echo "💿 Creating DMG installer..."
+          # Create DMG with custom script (uses create-dmg)
+          echo "💿 Creating DMG installer with customize-dmg.sh..."
           ARCH_SUFFIX="${{ matrix.target == 'aarch64-apple-darwin' && 'arm64' || 'x64' }}"
           DMG_NAME="Reachy.Mini.Control_${{ steps.version.outputs.version }}_${ARCH_SUFFIX}.dmg"
-          DMG_TEMP_NAME="Reachy.Mini.Control.temp.dmg"
+          DMG_PATH="$BUNDLE_DIR/$DMG_NAME"
           
           # Remove old DMG if exists
-          rm -f "$DMG_NAME" "$DMG_TEMP_NAME" *.dmg
+          rm -f "$DMG_PATH" "$BUNDLE_DIR"/*.dmg
           
-          # Create DMG with hdiutil
-          # -volname: Volume name shown in Finder
-          # -fs: File system (HFS+)
-          # -srcfolder: Source folder (the app)
-          # -format: Format (UDZO = compressed read-only)
-          # -ov: Overwrite existing
-          hdiutil create -volname "Reachy Mini Control" \
-            -srcfolder "Reachy Mini Control.app" \
-            -fs HFS+ \
-            -format UDZO \
-            -ov "$DMG_TEMP_NAME"
+          # Use the customize-dmg.sh script
+          # It uses create-dmg which handles background image, icons, and Applications link
+          bash scripts/build/customize-dmg.sh \
+            "$APP_BUNDLE" \
+            "$DMG_PATH" \
+            "src-tauri/dmg-assets/background.png" \
+            "Reachy Mini Control"
           
-          if [ ! -f "$DMG_TEMP_NAME" ]; then
+          if [ ! -f "$DMG_PATH" ]; then
             echo "❌ Failed to create DMG file"
             exit 1
           fi
@@ -553,18 +553,15 @@ jobs:
           if ! codesign --force --sign "$APPLE_SIGNING_IDENTITY" \
             --timestamp \
             --options runtime \
-            "$DMG_TEMP_NAME"; then
+            "$DMG_PATH"; then
             echo "❌ DMG signing failed"
             echo "   Available identities:"
             security find-identity -v -p codesigning || true
             exit 1
           fi
           
-          # Rename to final name
-          mv "$DMG_TEMP_NAME" "$DMG_NAME"
-          
-          echo "✅ DMG created and signed: $DMG_NAME ($(du -h "$DMG_NAME" | cut -f1))"
-          echo "RELEASE_DMG_PATH=$BUNDLE_DIR/$DMG_NAME" >> $GITHUB_ENV
+          echo "✅ DMG created and signed: $DMG_NAME ($(du -h "$DMG_PATH" | cut -f1))"
+          echo "RELEASE_DMG_PATH=$DMG_PATH" >> $GITHUB_ENV
 
       - name: Notarize DMG (macOS only)
         if: matrix.os == 'macos-latest'
@@ -703,6 +700,8 @@ jobs:
     permissions:
       contents: write
       actions: read
+      pages: write
+      id-token: write
 
     steps:
       - name: Checkout code
@@ -757,8 +756,28 @@ jobs:
             --argjson platforms "$MERGED_PLATFORMS" \
             '{version: $version, notes: $notes, pub_date: $pub_date, platforms: $platforms}')
           
+          # ✅ DRY: Create latest.json in root for release upload
           echo "$MERGED_JSON" > latest.json
+          echo "✅ Created latest.json"
           cat latest.json
+          
+          # ✅ DRY: Create directly in docs/ for GitHub Pages (no copy needed)
+          mkdir -p docs
+          echo "$MERGED_JSON" > docs/latest.json
+          echo "✅ Created docs/latest.json for GitHub Pages"
+          
+          # Verify both files exist and are valid JSON
+          if [ ! -f "latest.json" ] || [ ! -f "docs/latest.json" ]; then
+            echo "❌ Failed to create latest.json files"
+            exit 1
+          fi
+          
+          if ! jq empty latest.json 2>/dev/null || ! jq empty docs/latest.json 2>/dev/null; then
+            echo "❌ Invalid JSON in latest.json files"
+            exit 1
+          fi
+          
+          echo "✅ Verified JSON files are valid"
 
       - name: Upload latest.json to release
         uses: softprops/action-gh-release@v1
@@ -770,16 +789,55 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Prepare latest.json for GitHub Pages
+      - name: Verify GitHub Pages file
+        # ✅ Robust: Verify file exists and is valid before deployment
         run: |
-          mkdir -p docs
-          cp latest.json docs/latest.json
-          echo "✅ Prepared latest.json for GitHub Pages"
+          if [ ! -f "docs/latest.json" ]; then
+            echo "❌ docs/latest.json not found, cannot deploy"
+            exit 1
+          fi
+          echo "✅ Verified docs/latest.json exists"
+          cat docs/latest.json
 
-      - name: Upload latest.json artifact for GitHub Pages
-        uses: actions/upload-artifact@v4
+      - name: Setup Pages
+        # ✅ Standard: Official GitHub action to configure Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact for GitHub Pages
+        # ✅ Standard: Official GitHub action to upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: latest-json-pages
-          path: docs/latest.json
-          retention-days: 1
+          path: docs
+
+      - name: Deploy to GitHub Pages
+        # ✅ Standard: Official GitHub action to deploy Pages
+        # ✅ Robust: Fail if deployment fails
+        id: deployment
+        uses: actions/deploy-pages@v4
+        continue-on-error: false
+
+      - name: Verify deployment
+        # ✅ Intelligent: Verify that the file is accessible after deployment
+        # Note: This may take a few seconds for GitHub Pages to propagate
+        run: |
+          echo "⏳ Waiting for GitHub Pages to propagate (up to 30s)..."
+          sleep 5
+          
+          PAGES_URL="https://pollen-robotics.github.io/reachy-mini-desktop-app/latest.json"
+          MAX_RETRIES=6
+          RETRY_DELAY=5
+          
+          for i in $(seq 1 $MAX_RETRIES); do
+            if curl -sf "$PAGES_URL" > /dev/null 2>&1; then
+              echo "✅ GitHub Pages deployment verified at: $PAGES_URL"
+              curl -s "$PAGES_URL" | jq -r '.version' | xargs -I {} echo "   Version deployed: {}"
+              exit 0
+            fi
+            echo "   Attempt $i/$MAX_RETRIES: Not yet available, retrying in ${RETRY_DELAY}s..."
+            sleep $RETRY_DELAY
+          done
+          
+          echo "⚠️  Warning: Could not verify deployment (may take longer to propagate)"
+          echo "   URL: $PAGES_URL"
+          # Don't fail the workflow - deployment may still succeed, just needs more time
 

@@ -10,14 +10,16 @@ This endpoint is used instead of GitHub Releases to avoid HTTP 302 redirect issu
 
 ## How it works
 
-1. The `Release Cross-Platform` workflow generates `latest.json` and uploads it as an artifact
-2. The `Deploy to GitHub Pages` workflow downloads the artifact and deploys it directly to GitHub Pages
-3. **No commits are made to the main branch** - keeping the repository history clean
+1. The `Release Cross-Platform` workflow generates `latest.json` and deploys it directly to GitHub Pages
+2. **No commits are made to the main branch** - keeping the repository history clean
+3. The file is automatically verified after deployment
 
 ## Configuration
 
-GitHub Pages must be configured in **"GitHub Actions" mode** (not "Deploy from a branch"):
+**⚠️ IMPORTANT**: GitHub Pages must be configured in **"GitHub Actions" mode** (not "Deploy from a branch"):
 
-1. Go to `Settings` → `Pages`
-2. Under "Source", select **"GitHub Actions"**
-3. The `pages-deploy.yml` workflow will automatically deploy after each release
+1. Go to repository `Settings` → `Pages`
+2. Under "Source", select **"GitHub Actions"** (not "Deploy from a branch")
+3. The workflow will automatically deploy after each release
+
+If GitHub Pages is not configured correctly, the deployment step will fail with a permissions error.

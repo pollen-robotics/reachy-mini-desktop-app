@@ -12,15 +12,11 @@ function StartingView({ startupError, startDaemon }) {
   const { darkMode, setIsStarting, setIsTransitioning, setIsActive, setHardwareError, hardwareError } = useAppStore();
   
   const handleScanComplete = useCallback(() => {
-    // ⚡ WAIT for pause to see success, then trigger transition
+    // ✅ HardwareScanView only calls this callback after successful healthcheck
+    // No need to check for errors here - they're already handled in HardwareScanView
+    
+    // ⚡ WAIT for pause to see "Starting Software..." message, then trigger transition
     setTimeout(() => {
-      // ✅ CRITICAL: Don't transition if there's an error - stay in scan view
-      const currentState = useAppStore.getState();
-      if (currentState.hardwareError || (startupError && typeof startupError === 'object' && startupError.type)) {
-        console.warn('⚠️ Scan completed but error detected, staying in scan view');
-        return; // Don't transition, stay in error state
-      }
-      
       // ✅ Clear any hardware errors when scan completes successfully
       setHardwareError(null);
       // ✅ Transition: keep TransitionView displayed until apps are loaded
@@ -31,7 +27,7 @@ function StartingView({ startupError, startDaemon }) {
       // ✅ No longer close TransitionView automatically after TRANSITION_DURATION
       // It will be closed by onAppsReady when apps are loaded
     }, DAEMON_CONFIG.ANIMATIONS.SCAN_COMPLETE_PAUSE);
-  }, [setIsStarting, setIsTransitioning, setIsActive, setHardwareError, startupError]);
+  }, [setIsStarting, setIsTransitioning, setIsActive, setHardwareError]);
 
   return (
     <Box

@@ -211,15 +211,19 @@ export function useAppFetching() {
   
   /**
    * Fetch installed apps from daemon
+   * ✅ IMPROVED: Better error handling, retry with backoff, distinguishes errors from empty list
    */
-  const fetchInstalledApps = useCallback(async () => {
+  const fetchInstalledApps = useCallback(async (retryCount = 0) => {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAYS = [1000, 2000, 3000]; // Exponential backoff: 1s, 2s, 3s
+    
     try {
       const installedUrl = buildApiUrl('/api/apps/list-available/installed');
       const installedResponse = await fetchWithTimeout(
         installedUrl,
         {},
         DAEMON_CONFIG.TIMEOUTS.APPS_LIST,
-        { silent: true }
+        { silent: retryCount > 0 } // Only silent on retries to avoid log spam
       );
       
       if (installedResponse.ok) {
@@ -230,13 +234,45 @@ export function useAppFetching() {
           source_kind: app.source_kind || 'local',
         }));
         console.log(`✅ Fetched ${installedApps.length} installed apps from daemon`);
-        return installedApps;
+        return { apps: installedApps, error: null };
       }
       
-      return [];
+      // Non-OK response: distinguish between error and empty list
+      if (installedResponse.status >= 500) {
+        // Server error - retry if possible
+        if (retryCount < MAX_RETRIES) {
+          console.log(`⚠️ Server error ${installedResponse.status} fetching installed apps, retrying (${retryCount + 1}/${MAX_RETRIES})...`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS[retryCount]));
+          return fetchInstalledApps(retryCount + 1);
+        }
+        console.error(`❌ Failed to fetch installed apps after ${MAX_RETRIES} retries: HTTP ${installedResponse.status}`);
+        return { apps: [], error: `Server error: ${installedResponse.status}` };
+      }
+      
+      // Client error (4xx) or other - don't retry, but log it
+      console.warn(`⚠️ Failed to fetch installed apps: HTTP ${installedResponse.status}`);
+      return { apps: [], error: `HTTP ${installedResponse.status}` };
     } catch (err) {
-      console.warn('⚠️ Failed to fetch installed apps:', err.message);
-      return [];
+      // Network/timeout/connection error - retry if possible
+      // ✅ IMPROVED: Also retry on "Load failed" and connection errors (daemon not ready yet)
+      const isRetryableError = 
+        err.name === 'TimeoutError' || 
+        err.name === 'AbortError' || 
+        err.message?.includes('timeout') ||
+        err.message?.includes('Load failed') ||
+        err.message?.includes('Failed to fetch') ||
+        err.message?.includes('network') ||
+        err.message?.includes('ECONNREFUSED');
+      
+      if (retryCount < MAX_RETRIES && isRetryableError) {
+        console.log(`⚠️ Connection error fetching installed apps (daemon may not be ready), retrying (${retryCount + 1}/${MAX_RETRIES})...`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS[retryCount]));
+        return fetchInstalledApps(retryCount + 1);
+      }
+      
+      // Other errors or max retries reached
+      console.error(`❌ Failed to fetch installed apps${retryCount > 0 ? ` after ${retryCount} retries` : ''}:`, err.message);
+      return { apps: [], error: err.message };
     }
   }, []);
   

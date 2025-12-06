@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useMemo } from 'react';
 import useAppStore from '@store/useAppStore';
 import { DAEMON_CONFIG, fetchWithTimeout, buildApiUrl } from '@config/daemon';
 import { useAppFetching } from './useAppFetching';
@@ -82,8 +82,10 @@ export function useAppsStore(isActive, official = true) {
     addFrontendLog,
   } = appStore;
   
-  // Convert activeJobs Object to Map for easier manipulation
-  const activeJobs = new Map(Object.entries(activeJobsObj || {}));
+  // ✅ OPTIMIZED: Convert activeJobs Object to Map with useMemo to avoid re-creation on every render
+  const activeJobs = useMemo(() => {
+    return new Map(Object.entries(activeJobsObj || {}));
+  }, [activeJobsObj]);
   
   // Specialized hooks
   const { fetchOfficialApps, fetchAllAppsFromDaemon, fetchInstalledApps } = useAppFetching();
@@ -126,10 +128,17 @@ export function useAppsStore(isActive, official = true) {
       // Continue to fetch with new mode (don't use cache)
     }
     
+    // ✅ IMPROVED: Don't use cache if it's empty (prevents showing empty list when apps exist)
     // Use cache if valid and not forcing refresh and mode hasn't changed
     if (!forceRefresh && !modeChanged && isCacheValid() && availableApps.length > 0) {
       console.log('✅ Using cached apps (valid for', Math.round((CACHE_DURATION - (Date.now() - appsLastFetch)) / 1000), 's)');
       return availableApps;
+    }
+    
+    // ✅ IMPROVED: If cache is empty, force refresh to avoid showing empty list
+    if (!forceRefresh && !modeChanged && isCacheValid() && availableApps.length === 0) {
+      console.log('⚠️ Cache is empty, forcing refresh to fetch apps');
+      // Continue to fetch below
     }
     
     try {
@@ -139,6 +148,7 @@ export function useAppsStore(isActive, official = true) {
       
       let daemonApps = [];
       let installedAppsFromDaemon = [];
+      let installedAppsError = null;
       
       if (official) {
         // Fetch official apps from HF official app store JSON
@@ -147,7 +157,15 @@ export function useAppsStore(isActive, official = true) {
         console.log(`✅ Fetched ${daemonApps.length} official apps from HF app store`);
         
         // Also fetch installed apps from daemon
-        installedAppsFromDaemon = await fetchInstalledApps();
+        const installedResult = await fetchInstalledApps();
+        installedAppsFromDaemon = installedResult.apps || [];
+        installedAppsError = installedResult.error;
+        
+        if (installedAppsError) {
+          console.warn(`⚠️ Error fetching installed apps: ${installedAppsError}`);
+          // Don't fail completely - continue with empty installed list
+          // This allows official apps to still be marked as installed if they're in the daemon
+        }
       } else {
         // Fetch all apps from daemon
         console.log(`🔄 Fetching all apps from daemon`);
@@ -158,6 +176,10 @@ export function useAppsStore(isActive, official = true) {
       const installedAppNames = new Set(
         installedAppsFromDaemon.map(app => app.name?.toLowerCase()).filter(Boolean)
       );
+      
+      console.log(`🔍 DEBUG: installedAppsFromDaemon count: ${installedAppsFromDaemon.length}`);
+      console.log(`🔍 DEBUG: installedAppNames Set:`, Array.from(installedAppNames));
+      console.log(`🔍 DEBUG: installedAppsFromDaemon:`, installedAppsFromDaemon.map(app => ({ name: app.name, source_kind: app.source_kind })));
       
       // For official mode: Only add installed apps that are NOT official
       // Official apps are ALWAYS in the list (from fetchOfficialApps)
@@ -171,17 +193,30 @@ export function useAppsStore(isActive, official = true) {
             source_kind: installedApp.source_kind || 'local',
           }));
         
+        console.log(`🔍 DEBUG: uniqueInstalledApps (non-official):`, uniqueInstalledApps.map(app => ({ name: app.name, source_kind: app.source_kind })));
+        
         // Only add non-official installed apps
         daemonApps = [...daemonApps, ...uniqueInstalledApps];
       }
       
+      console.log(`🔍 DEBUG: daemonApps before enrichment: ${daemonApps.length} apps`);
+      
       // Enrich apps with Hugging Face metadata
       const { enrichedApps, installed, available } = await enrichApps(daemonApps, installedAppNames);
+      
+      console.log(`🔍 DEBUG: After enrichment - installed: ${installed.length}, available: ${available.length}`);
+      console.log(`🔍 DEBUG: installed apps details:`, installed.map(app => ({ name: app.name, isInstalled: app.isInstalled, source_kind: app.source_kind })));
       
       // Update store
       setAvailableApps(enrichedApps);
       setInstalledApps(installed);
       setAppsLoading(false);
+      
+      // ✅ IMPROVED: Log error if installed apps fetch failed but continue
+      if (installedAppsError) {
+        console.warn(`⚠️ Installed apps fetch had errors but continuing with available data: ${installedAppsError}`);
+        // Don't set appsError here - it's not critical, we can still show apps
+      }
       
       console.log(`✅ Apps fetched and stored in global store: ${enrichedApps.length} total, ${installed.length} installed`);
       
@@ -479,9 +514,13 @@ export function useAppsStore(isActive, official = true) {
     return cleanupJobs;
   }, [cleanupJobs]);
   
+  // ✅ Track if this is the first time isActive becomes true (startup)
+  const isFirstActiveRef = useRef(true);
+  
   /**
    * Initial fetch + polling of current app status
    * Refetches when official changes or when daemon becomes active
+   * ✅ IMPROVED: Adds delay on startup to avoid race condition with daemon
    * ✅ Cleans up currentApp when daemon becomes inactive
    */
   useEffect(() => {
@@ -489,7 +528,36 @@ export function useAppsStore(isActive, official = true) {
       // ✅ Cleanup: If daemon becomes inactive, clear currentApp state
       setCurrentApp(null);
       clearApps(); // Clear apps when daemon is inactive
+      isFirstActiveRef.current = true; // Reset flag when daemon becomes inactive
       return;
+    }
+    
+    // ✅ IMPROVED: On first activation (startup), daemon is already verified by HardwareScanView
+    // We can fetch apps immediately since healthcheck was done before transition
+    const isFirstActivation = isFirstActiveRef.current;
+    if (isFirstActivation) {
+      isFirstActiveRef.current = false;
+      console.log('🔄 Robot just became active, daemon healthcheck already verified, fetching apps...');
+      
+      // ✅ Daemon healthcheck was already done in HardwareScanView before transition
+      // We can fetch apps immediately (retry logic in fetchInstalledApps will handle any edge cases)
+      const modeChanged = appsOfficialMode !== official;
+      if (modeChanged) {
+        console.log(`🔄 Mode changed: ${appsOfficialMode} → ${official}, invalidating cache and refetching`);
+        invalidateAppsCache();
+        setAppsOfficialMode(official);
+        fetchAvailableApps(true);
+      } else {
+        fetchAvailableApps(false);
+      }
+      
+      // Start polling immediately
+      fetchCurrentAppStatus();
+      const interval = setInterval(fetchCurrentAppStatus, DAEMON_CONFIG.INTERVALS.APP_STATUS);
+      
+      return () => {
+        clearInterval(interval);
+      };
     }
     
     // ✅ If mode changed, invalidate cache and force refresh

@@ -32,6 +32,18 @@
 	<key>NSDownloadsFolderUsageDescription</key>
 	<string>L'application doit accéder au dossier Téléchargements pour télécharger et installer les applications du robot.</string>
 	
+	<!-- Description pour l'accès à la caméra (pour les apps qui utilisent la caméra) -->
+	<key>NSCameraUsageDescription</key>
+	<string>L'application doit accéder à la caméra pour certaines fonctionnalités du robot Reachy Mini (comme le suivi de main).</string>
+	
+	<!-- Support pour les caméras de continuité (iPhone/iPad comme webcam) -->
+	<key>NSCameraUseContinuityCameraDeviceType</key>
+	<true/>
+	
+	<!-- Description pour l'accès au microphone (pour les apps qui utilisent l'audio) -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>L'application doit accéder au microphone pour certaines fonctionnalités du robot Reachy Mini (comme la reconnaissance vocale).</string>
+	
 	<!-- Autoriser l'exécution de processus enfants (sidecar Python) -->
 	<key>LSEnvironment</key>
 	<dict>

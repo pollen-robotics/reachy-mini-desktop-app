@@ -85,6 +85,10 @@ export const DAEMON_CONFIG = {
     MOVEMENT_DETECTION_TIMEOUT: 800, // Timeout to detect if robot is moving (800ms)
     COMMAND_LOCK_DURATION: 2000,   // Default lock duration for commands (2s)
     RECORDED_MOVE_LOCK_DURATION: 5000, // Lock duration for recorded moves (5s)
+    // Tolerance values for movement detection
+    TOLERANCE_SMALL: 0.001,  // For precise detection (HardwareScanView)
+    TOLERANCE_MEDIUM: 0.005, // For array comparisons (arraysEqual default)
+    TOLERANCE_LARGE: 0.01,   // For movement filtering (useRobotPowerState)
   },
   
   // App installation delays

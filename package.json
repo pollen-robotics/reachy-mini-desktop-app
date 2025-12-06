@@ -1,7 +1,7 @@
 {
   "name": "tauri-app",
   "private": true,
-  "version": "0.3.2",
+  "version": "0.3.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,8 +12,10 @@
     "tauri:build": "tauri build",
     "build:sidecar-macos": "bash ./scripts/build/build-sidecar-unix.sh",
     "build:sidecar-linux": "bash ./scripts/build/build-sidecar-unix.sh",
+    "build:sidecar-windows": "powershell ./scripts/build/build-sidecar-windows.ps1",
     "build:sidecar-macos:develop": "REACHY_MINI_SOURCE=develop bash ./scripts/build/build-sidecar-unix.sh",
     "build:sidecar-linux:develop": " REACHY_MINI_SOURCE=develop bash ./scripts/build/build-sidecar-unix.sh",
+    "build:sidecar-windows:develop": "powershell -Command \"$env:REACHY_MINI_SOURCE='develop'; ./scripts/build/build-sidecar-windows.ps1\"",
     "build:update:dev": "bash ./scripts/build/build-update.sh dev",
     "build:update:prod": "bash ./scripts/build/build-update.sh prod",
     "serve:updates": "bash ./scripts/utils/serve-updates.sh",
@@ -23,7 +25,8 @@
     "test:update-prod": "bash ./scripts/test/test-update-prod.sh",
     "test:all": "yarn test:sidecar && yarn test:app && yarn test:updater",
     "kill-daemon": "./scripts/daemon/kill-daemon.sh",
-    "check-daemon": "./scripts/daemon/check-daemon.sh"
+    "check-daemon": "./scripts/daemon/check-daemon.sh",
+    "reset-permissions": "bash ./scripts/utils/reset-macos-permissions.sh"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

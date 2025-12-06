@@ -56,6 +56,11 @@ export function useAppEnrichment() {
       // Determine if app is installed
       const isInstalled = installedAppNames.has(daemonApp.name?.toLowerCase());
       
+      // 🔍 DEBUG: Log matching for installed apps
+      if (isInstalled) {
+        console.log(`🔍 DEBUG: App "${daemonApp.name}" marked as installed (matched in installedAppNames)`);
+      }
+      
       // Build enriched app
       const enrichedApp = buildEnrichedApp(daemonApp, hfMetadata, spaceData, isInstalled);
       
@@ -86,8 +91,13 @@ export function useAppEnrichment() {
     const installed = enrichedApps.filter(app => app.isInstalled);
     const available = enrichedApps.filter(app => !app.isInstalled);
     
+    console.log(`🔍 DEBUG enrichApps: Total enriched: ${enrichedApps.length}, Installed: ${installed.length}, Available: ${available.length}`);
+    console.log(`🔍 DEBUG enrichApps: Installed apps:`, installed.map(app => ({ name: app.name, isInstalled: app.isInstalled, source_kind: app.source_kind })));
+    
     // 5. Enrich installed apps with metadata from available apps
     const installedWithEmoji = enrichInstalledAppsWithAvailableMetadata(installed, available);
+    
+    console.log(`🔍 DEBUG enrichApps: After emoji enrichment: ${installedWithEmoji.length} installed apps`);
     
     return {
       enrichedApps,

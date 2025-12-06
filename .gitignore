@@ -8,6 +8,9 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+Reachy
+Test
+
 .analysis/
 
 node_modules

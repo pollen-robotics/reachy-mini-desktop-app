@@ -334,7 +334,7 @@ export default function InstalledAppsSection({
                           },
                         }}
                       >
-                        {isStarting ? 'Starting...' : 'Play'}
+                        {isStarting ? 'Starting...' : 'Start'}
                       </Button>
                     )}
                   </Box>

@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Box, Typography, Button, CircularProgress } from '@mui/material';
-import reachyBusteSvg from '../../assets/reachy-buste.svg';
+import idleReachyGif from '../../assets/videos/idle-reachy.gif';
 import useAppStore from '../../store/useAppStore';
 
 // 🤖 Startup messages (fixed title)
@@ -13,7 +13,7 @@ const START_MESSAGES = [
   { 
     text: 'Give ', 
     bold: 'life', 
-    suffix: ' to your robot' 
+    suffix: ' to Reachy' 
   },
   { 
     text: 'Time to ', 
@@ -23,7 +23,7 @@ const START_MESSAGES = [
   { 
     text: 'Press to ', 
     bold: 'activate', 
-    suffix: ' the robot' 
+    suffix: ' Reachy' 
   },
 ];
 
@@ -44,12 +44,24 @@ export default function ReadyToStartView({
     return START_MESSAGES[Math.floor(Math.random() * START_MESSAGES.length)];
   }, []);
   
+  // ✅ Reset button loading state when isStarting changes or component unmounts
+  useEffect(() => {
+    if (!isStarting) {
+      setIsButtonLoading(false);
+    }
+  }, [isStarting]);
+  
   const handleStartClick = () => {
+    if (isButtonLoading || isStarting) {
+      return; // Prevent multiple clicks
+    }
+    
     setIsButtonLoading(true);
     // Let React render the spinner before starting the daemon
-    setTimeout(() => {
+    // Use requestAnimationFrame for better timing
+    requestAnimationFrame(() => {
       startDaemon();
-    }, 0);
+    });
   };
 
   return (
@@ -83,15 +95,31 @@ export default function ReadyToStartView({
             height: '100%',
           }}
         >
-              <Box sx={{ mb: 4 }}>
-                <img 
-                  src={reachyBusteSvg} 
-                  alt="Reachy Buste" 
-                  style={{ 
-                    width: '220px', 
-                    height: '220px',
-                    mb: 0
-                  }} 
+              <Box 
+                sx={{ 
+                  mb: 0,
+                  bgcolor: 'transparent',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  width: '293px',
+                  height: '293px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {/* ✅ Animated GIF with transparency - works everywhere */}
+                <img
+                  src={idleReachyGif}
+                  alt="Reachy idle animation"
+                  style={{
+                    width: '293px',
+                    height: '293px',
+                    objectFit: 'contain',
+                    backgroundColor: 'transparent',
+                    background: 'transparent',
+                    display: 'block',
+                  }}
                 />
               </Box>
               
@@ -144,12 +172,25 @@ export default function ReadyToStartView({
                       color: '#FF9500',
                       border: '1px solid #FF9500',
                       position: 'relative',
-                      overflow: 'hidden',
+                      overflow: 'visible',
                       boxShadow: darkMode 
                         ? '0 2px 8px rgba(255, 149, 0, 0.15)' 
                         : '0 2px 8px rgba(255, 149, 0, 0.12)',
                       transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                       letterSpacing: '0.2px',
+                      animation: !(isButtonLoading || isStarting) ? 'startPulse 3s ease-in-out infinite' : 'none',
+                      '@keyframes startPulse': {
+                        '0%, 100%': {
+                          boxShadow: darkMode
+                            ? '0 0 0 0 rgba(255, 149, 0, 0.4)'
+                            : '0 0 0 0 rgba(255, 149, 0, 0.3)',
+                        },
+                        '50%': {
+                          boxShadow: darkMode
+                            ? '0 0 0 8px rgba(255, 149, 0, 0)'
+                            : '0 0 0 8px rgba(255, 149, 0, 0)',
+                        },
+                      },
                       '&:hover': {
                         bgcolor: !(isButtonLoading || isStarting) ? 'rgba(255, 149, 0, 0.08)' : 'transparent',
                         borderColor: '#FF9500',
@@ -161,6 +202,7 @@ export default function ReadyToStartView({
                           : (darkMode 
                             ? '0 2px 8px rgba(255, 149, 0, 0.15)' 
                             : '0 2px 8px rgba(255, 149, 0, 0.12)'),
+                        animation: !(isButtonLoading || isStarting) ? 'none' : 'none',
                       },
                       '&:active': {
                         transform: !(isButtonLoading || isStarting) ? 'translateY(0)' : 'none',
@@ -173,6 +215,7 @@ export default function ReadyToStartView({
                         color: darkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)',
                         borderColor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.12)',
                         boxShadow: 'none',
+                        animation: 'none',
                       },
                     }}
                   >

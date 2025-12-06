@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useCallback, useState } from 'react';
 import { Box } from '@mui/material';
 
-import { RobotNotDetectedView, StartingView, ReadyToStartView, TransitionView, ActiveRobotView, ClosingView, UpdateView } from '../views';
+import { PermissionsRequiredView, RobotNotDetectedView, StartingView, ReadyToStartView, TransitionView, ActiveRobotView, ClosingView, UpdateView } from '../views';
 import AppTopBar from './AppTopBar';
 import { useDaemon, useDaemonHealthCheck } from '../hooks/daemon';
-import { useUsbDetection, useLogs, useWindowResize, useUpdater, useUpdateViewState } from '../hooks/system';
+import { useUsbDetection, useLogs, useWindowResize, useUpdater, useUpdateViewState, usePermissions } from '../hooks/system';
 import { useRobotCommands, useRobotState } from '../hooks/robot';
 import { DAEMON_CONFIG, setAppStoreInstance } from '../config/daemon';
 import { isDevMode } from '../utils/devMode';
@@ -20,6 +20,10 @@ function App() {
   const { isUsbConnected, usbPortName, checkUsbRobot } = useUsbDetection();
   const { sendCommand, playRecordedMove, isCommandRunning } = useRobotCommands();
   const { logs, fetchLogs } = useLogs();
+  
+  // 🔐 Permissions check (macOS only)
+  // Blocks the app until camera and microphone permissions are granted
+  const { allGranted: permissionsGranted } = usePermissions({ checkInterval: 2000 });
   
   // 🔄 Automatic update system
   // Tries to fetch latest.json directly - if it works, we have internet + we know if there's an update
@@ -38,6 +42,15 @@ function App() {
     checkInterval: DAEMON_CONFIG.UPDATE_CHECK.INTERVAL,
     silent: false,
   });
+  
+  // 🔍 DEBUG: Force update check in dev mode for testing
+  useEffect(() => {
+    if (isDev) {
+      console.log('🔍 DEV MODE: Update check disabled by default');
+      console.log('   To test update check, call checkForUpdates() manually in DevTools console');
+      console.log('   Or temporarily set autoCheck: true in useUpdater hook');
+    }
+  }, [isDev, checkForUpdates]);
   
   // 🕐 USB check tracking - track when first USB check happens
   const [usbCheckStartTime, setUsbCheckStartTime] = useState(null);
@@ -199,6 +212,17 @@ function App() {
       setIsTransitioning(false);
     }
   }, [isTransitioning, setIsTransitioning]);
+
+  // 🔐 PRIORITY 0: Permissions view - Blocks app until permissions granted (macOS only)
+  // On non-macOS, permissionsGranted will be true (permissions not needed)
+  if (!permissionsGranted) {
+    return (
+      <Box sx={{ position: 'relative', width: '100%', height: '100vh' }}>
+        <AppTopBar />
+        <PermissionsRequiredView />
+      </Box>
+    );
+  }
 
   // 🔄 PRIORITY 1: Update view - ALWAYS FIRST, before everything else
   // Show when checking for updates or when update is available/installing

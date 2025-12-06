@@ -1,4 +1,8 @@
-name: Deploy to GitHub Pages
+# ⚠️ DEPRECATED: This workflow is no longer used.
+# GitHub Pages deployment is now integrated directly in release-unified.yml
+# This file is kept for reference but will not be triggered.
+
+name: Deploy to GitHub Pages (Deprecated)
 
 on:
   workflow_run:

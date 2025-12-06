@@ -33,6 +33,7 @@ ERROR_COUNT=0
 # Function to sign a binary
 sign_binary() {
     local binary="$1"
+    local entitlements_file="${2:-}"  # Optional entitlements file (default to empty)
     if [ ! -f "$binary" ]; then
         return 0
     fi
@@ -40,10 +41,26 @@ sign_binary() {
     # Check if it's a Mach-O binary (may be executable or not)
     if file "$binary" 2>/dev/null | grep -qE "(Mach-O|dynamically linked|shared library)"; then
         echo "   Signing: $binary"
-        if codesign --force --verify --verbose --sign "$SIGNING_IDENTITY" \
-            --options runtime \
-            --timestamp \
-            "$binary" 2>&1; then
+        
+        # Build codesign command
+        local codesign_cmd=(
+            codesign
+            --force
+            --verify
+            --verbose
+            --sign "$SIGNING_IDENTITY"
+            --options runtime
+            --timestamp
+        )
+        
+        # Add entitlements if provided
+        if [ -n "$entitlements_file" ] && [ -f "$entitlements_file" ]; then
+            codesign_cmd+=(--entitlements "$entitlements_file")
+        fi
+        
+        codesign_cmd+=("$binary")
+        
+        if "${codesign_cmd[@]}" 2>&1; then
             return 0
         else
             echo "⚠️  Failed to sign: $binary"
@@ -90,9 +107,20 @@ if [ -d "$RESOURCES_DIR" ]; then
         done
         
         # Sign all executable binaries in .venv/bin
+        # Apply disable-library-validation entitlement to Python executable
         if [ -d "$RESOURCES_DIR/.venv/bin" ]; then
+            # Get path to python entitlements file (in same directory as this script)
+            SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+            PYTHON_ENTITLEMENTS="$SCRIPT_DIR/python-entitlements.plist"
+            
             find "$RESOURCES_DIR/.venv/bin" -type f -perm +111 | while read -r binary; do
-                sign_binary "$binary"
+                # Check if this is the Python executable
+                if basename "$binary" | grep -qE "^python[0-9.]*$"; then
+                    echo "   Applying entitlements to Python executable: $binary"
+                    sign_binary "$binary" "$PYTHON_ENTITLEMENTS"
+                else
+                    sign_binary "$binary"
+                fi
             done
         fi
         
@@ -116,14 +144,34 @@ if [ -d "$RESOURCES_DIR" ]; then
 fi
 
 # Sign main app bundle (must be done last with --deep)
-echo "📦 Signing main app bundle with --deep..."
-if ! codesign --force --verify --verbose --sign "$SIGNING_IDENTITY" \
-    --options runtime \
-    --timestamp \
-    --deep \
-    "$APP_BUNDLE"; then
-    echo "❌ Failed to sign main app bundle"
-    exit 1
+# Apply entitlements from src-tauri/entitlements.plist
+echo "📦 Signing main app bundle with --deep and entitlements..."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+ENTITLEMENTS_FILE="$PROJECT_DIR/src-tauri/entitlements.plist"
+
+if [ ! -f "$ENTITLEMENTS_FILE" ]; then
+    echo "⚠️  Warning: Entitlements file not found: $ENTITLEMENTS_FILE"
+    echo "   Signing without entitlements (not recommended)"
+    if ! codesign --force --verify --verbose --sign "$SIGNING_IDENTITY" \
+        --options runtime \
+        --timestamp \
+        --deep \
+        "$APP_BUNDLE"; then
+        echo "❌ Failed to sign main app bundle"
+        exit 1
+    fi
+else
+    echo "   Using entitlements: $ENTITLEMENTS_FILE"
+    if ! codesign --force --verify --verbose --sign "$SIGNING_IDENTITY" \
+        --options runtime \
+        --timestamp \
+        --entitlements "$ENTITLEMENTS_FILE" \
+        --deep \
+        "$APP_BUNDLE"; then
+        echo "❌ Failed to sign main app bundle"
+        exit 1
+    fi
 fi
 
 # Verify signature
