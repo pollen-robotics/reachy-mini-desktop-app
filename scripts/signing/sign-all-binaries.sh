@@ -33,7 +33,7 @@ ERROR_COUNT=0
 # Function to sign a binary
 sign_binary() {
     local binary="$1"
-    local entitlements_file="$2"  # Optional entitlements file
+    local entitlements_file="${2:-}"  # Optional entitlements file (default to empty)
     if [ ! -f "$binary" ]; then
         return 0
     fi
