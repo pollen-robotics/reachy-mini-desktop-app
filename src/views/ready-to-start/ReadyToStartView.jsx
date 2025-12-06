@@ -172,12 +172,25 @@ export default function ReadyToStartView({
                       color: '#FF9500',
                       border: '1px solid #FF9500',
                       position: 'relative',
-                      overflow: 'hidden',
+                      overflow: 'visible',
                       boxShadow: darkMode 
                         ? '0 2px 8px rgba(255, 149, 0, 0.15)' 
                         : '0 2px 8px rgba(255, 149, 0, 0.12)',
                       transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                       letterSpacing: '0.2px',
+                      animation: !(isButtonLoading || isStarting) ? 'startPulse 3s ease-in-out infinite' : 'none',
+                      '@keyframes startPulse': {
+                        '0%, 100%': {
+                          boxShadow: darkMode
+                            ? '0 0 0 0 rgba(255, 149, 0, 0.4)'
+                            : '0 0 0 0 rgba(255, 149, 0, 0.3)',
+                        },
+                        '50%': {
+                          boxShadow: darkMode
+                            ? '0 0 0 8px rgba(255, 149, 0, 0)'
+                            : '0 0 0 8px rgba(255, 149, 0, 0)',
+                        },
+                      },
                       '&:hover': {
                         bgcolor: !(isButtonLoading || isStarting) ? 'rgba(255, 149, 0, 0.08)' : 'transparent',
                         borderColor: '#FF9500',
@@ -189,6 +202,7 @@ export default function ReadyToStartView({
                           : (darkMode 
                             ? '0 2px 8px rgba(255, 149, 0, 0.15)' 
                             : '0 2px 8px rgba(255, 149, 0, 0.12)'),
+                        animation: !(isButtonLoading || isStarting) ? 'none' : 'none',
                       },
                       '&:active': {
                         transform: !(isButtonLoading || isStarting) ? 'translateY(0)' : 'none',
@@ -201,6 +215,7 @@ export default function ReadyToStartView({
                         color: darkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)',
                         borderColor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.12)',
                         boxShadow: 'none',
+                        animation: 'none',
                       },
                     }}
                   >

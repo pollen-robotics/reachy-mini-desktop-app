@@ -7,6 +7,7 @@ export { useUpdater } from './useUpdater';
 export { useUpdateViewState } from './useUpdateViewState';
 export { useUsbDetection } from './useUsbDetection';
 export { useWindowResize } from './useWindowResize';
+export { usePermissions } from './usePermissions';
 
 // Note: useWindowSync, useWindowFocus moved to views/windows/hooks
 // Note: useAudioControls moved to views/active-robot/audio/hooks

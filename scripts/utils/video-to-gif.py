@@ -4,7 +4,7 @@ Script to convert video to animated GIF with transparency
 Removes white/black background and creates transparent GIF
 
 Usage:
-    python3 video-to-gif.py input.mp4 output.gif [--color white|black] [--threshold 30] [--fps 30] [--scale 1.0]
+    python3 video-to-gif.py input.mp4 output.gif [--color white|black] [--threshold 40] [--fps 30] [--scale 1.0]
 """
 
 import os
@@ -22,7 +22,7 @@ def check_ffmpeg():
         return False
 
 
-def video_to_gif(input_path, output_path, color='white', threshold=30, fps=30, scale=1.0, custom_color=None):
+def video_to_gif(input_path, output_path, color='white', threshold=40, fps=30, scale=1.0, custom_color=None):
     """
     Convert video to animated GIF with transparency.
     
@@ -73,10 +73,15 @@ def video_to_gif(input_path, output_path, color='white', threshold=30, fps=30, s
     palette_path = output_path.replace('.gif', '_palette.png')
     
     # FFmpeg filter to remove background and create palette
-    similarity = min(0.99, threshold / 255.0 + 0.1)
+    # Technique: Progressive colorkey passes with minimal blend to preserve sharpness
+    # Use lower threshold first to preserve image, then aggressive cleanup
+    similarity1 = min(0.99, (threshold - 10) / 255.0 + 0.1)  # More conservative first pass
+    similarity2 = min(0.99, (threshold + 25) / 255.0 + 0.1)  # Aggressive edge cleanup
+    blend = 0.01  # Minimal blend to avoid blurring
     filter_complex = (
-        f"[0:v]colorkey={color_value}:similarity={similarity}:blend=0.0,"
-        f"scale=iw*{scale}:ih*{scale}:flags=lanczos,"
+        f"[0:v]colorkey={color_value}:similarity={similarity1}:blend={blend}[ck1];"
+        f"[ck1]colorkey={color_value}:similarity={similarity2}:blend=0.0[ck2];"
+        f"[ck2]scale=iw*{scale}:ih*{scale}:flags=lanczos,"
         f"fps={fps},"
         f"palettegen=reserve_transparent=1[palette]"
     )
@@ -91,13 +96,17 @@ def video_to_gif(input_path, output_path, color='white', threshold=30, fps=30, s
     ]
     
     # Step 2: Create GIF using palette
-    # First apply colorkey to remove background, then use palette
-    similarity = min(0.99, threshold / 255.0 + 0.1)
+    # Technique: Progressive colorkey passes with minimal blend to preserve sharpness
+    # Use lower threshold first to preserve image, then aggressive cleanup
+    similarity1 = min(0.99, (threshold - 10) / 255.0 + 0.1)  # More conservative first pass
+    similarity2 = min(0.99, (threshold + 25) / 255.0 + 0.1)  # Aggressive edge cleanup
+    blend = 0.01  # Minimal blend to avoid blurring
     gif_filter = (
-        f"[0:v]colorkey={color_value}:similarity={similarity}:blend=0.0,"
-        f"scale=iw*{scale}:ih*{scale}:flags=lanczos,"
-        f"fps={fps}[ck];"
-        f"[ck][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle[out]"
+        f"[0:v]colorkey={color_value}:similarity={similarity1}:blend={blend}[ck1];"
+        f"[ck1]colorkey={color_value}:similarity={similarity2}:blend=0.0[ck2];"
+        f"[ck2]scale=iw*{scale}:ih*{scale}:flags=lanczos,"
+        f"fps={fps}[ck3];"
+        f"[ck3][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle[out]"
     )
     
     gif_cmd = [
@@ -166,8 +175,8 @@ def main():
     parser.add_argument(
         '--threshold',
         type=int,
-        default=30,
-        help='Tolerance threshold 0-255 (default: 30, lower = more strict)'
+        default=40,
+        help='Tolerance threshold 0-255 (default: 40, lower = more strict)'
     )
     parser.add_argument(
         '--fps',

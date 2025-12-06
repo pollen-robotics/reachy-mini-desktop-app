@@ -1,6 +1,7 @@
 // Modules
 #[macro_use]
 mod daemon;
+mod permissions;
 mod python;
 mod signing;
 mod usb;
@@ -163,6 +164,10 @@ pub fn run() {
                     let new_style = style_mask | (1 << 15); // NSWindowStyleMaskFullSizeContentView
                     let _: () = msg_send![ns_window, setStyleMask: new_style];
                 }
+                
+                // Request all macOS permissions (camera, microphone, etc.)
+                // These permissions will propagate to child processes (Python daemon and apps)
+                permissions::request_all_permissions();
             }
             
             Ok(())
@@ -175,7 +180,10 @@ pub fn run() {
             install_mujoco,
             window::apply_transparent_titlebar,
             window::close_window,
-            signing::sign_python_binaries
+            signing::sign_python_binaries,
+            permissions::check_permissions,
+            permissions::open_camera_settings,
+            permissions::open_microphone_settings
         ])
         .on_window_event(|window, event| {
             match event {
