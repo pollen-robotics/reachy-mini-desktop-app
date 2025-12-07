@@ -160,26 +160,36 @@ jobs:
         run: |
           mkdir -p ~/.tauri
           if [ -n "$TAURI_SIGNING_KEY" ]; then
-            # CRITICAL: tauri signer tries to decode as base64 first
-            # If base64 fails, it falls back to RAW format
-            # Base64 cannot contain ANY spaces, so we must remove ALL whitespace
-            # Even for RAW format, removing spaces is safe because:
-            # - RAW format has structure but spaces are not critical for parsing
-            # - tauri signer can handle RAW without spaces
-            # - The error "Invalid symbol 32, offset 9" means a space is breaking base64 decode
-            echo "🔍 Cleaning key (removing ALL whitespace to prevent base64 decode errors)..."
-            CLEANED_KEY=$(printf '%s' "$TAURI_SIGNING_KEY" | tr -d ' \n\r\t')
+            # The key in GitHub Secrets can be either:
+            # 1. Raw format (starts with "untrusted comment: rsign encrypted secret key")
+            # 2. Base64-encoded format
+            # We detect the format and handle accordingly
             
-            # Verify no spaces remain
-            if echo "$CLEANED_KEY" | grep -q '[[:space:]]'; then
-              echo "❌ ERROR: Key still contains whitespace after cleaning"
-              exit 1
+            # Check if it's raw format (starts with "untrusted comment")
+            # Use the first 50 chars to check, avoiding issues with leading whitespace
+            FIRST_CHARS=$(printf '%s' "$TAURI_SIGNING_KEY" | head -c 50)
+            
+            if echo "$FIRST_CHARS" | grep -q "untrusted comment"; then
+              # Raw format in GitHub Secrets - encode to base64 for file storage
+              # tauri signer expects the key file to be base64-encoded
+              # Clean the raw key first (remove leading/trailing whitespace)
+              CLEANED_RAW=$(printf '%s' "$TAURI_SIGNING_KEY" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+              # Encode to base64 and remove ALL newlines/whitespace (tauri signer is strict)
+              if [[ "$OSTYPE" == "darwin"* ]]; then
+                # macOS: base64 -b 0 or pipe to tr -d '\n'
+                printf '%s' "$CLEANED_RAW" | base64 | tr -d '\n\r' > ~/.tauri/reachy-mini.key
+              else
+                # Linux: base64 -w 0
+                printf '%s' "$CLEANED_RAW" | base64 -w 0 | tr -d '\n\r' > ~/.tauri/reachy-mini.key
+              fi
+              echo "✅ Encoded raw format private key to base64 (for tauri signer)"
+            else
+              # Already base64 format - use directly (remove ALL whitespace including newlines)
+              CLEANED_KEY=$(printf '%s' "$TAURI_SIGNING_KEY" | tr -d '\n\r\t ' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+              printf '%s' "$CLEANED_KEY" > ~/.tauri/reachy-mini.key
+              echo "✅ Using base64 format private key (from GitHub Secrets)"
             fi
-            
-            printf '%s' "$CLEANED_KEY" > ~/.tauri/reachy-mini.key
             chmod 600 ~/.tauri/reachy-mini.key
-            KEY_SIZE=$(wc -c < ~/.tauri/reachy-mini.key)
-            echo "✅ Private key saved (${KEY_SIZE} bytes, all whitespace removed)"
             
             # ✅ Extract public key from tauri.conf.json (standard practice - ensures they match)
             echo "🔑 Extracting public key from tauri.conf.json..."
