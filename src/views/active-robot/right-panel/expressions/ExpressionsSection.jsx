@@ -1,6 +1,10 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
-import { Box, IconButton, Typography, Button, Stack } from '@mui/material';
+import { Box, IconButton, Typography, Button, Stack, Tooltip } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import West from '@mui/icons-material/West';
+import East from '@mui/icons-material/East';
+import SwapHoriz from '@mui/icons-material/SwapHoriz';
 import SpinningWheel from '@components/wheel/SpinningWheel';
 import { CHOREOGRAPHY_DATASETS, QUICK_ACTIONS, EMOTIONS, DANCES, EMOTION_EMOJIS, DANCE_EMOJIS } from '@constants/choreographies';
 import { useRobotCommands } from '@hooks/robot';
@@ -184,6 +188,126 @@ export default function ExpressionsSection({
           >
             Expressions
           </Typography>
+          <Tooltip
+            title={
+              <Box sx={{ p: 1.5 }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      <Box
+                        sx={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: '20px',
+                          height: '20px',
+                          borderRadius: '3px',
+                          backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                          border: '1px solid rgba(255, 255, 255, 0.2)',
+                          color: 'rgba(255, 255, 255, 0.9)',
+                        }}
+                      >
+                        <West sx={{ fontSize: '12px' }} />
+                      </Box>
+                      <Box
+                        sx={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: '20px',
+                          height: '20px',
+                          borderRadius: '3px',
+                          backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                          border: '1px solid rgba(255, 255, 255, 0.2)',
+                          color: 'rgba(255, 255, 255, 0.9)',
+                        }}
+                      >
+                        <East sx={{ fontSize: '12px' }} />
+                      </Box>
+                    </Box>
+                    <Typography sx={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.8)' }}>
+                      Keyboard navigate
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    <Box
+                      sx={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        minWidth: '65px',
+                        height: '20px',
+                        px: 1,
+                        borderRadius: '3px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                        fontSize: '9px',
+                        fontFamily: 'system-ui, sans-serif',
+                        fontWeight: 500,
+                        color: 'rgba(255, 255, 255, 0.9)',
+                      }}
+                    >
+                      Space
+                    </Box>
+                    <Typography sx={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.8)' }}>
+                      Keyboard trigger
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    <Box
+                      sx={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '20px',
+                        height: '20px',
+                        borderRadius: '3px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                        color: 'rgba(255, 255, 255, 0.9)',
+                      }}
+                    >
+                      <SwapHoriz sx={{ fontSize: '12px' }} />
+                    </Box>
+                    <Typography sx={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.8)' }}>
+                      Mouse drag
+                    </Typography>
+                  </Box>
+                </Box>
+              </Box>
+            }
+            arrow
+            placement="bottom"
+            componentsProps={{
+              tooltip: {
+                sx: {
+                  bgcolor: darkMode ? 'rgba(30, 30, 30, 0.95)' : 'rgba(50, 50, 50, 0.95)',
+                  backdropFilter: 'blur(10px)',
+                  border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.2)'}`,
+                  maxWidth: 'none',
+                },
+              },
+              arrow: {
+                sx: {
+                  color: darkMode ? 'rgba(30, 30, 30, 0.95)' : 'rgba(50, 50, 50, 0.95)',
+                },
+              },
+            }}
+          >
+            <IconButton
+              size="small"
+              sx={{
+                color: darkMode ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.4)',
+                '&:hover': {
+                  color: darkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)',
+                  bgcolor: darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)',
+                },
+                p: 0.5,
+              }}
+            >
+              <InfoOutlinedIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
         </Box>
         
         {/* Libraries section - centered */}

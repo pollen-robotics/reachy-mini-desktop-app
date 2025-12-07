@@ -72,11 +72,13 @@ pub fn open_microphone_settings() -> Result<(), String> {
 
 
 /// Check camera permission status (macOS only, using AVFoundation directly)
+/// Uses NSString::from_str("vide") like tauri-plugin-macos-permissions
 #[tauri::command]
 #[cfg(target_os = "macos")]
 pub fn check_camera_permission() -> Result<bool, String> {
     use objc::{msg_send, sel, sel_impl};
     use objc::runtime::{Object, Class};
+    use std::ffi::CString;
     
     unsafe {
         // Import AVFoundation classes
@@ -84,13 +86,15 @@ pub fn check_camera_permission() -> Result<bool, String> {
             "AVCaptureDevice class not found".to_string()
         })?;
         
-        // AVMediaTypeVideo is a constant NSString in AVFoundation
-        // Declare it as extern (linked via build.rs)
-        extern "C" {
-            static AVMediaTypeVideo: *mut Object;
-        }
+        // Create NSString from "vide" (like tauri-plugin-macos-permissions)
+        // This is more reliable than using the constant
+        let ns_string_class = Class::get("NSString").ok_or_else(|| {
+            "NSString class not found".to_string()
+        })?;
+        let c_str = CString::new("vide").map_err(|e| format!("Failed to create CString: {}", e))?;
+        let media_type: *mut Object = msg_send![ns_string_class, stringWithUTF8String: c_str.as_ptr()];
         
-        let status: i32 = msg_send![av_capture_device_class, authorizationStatusForMediaType: AVMediaTypeVideo];
+        let status: i32 = msg_send![av_capture_device_class, authorizationStatusForMediaType: media_type];
         
         // AVAuthorizationStatusAuthorized = 3
         Ok(status == 3)
@@ -98,13 +102,20 @@ pub fn check_camera_permission() -> Result<bool, String> {
 }
 
 /// Request camera permission (macOS only, using AVFoundation directly)
+/// Exactly like tauri-plugin-macos-permissions: uses NSString::from_str("vide") and passes None as completionHandler
 #[tauri::command]
 #[cfg(target_os = "macos")]
-pub async fn request_camera_permission() -> Result<Option<bool>, String> {
+pub async fn request_camera_permission(app_handle: tauri::AppHandle) -> Result<Option<bool>, String> {
     use objc::{msg_send, sel, sel_impl};
-    use objc::runtime::{Object, Class};
-    use block::ConcreteBlock;
-    use std::sync::mpsc;
+    use objc::runtime::{Object, Class, BOOL};
+    use std::ffi::CString;
+    use tauri::Emitter;
+    
+    // Helper to log and emit to frontend
+    let log_and_emit = |message: &str| {
+        eprintln!("{}", message);
+        let _ = app_handle.emit("rust-log", message);
+    };
     
     unsafe {
         // Import AVFoundation classes
@@ -112,63 +123,71 @@ pub async fn request_camera_permission() -> Result<Option<bool>, String> {
             "AVCaptureDevice class not found".to_string()
         })?;
         
-        // AVMediaTypeVideo constant from AVFoundation
-        extern "C" {
-            static AVMediaTypeVideo: *mut Object;
-        }
-        let media_type = AVMediaTypeVideo;
+        // Create NSString from "vide" (exactly like tauri-plugin-macos-permissions)
+        let ns_string_class = Class::get("NSString").ok_or_else(|| {
+            "NSString class not found".to_string()
+        })?;
+        let c_str = CString::new("vide").map_err(|e| format!("Failed to create CString: {}", e))?;
+        let media_type: *mut Object = msg_send![ns_string_class, stringWithUTF8String: c_str.as_ptr()];
         
         // Check current status first
         let current_status: i32 = msg_send![av_capture_device_class, authorizationStatusForMediaType: media_type];
         
+        let status_desc = match current_status {
+            0 => "NotDetermined",
+            1 => "Denied",
+            2 => "Restricted",
+            3 => "Authorized",
+            _ => "Unknown",
+        };
+        
+        let status_msg = format!("[Permissions] 📊 Camera status: {} ({})", current_status, status_desc);
+        log_and_emit(&status_msg);
+        log_and_emit("[Permissions] ℹ️  Status meanings: 0=NotDetermined (popup should show), 1=Denied, 2=Restricted, 3=Authorized");
+        
         // AVAuthorizationStatusAuthorized = 3
         if current_status == 3 {
+            log_and_emit("[Permissions] ✅ Camera already authorized");
             return Ok(Some(true));
         }
         
-        // AVAuthorizationStatusDenied = 1, AVAuthorizationStatusRestricted = 2
-        // If already denied, return false
-        if current_status == 1 || current_status == 2 {
-            return Ok(Some(false));
-        }
+        // Exactly like tauri-plugin-macos-permissions:
+        // Pass None as completionHandler to let macOS handle the callback asynchronously
+        // This ensures the app appears in System Settings > Privacy & Security > Camera
+        type CompletionBlock = Option<extern "C" fn(BOOL)>;
+        let completion_block: CompletionBlock = None;
         
-        // AVAuthorizationStatusNotDetermined = 0 - request permission
-        // Use a channel to wait for the async completion
-        let (tx, rx) = mpsc::channel();
+        let request_msg = format!("[Permissions] 📞 Calling requestAccessForMediaType for camera (status: {} - {})...", current_status, status_desc);
+        log_and_emit(&request_msg);
+        log_and_emit("[Permissions] ℹ️  Using None as completionHandler (exactly like tauri-plugin-macos-permissions)");
+        log_and_emit("[Permissions] ⚠️  If status is NotDetermined (0), macOS SHOULD show popup. If not, check:");
+        log_and_emit("[Permissions]    1. Info.plist contains NSCameraUsageDescription");
+        log_and_emit("[Permissions]    2. App is correctly signed");
+        log_and_emit("[Permissions]    3. Console.app logs for TCC errors");
         
-        // Use Arc to safely share the sender across the block boundary
-        use std::sync::Arc;
-        let tx_arc = Arc::new(tx);
-        let tx_clone = Arc::clone(&tx_arc);
+        // Request access with None as completionHandler (exactly like the plugin)
+        // Note: objc crate syntax - no commas, just colons for selector parts
+        let _: () = msg_send![av_capture_device_class, requestAccessForMediaType:media_type completionHandler:completion_block];
         
-        // Create block using block crate
-        // The block will be retained by Objective-C runtime and released when done
-        let block = ConcreteBlock::new(move |granted: bool| {
-            let _ = tx_clone.send(granted);
-        });
-        let block = block.copy();
+        log_and_emit("[Permissions] ✅ requestAccessForMediaType called successfully");
+        log_and_emit("[Permissions] ⏳ macOS will handle the callback asynchronously");
+        log_and_emit("[Permissions] 📋 The app should now appear in System Settings > Privacy & Security > Camera");
+        log_and_emit("[Permissions] 💡 To debug: run 'log stream --predicate \"subsystem == \\\"com.apple.TCC\\\"\"' in Terminal");
         
-        // Request access
-        // Note: The block is copied by Objective-C, so it will be released automatically
-        let _: () = msg_send![av_capture_device_class, requestAccessForMediaType: media_type completionHandler: &*block];
-        
-        // Wait for response (with timeout)
-        match rx.recv_timeout(std::time::Duration::from_secs(30)) {
-            Ok(granted) => Ok(Some(granted)),
-            Err(_) => {
-                // Timeout or error - return None to indicate popup was shown
-                Ok(None)
-            }
-        }
+        // Return None to indicate the request was sent and we're waiting for user response
+        // The frontend will check the permission status periodically
+        Ok(None)
     }
 }
 
 /// Check microphone permission status (macOS only, using AVFoundation directly)
+/// Uses NSString::from_str("soun") like tauri-plugin-macos-permissions
 #[tauri::command]
 #[cfg(target_os = "macos")]
 pub fn check_microphone_permission() -> Result<bool, String> {
     use objc::{msg_send, sel, sel_impl};
     use objc::runtime::{Object, Class};
+    use std::ffi::CString;
     
     unsafe {
         // Import AVFoundation classes
@@ -176,12 +195,14 @@ pub fn check_microphone_permission() -> Result<bool, String> {
             "AVCaptureDevice class not found".to_string()
         })?;
         
-        // AVMediaTypeAudio constant from AVFoundation
-        extern "C" {
-            static AVMediaTypeAudio: *mut Object;
-        }
+        // Create NSString from "soun" (like tauri-plugin-macos-permissions)
+        let ns_string_class = Class::get("NSString").ok_or_else(|| {
+            "NSString class not found".to_string()
+        })?;
+        let c_str = CString::new("soun").map_err(|e| format!("Failed to create CString: {}", e))?;
+        let media_type: *mut Object = msg_send![ns_string_class, stringWithUTF8String: c_str.as_ptr()];
         
-        let status: i32 = msg_send![av_capture_device_class, authorizationStatusForMediaType: AVMediaTypeAudio];
+        let status: i32 = msg_send![av_capture_device_class, authorizationStatusForMediaType: media_type];
         
         // AVAuthorizationStatusAuthorized = 3
         Ok(status == 3)
@@ -189,13 +210,20 @@ pub fn check_microphone_permission() -> Result<bool, String> {
 }
 
 /// Request microphone permission (macOS only, using AVFoundation directly)
+/// Exactly like tauri-plugin-macos-permissions: uses NSString::from_str("soun") and passes None as completionHandler
 #[tauri::command]
 #[cfg(target_os = "macos")]
-pub async fn request_microphone_permission() -> Result<Option<bool>, String> {
+pub async fn request_microphone_permission(app_handle: tauri::AppHandle) -> Result<Option<bool>, String> {
     use objc::{msg_send, sel, sel_impl};
-    use objc::runtime::{Object, Class};
-    use block::ConcreteBlock;
-    use std::sync::mpsc;
+    use objc::runtime::{Object, Class, BOOL};
+    use std::ffi::CString;
+    use tauri::Emitter;
+    
+    // Helper to log and emit to frontend
+    let log_and_emit = |message: &str| {
+        eprintln!("{}", message);
+        let _ = app_handle.emit("rust-log", message);
+    };
     
     unsafe {
         // Import AVFoundation classes
@@ -203,54 +231,60 @@ pub async fn request_microphone_permission() -> Result<Option<bool>, String> {
             "AVCaptureDevice class not found".to_string()
         })?;
         
-        // AVMediaTypeAudio constant from AVFoundation
-        extern "C" {
-            static AVMediaTypeAudio: *mut Object;
-        }
-        let media_type = AVMediaTypeAudio;
+        // Create NSString from "soun" (exactly like tauri-plugin-macos-permissions)
+        let ns_string_class = Class::get("NSString").ok_or_else(|| {
+            "NSString class not found".to_string()
+        })?;
+        let c_str = CString::new("soun").map_err(|e| format!("Failed to create CString: {}", e))?;
+        let media_type: *mut Object = msg_send![ns_string_class, stringWithUTF8String: c_str.as_ptr()];
         
         // Check current status first
         let current_status: i32 = msg_send![av_capture_device_class, authorizationStatusForMediaType: media_type];
         
+        let status_desc = match current_status {
+            0 => "NotDetermined",
+            1 => "Denied",
+            2 => "Restricted",
+            3 => "Authorized",
+            _ => "Unknown",
+        };
+        
+        let status_msg = format!("[Permissions] 📊 Microphone status: {} ({})", current_status, status_desc);
+        log_and_emit(&status_msg);
+        log_and_emit("[Permissions] ℹ️  Status meanings: 0=NotDetermined (popup should show), 1=Denied, 2=Restricted, 3=Authorized");
+        
         // AVAuthorizationStatusAuthorized = 3
         if current_status == 3 {
+            log_and_emit("[Permissions] ✅ Microphone already authorized");
             return Ok(Some(true));
         }
         
-        // AVAuthorizationStatusDenied = 1, AVAuthorizationStatusRestricted = 2
-        // If already denied, return false
-        if current_status == 1 || current_status == 2 {
-            return Ok(Some(false));
-        }
+        // Exactly like tauri-plugin-macos-permissions:
+        // Pass None as completionHandler to let macOS handle the callback asynchronously
+        // This ensures the app appears in System Settings > Privacy & Security > Microphone
+        type CompletionBlock = Option<extern "C" fn(BOOL)>;
+        let completion_block: CompletionBlock = None;
         
-        // AVAuthorizationStatusNotDetermined = 0 - request permission
-        // Use a channel to wait for the async completion
-        let (tx, rx) = mpsc::channel();
+        let request_msg = format!("[Permissions] 📞 Calling requestAccessForMediaType for microphone (status: {} - {})...", current_status, status_desc);
+        log_and_emit(&request_msg);
+        log_and_emit("[Permissions] ℹ️  Using None as completionHandler (exactly like tauri-plugin-macos-permissions)");
+        log_and_emit("[Permissions] ⚠️  If status is NotDetermined (0), macOS SHOULD show popup. If not, check:");
+        log_and_emit("[Permissions]    1. Info.plist contains NSMicrophoneUsageDescription");
+        log_and_emit("[Permissions]    2. App is correctly signed");
+        log_and_emit("[Permissions]    3. Console.app logs for TCC errors");
         
-        // Use Arc to safely share the sender across the block boundary
-        use std::sync::Arc;
-        let tx_arc = Arc::new(tx);
-        let tx_clone = Arc::clone(&tx_arc);
+        // Request access with None as completionHandler (exactly like the plugin)
+        // Note: objc crate syntax - no commas, just colons for selector parts
+        let _: () = msg_send![av_capture_device_class, requestAccessForMediaType:media_type completionHandler:completion_block];
         
-        // Create block using block crate
-        // The block will be retained by Objective-C runtime and released when done
-        let block = ConcreteBlock::new(move |granted: bool| {
-            let _ = tx_clone.send(granted);
-        });
-        let block = block.copy();
+        log_and_emit("[Permissions] ✅ requestAccessForMediaType called successfully");
+        log_and_emit("[Permissions] ⏳ macOS will handle the callback asynchronously");
+        log_and_emit("[Permissions] 📋 The app should now appear in System Settings > Privacy & Security > Microphone");
+        log_and_emit("[Permissions] 💡 To debug: run 'log stream --predicate \"subsystem == \\\"com.apple.TCC\\\"\"' in Terminal");
         
-        // Request access
-        // Note: The block is copied by Objective-C, so it will be released automatically
-        let _: () = msg_send![av_capture_device_class, requestAccessForMediaType: media_type completionHandler: &*block];
-        
-        // Wait for response (with timeout)
-        match rx.recv_timeout(std::time::Duration::from_secs(30)) {
-            Ok(granted) => Ok(Some(granted)),
-            Err(_) => {
-                // Timeout or error - return None to indicate popup was shown
-                Ok(None)
-            }
-        }
+        // Return None to indicate the request was sent and we're waiting for user response
+        // The frontend will check the permission status periodically
+        Ok(None)
     }
 }
 

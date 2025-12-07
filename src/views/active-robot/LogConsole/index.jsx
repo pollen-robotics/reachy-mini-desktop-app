@@ -1,5 +1,6 @@
 import React, { useMemo, useRef } from 'react';
-import { Box, Typography } from '@mui/material';
+import { Box, Typography, IconButton, Tooltip } from '@mui/material';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import useAppStore from '../../../store/useAppStore';
 import { FONT_SIZES, PADDING, EMPTY_ARRAY, TEXT_SELECT_STYLES } from './constants';
@@ -72,6 +73,38 @@ function LogConsole({
     simpleStyle,
     scrollElementRef: parentRef, // Pass direct ref as fallback
   });
+
+  // Copy all logs to clipboard
+  const handleCopyLogs = async () => {
+    try {
+      const logsText = normalizedLogs.map(log => {
+        if (showTimestamp && log.timestamp) {
+          return `[${log.timestamp}] ${log.message}`;
+        }
+        return log.message;
+      }).join('\n');
+      
+      await navigator.clipboard.writeText(logsText);
+    } catch (error) {
+      console.error('Failed to copy logs:', error);
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = normalizedLogs.map(log => {
+        if (showTimestamp && log.timestamp) {
+          return `[${log.timestamp}] ${log.message}`;
+        }
+        return log.message;
+      }).join('\n');
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+      } catch (err) {
+        console.error('Fallback copy failed:', err);
+      }
+      document.body.removeChild(textArea);
+    }
+  };
   
   // Memoize sx styles to prevent recalculation on every render
   const boxSx = useMemo(() => ({
@@ -102,8 +135,46 @@ function LogConsole({
   return (
     <Box
       className="log-console"
-      sx={boxSx}
+      sx={{
+        ...boxSx,
+        position: 'relative',
+        '&:hover .copy-logs-button': {
+          opacity: 1,
+        },
+      }}
     >
+      {/* Copy button - hidden by default, visible on hover */}
+      {normalizedLogs.length > 0 && (
+        <Tooltip title="Copy all logs" arrow placement="left">
+          <IconButton
+            className="copy-logs-button"
+            onClick={handleCopyLogs}
+            sx={{
+              position: 'absolute',
+              top: 8,
+              right: 8,
+              zIndex: 10,
+              opacity: 0,
+              transition: 'opacity 0.2s ease-in-out',
+              bgcolor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+              '&:hover': {
+                bgcolor: darkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
+                opacity: 1,
+              },
+              width: 28,
+              height: 28,
+              padding: 0.5,
+            }}
+          >
+            <ContentCopyIcon 
+              sx={{ 
+                fontSize: 14, 
+                color: darkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)',
+              }} 
+            />
+          </IconButton>
+        </Tooltip>
+      )}
       {normalizedLogs.length === 0 ? (
         <Box sx={{ 
           display: 'flex', 

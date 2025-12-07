@@ -35,12 +35,13 @@ export const useWheelAnimations = ({
   spinAnimationRef,
 }) => {
   // Momentum spin after drag with snap at the end
-  const startMomentumSpin = useCallback((initialVelocity) => {
+  const startMomentumSpin = useCallback((initialVelocity, startRotation = null) => {
     if (!isMountedRef.current) return;
     
     setIsSpinning(true);
     let currentVelocity = initialVelocity;
     let currentRotation = rotation;
+    const initialRotation = startRotation !== null ? startRotation : rotation;
     
     const animate = () => {
       if (!isMountedRef.current || Math.abs(currentVelocity) < MIN_VELOCITY) {
@@ -53,8 +54,8 @@ export const useWheelAnimations = ({
         // Don't set isSpinning to false here - let action trigger handle it
         
         if (onMomentumEnd) {
-          // Call immediately, no timeout needed
-          onMomentumEnd(targetItem, finalRotation);
+          // Pass both the target item and the total rotation delta for action decision
+          onMomentumEnd(targetItem, finalRotation, initialRotation);
         }
         return;
       }

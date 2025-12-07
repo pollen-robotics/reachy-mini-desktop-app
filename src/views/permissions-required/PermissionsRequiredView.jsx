@@ -4,6 +4,7 @@ import CameraAltOutlinedIcon from '@mui/icons-material/CameraAltOutlined';
 import MicNoneOutlinedIcon from '@mui/icons-material/MicNoneOutlined';
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import useAppStore from '../../store/useAppStore';
 import { usePermissions } from '../../hooks/system';
 import { logInfo, logError, logWarning, logSuccess } from '../../utils/logging/logger';
@@ -190,6 +191,47 @@ export default function PermissionsRequiredView({ isRestarting: externalIsRestar
     restartStarted: false,
   });
 
+  // Listen to Rust logs from backend
+  React.useEffect(() => {
+    let unlistenRustLog;
+    
+    const setupRustLogListener = async () => {
+      try {
+        unlistenRustLog = await listen('rust-log', (event) => {
+          const message = typeof event.payload === 'string' 
+            ? event.payload 
+            : event.payload?.toString() || '';
+          
+          // Display Rust logs in the UI logger
+          if (message.includes("[Permissions]")) {
+            if (message.includes("✅") || message.includes("success")) {
+              logSuccess(message);
+            } else if (message.includes("❌") || message.includes("error") || message.includes("Error")) {
+              logError(message);
+            } else if (message.includes("⚠️") || message.includes("warning")) {
+              logWarning(message);
+            } else {
+              logInfo(message);
+            }
+          } else {
+            // Other Rust logs (non-permissions)
+            logInfo(message);
+          }
+        });
+      } catch (error) {
+        console.error('Failed to setup rust-log listener:', error);
+      }
+    };
+    
+    setupRustLogListener();
+    
+    return () => {
+      if (unlistenRustLog) {
+        unlistenRustLog();
+      }
+    };
+  }, []);
+
   // Test plugin availability on mount
   React.useEffect(() => {
     const testPlugin = async () => {
@@ -287,9 +329,12 @@ export default function PermissionsRequiredView({ isRestarting: externalIsRestar
         // Permission denied or already asked, open settings
         logWarning(`[Permissions] ⚠️ ${type} permission denied or already asked, opening System Settings...`);
         logInfo(`[Permissions] Command: ${settingsCommand}`);
+        logInfo(`[Permissions] ℹ️  If the app doesn't appear in the list, click the "+" button to add it manually`);
+        logInfo(`[Permissions] ℹ️  App bundle ID: com.pollen-robotics.reachy-mini`);
         try {
           await invoke(settingsCommand);
           logSuccess(`[Permissions] ✅ System Settings opened for ${type}`);
+          logInfo(`[Permissions] 📋 Instructions: If "Reachy Mini Control" is not in the list, click the "+" button below the list to add it manually`);
         } catch (settingsError) {
           logError(`[Permissions] ❌ Failed to open settings: ${settingsError.message}`);
           throw settingsError;

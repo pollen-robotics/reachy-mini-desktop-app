@@ -1,4 +1,5 @@
 import { useReducer, useEffect, useRef } from 'react';
+import { ACTION_COOLDOWN_MS } from '@utils/wheel/constants';
 
 /**
  * Hook to manage action triggering system for the wheel
@@ -23,6 +24,7 @@ export const useWheelActionTrigger = ({
 }) => {
   // Local lock to prevent multiple simultaneous triggers
   const isTriggeringRef = useRef(false);
+  const lastActionTriggerTimeRef = useRef(0); // Track last action trigger time for cooldown
   
   const actionTriggerReducer = (state, action) => {
     switch (action.type) {
@@ -121,12 +123,22 @@ export const useWheelActionTrigger = ({
         return;
       }
       
+      // Check cooldown to prevent rapid double triggers
+      const now = Date.now();
+      const timeSinceLastTrigger = now - lastActionTriggerTimeRef.current;
+      if (timeSinceLastTrigger < ACTION_COOLDOWN_MS) {
+        // Still in cooldown - cancel this action
+        dispatchAction({ type: 'CANCEL', rotation });
+        return;
+      }
+      
       isTriggeringRef.current = true; // Set lock
       
       const timeoutId = setTimeout(() => {
         if (isMounted && onActionClick && actionState.item?.originalAction && isTriggeringRef.current) {
           try {
             onActionClick(actionState.item.originalAction);
+            lastActionTriggerTimeRef.current = Date.now(); // Update cooldown timer
             dispatchAction({ type: 'TRIGGERED', rotation });
             // Reset isSpinning now that action is triggered (prevents button flickering)
             if (setIsSpinning) {

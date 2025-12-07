@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Box, Typography } from '@mui/material';
-import { useWheelItems, useWheelVirtualization, useWheelActionTrigger, useWheelAnimations } from './hooks';
+import { useWheelItems, useWheelVirtualization, useWheelActionTrigger, useWheelGSAP } from './hooks';
 import WheelSelectionLabel from '@components/wheel/WheelSelectionLabel';
 import WheelDiceButton from '@components/wheel/WheelDiceButton';
 import WheelIndicator from '@components/wheel/WheelIndicator';
@@ -15,6 +15,7 @@ import {
   MIN_MOMENTUM,
   RESIZE_DEBOUNCE_MS,
   DRAG_THROTTLE_MS,
+  ACTION_COOLDOWN_MS,
   TOP_ANGLE,
 } from '@utils/wheel/constants';
 import { normalizeIndex, normalizeAngleDelta } from '@utils/wheel/normalization';
@@ -55,6 +56,7 @@ export default function SpinningWheel({
   const lastDragAngleRef = useRef(0);
   const isMountedRef = useRef(true);
   const isClickingRef = useRef(false); // Lock to prevent multiple simultaneous clicks
+  const lastActionTriggerTimeRef = useRef(0); // Track last action trigger time for cooldown
 
   // Get all items from active library using hook
   const displayItems = useWheelItems(activeTab, actions);
@@ -219,23 +221,37 @@ export default function SpinningWheel({
     setIsSpinning, // Pass setIsSpinning so action trigger can reset it when action is triggered
   });
   
-  // Wheel animations - extracted to hook
-  const { startMomentumSpin, startRandomSpin, cleanup: cleanupAnimations } = useWheelAnimations({
+  // Wheel animations with GSAP - smooth physics-based animations
+  const { 
+    rotationRef,
+    startMomentumSpin, 
+    startRandomSpin, 
+    snapToNearest,
+    animateRotation,
+    updateRotationDuringDrag,
+    setDragging,
+    cleanup: cleanupAnimations 
+  } = useWheelGSAP({
     rotation,
     setRotation,
     setIsSpinning,
     gap,
     itemCount,
     displayItems,
-    onMomentumEnd: (targetItem, finalRotation) => {
-      dispatchAction({ type: 'PENDING', item: targetItem, rotation: finalRotation });
+    onMomentumEnd: (targetItem, finalRotation, startRotation) => {
+      // Only trigger action if total rotation (including momentum) exceeds threshold
+      const minRotationForAction = gap * 6;
+      const totalRotationDelta = Math.abs(finalRotation - startRotation);
+      
+      if (totalRotationDelta >= minRotationForAction) {
+        dispatchAction({ type: 'PENDING', item: targetItem, rotation: finalRotation });
+      }
+      // Otherwise, just navigation - no action triggered
     },
     onRandomEnd: (targetItem, snappedRotation) => {
       dispatchAction({ type: 'PENDING', item: targetItem, rotation: snappedRotation });
     },
     isMountedRef,
-    animationFrameRef,
-    spinAnimationRef,
   });
 
   // Handle mouse/touch start for drag
@@ -255,6 +271,7 @@ export default function SpinningWheel({
       const angle = getAngleFromCenter(centerX, centerY, clientX, clientY);
       
       setIsDragging(true);
+      setDragging(true);
       setDragStartAngle(angle);
       setDragStartRotation(rotation);
       setVelocity(0);
@@ -275,14 +292,16 @@ export default function SpinningWheel({
       
       // Calculate rotation delta
       const angleDelta = normalizeAngleDelta(currentAngle - dragStartAngle);
-      setRotation(dragStartRotation + angleDelta);
+      const newRotation = dragStartRotation + angleDelta;
+      updateRotationDuringDrag(newRotation);
       
-      // Calculate velocity for momentum
+      // Calculate velocity for momentum - increased sensitivity for free rotation
       const now = Date.now();
       const timeDelta = now - lastDragTimeRef.current;
       if (timeDelta > 0) {
         const angleDelta2 = normalizeAngleDelta(currentAngle - lastDragAngleRef.current);
-        const newVelocity = (angleDelta2 / timeDelta) * 16; // Scale factor
+        // Increased scale factor from 16 to 40 for more responsive free rotation
+        const newVelocity = (angleDelta2 / timeDelta) * 40;
         setVelocity(newVelocity);
       }
       
@@ -309,38 +328,31 @@ export default function SpinningWheel({
     
     
     setIsDragging(false);
+    setDragging(false);
     
     // If there was no significant movement, don't mark action as pending
     // This prevents double triggering when user just clicks without really dragging
     if (rotationDelta <= minRotationDelta && Math.abs(velocity) <= MIN_MOMENTUM) {
+      // At very low speed, don't snap - keep free rotation
       return;
     }
     
-    if (Math.abs(velocity) > MIN_MOMENTUM) {
-      // Start momentum spin - callback will handle action triggering
-      startMomentumSpin(velocity);
+    // Calculate minimum rotation required for action
+    const minRotationForAction = gap * 6; // Au moins 6 items de différence
+    
+    // Threshold for snap vs free rotation - higher means more free rotation at low speeds
+    const SNAP_VELOCITY_THRESHOLD = MIN_MOMENTUM * 1.5; // 15.0 instead of 10.0
+    
+    if (Math.abs(velocity) > SNAP_VELOCITY_THRESHOLD) {
+      // For momentum spins: always start momentum if velocity is high
+      // GSAP will handle the smooth animation with physics
+      startMomentumSpin(velocity, dragStartRotation);
+    } else if (Math.abs(velocity) > MIN_MOMENTUM) {
+      // Medium velocity: snap with bounce but no action trigger
+      snapToNearest(undefined, velocity);
     } else {
-      // Snap to nearest item at top when drag ends without momentum
-      // BUT: Don't trigger action if movement was too small (slow swipe)
-      // Only trigger action if there was significant movement (fast swipe)
-      const snappedRotation = calculateSnapRotation(rotation, gap, itemCount);
-      const snappedIndex = normalizeIndex(Math.round(snappedRotation / gap), itemCount);
-      const targetItem = displayItems[snappedIndex] || displayItems[0];
-      
-      // Check if movement was significant (at least 3 items worth of rotation)
-      const minRotationForAction = gap * 3; // Au moins 3 items de différence
-      const totalRotationDelta = Math.abs(snappedRotation - dragStartRotation);
-      
-      
-      setRotation(snappedRotation);
-      
-      // Only mark action as pending if movement was significant (fast swipe)
-      if (totalRotationDelta >= minRotationForAction) {
-        setTimeout(() => {
-          dispatchAction({ type: 'PENDING', item: targetItem, rotation: snappedRotation });
-        }, 50);
-      } else {
-      }
+      // Low velocity: keep free rotation, no snap
+      // User can navigate freely without magnetic snapping
     }
   }, [isDragging, velocity, rotation, gap, itemCount, displayItems, dragStartRotation, startMomentumSpin, dispatchAction]);
 
@@ -427,13 +439,15 @@ export default function SpinningWheel({
       const delta = e.deltaY || e.detail || -e.wheelDelta;
       const rotationDelta = delta > 0 ? gap : -gap;
       
-      // Update rotation
+      // Update rotation with smooth animation
       const newRotation = rotation + rotationDelta;
-      setRotation(newRotation);
-      
-      // Snap to nearest item (no auto-action for wheel)
       const snappedRotation = calculateSnapRotation(newRotation, gap, itemCount);
-      setRotation(snappedRotation);
+      
+      // Animate to snapped position with smooth easing - slower, less bouncy
+      animateRotation(snappedRotation, {
+        duration: 0.35,
+        ease: 'power1.out', // Softer, less bouncy
+      });
       // Pas d'action automatique pour la molette - juste navigation
     };
     
@@ -451,7 +465,7 @@ export default function SpinningWheel({
         window.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [handleStart, handleEnd, isSpinning, isActive, isBusy, isReady, rotation, gap, itemCount, displayItems]);
+  }, [handleStart, handleEnd, isSpinning, isActive, isBusy, isReady, rotation, gap, itemCount, displayItems, animateRotation]);
 
   // Touch events
   useEffect(() => {
@@ -497,6 +511,13 @@ export default function SpinningWheel({
     };
   }, [cleanupAnimations]);
 
+  // Update rotationRef when rotation changes externally (e.g., from keyboard)
+  useEffect(() => {
+    if (rotationRef && rotationRef.current) {
+      rotationRef.current.value = rotation;
+    }
+  }, [rotation]);
+
   // Keyboard navigation support (accessibility)
   useEffect(() => {
     if (!isActive || isBusy || isSpinning) return;
@@ -508,22 +529,36 @@ export default function SpinningWheel({
       try {
         if (e.key === 'ArrowLeft') {
           e.preventDefault();
-          // Navigation vers la gauche (item précédent)
-          setRotation(prev => prev - gap);
-          // Pas d'action automatique, juste navigation
+          // Navigation vers la gauche (item précédent) avec animation fluide
+          const targetRotation = rotation - gap;
+          animateRotation(targetRotation, {
+            duration: 0.4,
+            ease: 'power1.out', // Softer, less bouncy
+          });
         } else if (e.key === 'ArrowRight') {
           e.preventDefault();
-          // Navigation vers la droite (item suivant)
-          setRotation(prev => prev + gap);
-          // Pas d'action automatique, juste navigation
+          // Navigation vers la droite (item suivant) avec animation fluide
+          const targetRotation = rotation + gap;
+          animateRotation(targetRotation, {
+            duration: 0.4,
+            ease: 'power1.out', // Softer, less bouncy
+          });
         } else if (e.key === 'ArrowUp') {
           e.preventDefault();
           // Navigation vers le haut (item précédent) - même comportement que gauche
-          setRotation(prev => prev - gap);
+          const targetRotation = rotation - gap;
+          animateRotation(targetRotation, {
+            duration: 0.4,
+            ease: 'power1.out', // Softer, less bouncy
+          });
         } else if (e.key === 'ArrowDown') {
           e.preventDefault();
           // Navigation vers le bas (item suivant) - même comportement que droite
-          setRotation(prev => prev + gap);
+          const targetRotation = rotation + gap;
+          animateRotation(targetRotation, {
+            duration: 0.4,
+            ease: 'power1.out', // Softer, less bouncy
+          });
         } else if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           // Entrée ou Espace : déclencher l'action manuellement
@@ -532,10 +567,16 @@ export default function SpinningWheel({
           }
         } else if (e.key === 'Home') {
           e.preventDefault();
-          setRotation(0);
+          animateRotation(0, {
+            duration: 0.5,
+            ease: 'power1.out', // Softer, less bouncy
+          });
         } else if (e.key === 'End') {
           e.preventDefault();
-          setRotation((itemCount - 1) * gap);
+          animateRotation((itemCount - 1) * gap, {
+            duration: 0.5,
+            ease: 'power1.out', // Softer, less bouncy
+          });
         }
       } catch (error) {
         console.error('Error in keyboard navigation:', error);
@@ -544,7 +585,7 @@ export default function SpinningWheel({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isActive, isBusy, isSpinning, gap, itemCount, selectedItem, onActionClick]);
+  }, [isActive, isBusy, isSpinning, gap, itemCount, selectedItem, onActionClick, rotation, animateRotation]);
 
 
   if (displayItems.length === 0) return null;
@@ -697,14 +738,16 @@ export default function SpinningWheel({
           marginTop: `calc(var(--wheel-max-dimension, ${maxDimension}px) * ${sizeMultiplier} * -0.5)`, // Center using calculated size
           transform: `rotate(${rotation}deg)`,
           transformOrigin: 'center center',
-          transition: isDragging ? 'none' : (isSpinning ? 'none' : 'transform 0.1s ease-out'),
+          transition: 'none', // No CSS transition - GSAP handles all animations
           cursor: isDragging ? 'grabbing' : (isSpinning ? 'default' : 'grab'),
           userSelect: 'none',
           touchAction: 'none',
           zIndex: 0, // Lower than header
           pointerEvents: 'auto', // Allow wheel interactions
           outline: 'none', // Remove default focus outline (we handle it with ARIA)
-          willChange: isDragging || isSpinning ? 'transform' : 'auto', // Optimize animations
+          willChange: 'transform', // Always optimize for transform (GPU acceleration)
+          backfaceVisibility: 'hidden', // GPU acceleration
+          perspective: 1000, // GPU acceleration
         }}
       >
         {/* Infinite wheel items - only render items in the visible top arc */}
@@ -739,6 +782,7 @@ export default function SpinningWheel({
           );
         })}
       </Box>
+
 
     </Box>
   );

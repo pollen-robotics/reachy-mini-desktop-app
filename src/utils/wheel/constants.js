@@ -21,7 +21,7 @@ export const SPIN_DURATION_MAX = 3000; // Maximum spin duration (ms)
 // Momentum physics
 export const FRICTION = 0.95; // Deceleration factor for momentum (5% loss per frame)
 export const MIN_VELOCITY = 0.1; // Minimum velocity to continue spinning (degrees/frame)
-export const MIN_MOMENTUM = 0.5; // Minimum velocity to apply momentum after drag
+export const MIN_MOMENTUM = 10.0; // Minimum velocity to apply momentum after drag (augmenté pour éviter déclenchement accidentel)
 
 // Random spin
 export const RANDOM_EXCLUSION_RADIUS = 15; // Number of items to exclude on each side of current item (total: 2*RADIUS+1 excluded)
@@ -29,4 +29,7 @@ export const RANDOM_EXCLUSION_RADIUS = 15; // Number of items to exclude on each
 // Performance
 export const RESIZE_DEBOUNCE_MS = 150; // Debounce delay for resize events
 export const DRAG_THROTTLE_MS = 16; // Throttle delay for drag (60fps = ~16ms)
+
+// Action triggering
+export const ACTION_COOLDOWN_MS = 500; // Minimum time between action triggers (ms) - prevents rapid double triggers
 
