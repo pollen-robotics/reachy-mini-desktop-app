@@ -198,9 +198,9 @@ jobs:
             # We decode it to get the raw public key format that minisign expects
             PUBKEY=$(grep -o '"pubkey": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
             if [ -n "$PUBKEY" ]; then
-              # Decode base64 to get raw public key format (what minisign expects)
-              echo "$PUBKEY" | base64 -d > ~/.tauri/reachy-mini.key.pub
-              echo "✅ Extracted public key from tauri.conf.json (decoded from base64)"
+              # Decode base64 twice (double encoding in tauri.conf.json) to get raw public key format (what minisign expects)
+              echo "$PUBKEY" | base64 -d | base64 -d > ~/.tauri/reachy-mini.key.pub
+              echo "✅ Extracted public key from tauri.conf.json (double-decoded from base64)"
             else
               echo "❌ No public key found in tauri.conf.json"
               exit 1

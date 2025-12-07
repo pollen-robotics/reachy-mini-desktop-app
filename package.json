@@ -1,7 +1,7 @@
 {
   "name": "tauri-app",
   "private": true,
-  "version": "0.3.24",
+  "version": "0.4.0",
   "type": "module",
   "engines": {
     "node": ">=24.4.0",
