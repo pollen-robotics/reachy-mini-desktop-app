@@ -174,8 +174,9 @@ jobs:
               # Raw format (minisign native) - use directly WITHOUT cleaning
               # tauri signer expects the key file in raw minisign format (not base64)
               # DO NOT clean the key - preserve it exactly as stored in GitHub Secrets
-              # Only remove trailing newline if present (GitHub Secrets may add one)
-              printf '%s' "$TAURI_SIGNING_KEY" | sed -z 's/\n$//' > ~/.tauri/reachy-mini.key
+              # printf '%s' does NOT add a trailing newline, so the key is preserved as-is
+              # This works on both Linux (GNU) and macOS (BSD)
+              printf '%s' "$TAURI_SIGNING_KEY" > ~/.tauri/reachy-mini.key
               echo "✅ Using raw format private key (preserved as-is from GitHub Secrets)"
               
               # Verify the key was written correctly (should start with "untrusted comment")
