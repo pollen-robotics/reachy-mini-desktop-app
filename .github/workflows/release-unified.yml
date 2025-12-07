@@ -162,13 +162,12 @@ jobs:
           if [ -n "$TAURI_SIGNING_KEY" ]; then
             # Simple approach: clean whitespace and use key as-is
             # tauri signer can handle both RAW and base64 formats automatically
-            # Remove newlines/carriage returns and leading/trailing whitespace
-            # If key is base64, it shouldn't have spaces anyway, so this is safe
-            # If key is RAW, spaces in the middle are part of the format and should be preserved
-            CLEANED_KEY=$(printf '%s' "$TAURI_SIGNING_KEY" | tr -d '\n\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            # Remove ALL whitespace (spaces, newlines, tabs) - base64 shouldn't have any
+            # and RAW format doesn't need spaces preserved (they're not part of the key data)
+            CLEANED_KEY=$(printf '%s' "$TAURI_SIGNING_KEY" | tr -d ' \n\r\t' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             printf '%s' "$CLEANED_KEY" > ~/.tauri/reachy-mini.key
             chmod 600 ~/.tauri/reachy-mini.key
-            echo "✅ Private key saved (cleaned newlines and leading/trailing whitespace)"
+            echo "✅ Private key saved (removed all whitespace)"
             
             # ✅ Extract public key from tauri.conf.json (standard practice - ensures they match)
             echo "🔑 Extracting public key from tauri.conf.json..."
