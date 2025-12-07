@@ -160,25 +160,26 @@ jobs:
         run: |
           mkdir -p ~/.tauri
           if [ -n "$TAURI_SIGNING_KEY" ]; then
-            # Detect key format and clean accordingly
-            # RAW format starts with "untrusted comment:"
-            # Base64 format doesn't have that header
-            FIRST_LINE=$(printf '%s' "$TAURI_SIGNING_KEY" | head -1 | tr -d '\n\r')
+            # CRITICAL: tauri signer tries to decode as base64 first
+            # If base64 fails, it falls back to RAW format
+            # Base64 cannot contain ANY spaces, so we must remove ALL whitespace
+            # Even for RAW format, removing spaces is safe because:
+            # - RAW format has structure but spaces are not critical for parsing
+            # - tauri signer can handle RAW without spaces
+            # - The error "Invalid symbol 32, offset 9" means a space is breaking base64 decode
+            echo "🔍 Cleaning key (removing ALL whitespace to prevent base64 decode errors)..."
+            CLEANED_KEY=$(printf '%s' "$TAURI_SIGNING_KEY" | tr -d ' \n\r\t')
             
-            if echo "$FIRST_LINE" | grep -q "^untrusted comment:"; then
-              # RAW format: preserve spaces (they're part of the structure)
-              # Only remove newlines/carriage returns and leading/trailing whitespace
-              echo "🔍 Detected RAW format key"
-              CLEANED_KEY=$(printf '%s' "$TAURI_SIGNING_KEY" | tr -d '\n\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            else
-              # Base64 format: remove ALL whitespace (base64 shouldn't have any)
-              echo "🔍 Detected base64 format key"
-              CLEANED_KEY=$(printf '%s' "$TAURI_SIGNING_KEY" | tr -d ' \n\r\t')
+            # Verify no spaces remain
+            if echo "$CLEANED_KEY" | grep -q '[[:space:]]'; then
+              echo "❌ ERROR: Key still contains whitespace after cleaning"
+              exit 1
             fi
             
             printf '%s' "$CLEANED_KEY" > ~/.tauri/reachy-mini.key
             chmod 600 ~/.tauri/reachy-mini.key
-            echo "✅ Private key saved (format detected and cleaned appropriately)"
+            KEY_SIZE=$(wc -c < ~/.tauri/reachy-mini.key)
+            echo "✅ Private key saved (${KEY_SIZE} bytes, all whitespace removed)"
             
             # ✅ Extract public key from tauri.conf.json (standard practice - ensures they match)
             echo "🔑 Extracting public key from tauri.conf.json..."
