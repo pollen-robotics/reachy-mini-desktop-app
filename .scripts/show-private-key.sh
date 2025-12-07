@@ -4,7 +4,10 @@
 
 echo "🔑 Clé privée à copier dans GitHub Secret 'TAURI_SIGNING_KEY':"
 echo ""
-cat ~/.tauri/reachy-mini.key | base64 -d
+echo "⚠️  IMPORTANT: La clé doit être copiée en format RAW (telle quelle)"
+echo "   GitHub Secrets accepte le format raw directement"
+echo ""
+cat ~/.tauri/reachy-mini.key
 echo ""
 echo ""
 echo "⚠️  Ne partagez JAMAIS cette clé privée publiquement !"

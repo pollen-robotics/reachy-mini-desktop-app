@@ -170,24 +170,24 @@ jobs:
             FIRST_CHARS=$(printf '%s' "$TAURI_SIGNING_KEY" | head -c 50)
             
             if echo "$FIRST_CHARS" | grep -q "untrusted comment"; then
-              # Raw format in GitHub Secrets - encode to base64 for file storage
-              # tauri signer expects the key file to be base64-encoded
+              # Raw format (minisign native) - use directly
+              # tauri signer expects the key file in raw minisign format (not base64)
               # Clean the raw key first (remove leading/trailing whitespace)
               CLEANED_RAW=$(printf '%s' "$TAURI_SIGNING_KEY" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-              # Encode to base64 and remove ALL newlines/whitespace (tauri signer is strict)
-              if [[ "$OSTYPE" == "darwin"* ]]; then
-                # macOS: base64 -b 0 or pipe to tr -d '\n'
-                printf '%s' "$CLEANED_RAW" | base64 | tr -d '\n\r' > ~/.tauri/reachy-mini.key
-              else
-                # Linux: base64 -w 0
-                printf '%s' "$CLEANED_RAW" | base64 -w 0 | tr -d '\n\r' > ~/.tauri/reachy-mini.key
-              fi
-              echo "✅ Encoded raw format private key to base64 (for tauri signer)"
+              # Use raw format directly (tauri signer works with raw minisign format)
+              printf '%s' "$CLEANED_RAW" > ~/.tauri/reachy-mini.key
+              echo "✅ Using raw format private key (tauri signer expects raw minisign format)"
             else
-              # Already base64 format - use directly (remove ALL whitespace including newlines)
+              # Base64 format in GitHub Secrets - decode to raw first
+              # tauri signer expects raw format, so we decode base64 to raw
               CLEANED_KEY=$(printf '%s' "$TAURI_SIGNING_KEY" | tr -d '\n\r\t ' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            printf '%s' "$CLEANED_KEY" > ~/.tauri/reachy-mini.key
-              echo "✅ Using base64 format private key (from GitHub Secrets)"
+              # Decode base64 to get raw format
+              echo "$CLEANED_KEY" | base64 -d > ~/.tauri/reachy-mini.key 2>&1 || {
+                echo "❌ Failed to decode base64 private key"
+                echo "   The key in TAURI_SIGNING_KEY may not be valid base64"
+                exit 1
+              }
+              echo "✅ Decoded base64 format private key to raw (for tauri signer)"
             fi
             chmod 600 ~/.tauri/reachy-mini.key
             
@@ -211,19 +211,39 @@ jobs:
               echo "🔍 Verifying key pair match..."
               TEST_FILE="/tmp/test-key-match-$$.txt"
               echo "test" > "$TEST_FILE"
+              KEY_PAIR_MATCH=false
+              
               if yarn tauri signer sign -f ~/.tauri/reachy-mini.key -p "" "$TEST_FILE" 2>/dev/null; then
                 # Try to verify with the extracted public key using minisign
                 if command -v minisign &> /dev/null && [ -f "$TEST_FILE.sig" ]; then
                   if minisign -V -p ~/.tauri/reachy-mini.key.pub -m "$TEST_FILE" -x "$TEST_FILE.sig" 2>/dev/null; then
                     echo "✅ Key pair verified - public key matches private key"
+                    KEY_PAIR_MATCH=true
                   else
-                    echo "⚠️ Warning: Public key verification failed - keys may not match"
-                    echo "   This could cause 'invalid encoding in minisign data' errors"
+                    echo "❌ ERROR: Public key verification failed - keys do NOT match"
+                    echo "   This WILL cause 'invalid encoding in minisign data' errors"
+                    echo "   The public key in tauri.conf.json does not match the private key in TAURI_SIGNING_KEY"
+                    echo ""
+                    echo "💡 Solution:"
+                    echo "   1. Regenerate signing keys (see .scripts/regenerate-signing-keys.md)"
+                    echo "   2. Update pubkey in tauri.conf.json with the new public key (base64)"
+                    echo "   3. Update TAURI_SIGNING_KEY in GitHub Secrets with the new private key"
+                    KEY_PAIR_MATCH=false
                   fi
+                else
+                  echo "⚠️ minisign not available, cannot verify key pair match"
+                  echo "   Install minisign: brew install minisign (macOS) or apt-get install minisign (Linux)"
                 fi
                 rm -f "$TEST_FILE" "$TEST_FILE.sig" 2>/dev/null || true
               else
-                echo "⚠️ Could not test key pair (private key may require password)"
+                echo "⚠️ Could not test key pair (private key may require password or be invalid)"
+              fi
+              
+              # Fail if key pair doesn't match (critical for update system)
+              if [ "$KEY_PAIR_MATCH" = false ] && command -v minisign &> /dev/null; then
+                echo ""
+                echo "❌ CRITICAL: Key pair mismatch detected - build will fail to prevent broken updates"
+                exit 1
               fi
             fi
             

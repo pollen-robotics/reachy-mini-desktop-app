@@ -466,6 +466,22 @@ if [ ! -f "$SIGNATURE_FILE" ]; then
 else
     echo -e "${GREEN}✅ Bundle signed: ${SIGNATURE_FILE}${NC}"
     
+    # ✅ Verify signature file format (minisign format)
+    echo -e "${BLUE}🔍 Verifying signature file format...${NC}"
+    if ! head -1 "$SIGNATURE_FILE" | grep -q "untrusted comment"; then
+        echo -e "${RED}❌ Invalid signature file format - missing 'untrusted comment' header${NC}"
+        echo -e "${RED}   This will cause 'invalid encoding in minisign data' errors${NC}"
+        exit 1
+    fi
+    
+    # Verify signature file can be read and has valid content
+    if [ ! -s "$SIGNATURE_FILE" ]; then
+        echo -e "${RED}❌ Signature file is empty${NC}"
+        exit 1
+    fi
+    
+    echo -e "${GREEN}✅ Signature file format is valid${NC}"
+    
     # 4. Read signature in base64
     # Tauri expects the entire signature file (including comments) encoded in base64
     # The signature file format is:
@@ -475,6 +491,7 @@ else
     #   <signature line 2>
     # We need to encode the entire file, preserving all content
     # Compatible macOS and Linux
+    echo -e "${BLUE}🔍 Encoding signature to base64...${NC}"
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS: base64 -i reads from file, -b breaks lines every 76 chars (default)
         # We use -b 0 to disable line breaks, or pipe to tr -d '\n'
@@ -487,14 +504,37 @@ else
     # ✅ Verify the signature is not empty and is valid base64
     if [ -z "$SIGNATURE" ]; then
         echo -e "${RED}❌ Signature encoding resulted in empty string${NC}"
-            exit 1
-        fi
+        exit 1
+    fi
     
     # Verify it's valid base64 (should only contain A-Z, a-z, 0-9, +, /, =)
     if ! echo "$SIGNATURE" | grep -qE '^[A-Za-z0-9+/=]+$'; then
-        echo -e "${YELLOW}⚠️  Warning: Signature may contain invalid base64 characters${NC}"
-        echo -e "${YELLOW}   First 100 chars: ${SIGNATURE:0:100}${NC}"
+        echo -e "${RED}❌ Invalid base64 encoding - signature contains invalid characters${NC}"
+        echo -e "${RED}   First 100 chars: ${SIGNATURE:0:100}${NC}"
+        echo -e "${RED}   This will cause 'invalid encoding in minisign data' errors${NC}"
+        exit 1
     fi
+    
+    # ✅ Verify we can decode/re-encode (round-trip test)
+    echo -e "${BLUE}🔍 Verifying base64 encoding (round-trip test)...${NC}"
+    TEMP_DECODED="/tmp/sig-decoded-$$.sig"
+    echo "$SIGNATURE" | base64 -d > "$TEMP_DECODED" 2>&1 || {
+        echo -e "${RED}❌ Failed to decode signature from base64${NC}"
+        echo -e "${RED}   This indicates the base64 encoding is invalid${NC}"
+        rm -f "$TEMP_DECODED"
+        exit 1
+    }
+    
+    # Verify decoded file matches original
+    if ! cmp -s "$SIGNATURE_FILE" "$TEMP_DECODED"; then
+        echo -e "${RED}❌ Decoded signature does not match original file${NC}"
+        echo -e "${RED}   This indicates encoding/decoding corruption${NC}"
+        rm -f "$TEMP_DECODED"
+        exit 1
+    fi
+    
+    rm -f "$TEMP_DECODED"
+    echo -e "${GREEN}✅ Signature encoding verified (round-trip successful)${NC}"
 fi
 
 # 5. Generate metadata JSON
