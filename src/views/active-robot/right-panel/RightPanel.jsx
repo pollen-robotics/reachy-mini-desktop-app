@@ -53,6 +53,7 @@ export default function RightPanel({
       {/* Conditional rendering based on rightPanelView */}
       {rightPanelView === 'controller' ? (
         <ControllerSection
+          showToast={showToast}
           isActive={isActive}
           isBusy={isBusy}
           darkMode={darkMode}

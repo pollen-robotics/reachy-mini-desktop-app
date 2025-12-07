@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import useAppStore from '../../store/useAppStore';
+import { useLogsStore } from '../../store/useLogsStore';
 import { LOG_LEVELS, LOG_EMOJIS, LOG_PREFIXES } from './constants';
 
 /**
@@ -20,7 +21,8 @@ import { LOG_LEVELS, LOG_EMOJIS, LOG_PREFIXES } from './constants';
  * ```
  */
 export function useLogger() {
-  const { addFrontendLog, addAppLog } = useAppStore();
+  const addFrontendLog = useLogsStore(state => state.addFrontendLog);
+  const addAppLog = useAppStore(state => state.addAppLog);
 
   /**
    * Log an info message

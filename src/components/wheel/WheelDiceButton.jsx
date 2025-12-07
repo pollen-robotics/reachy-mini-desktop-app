@@ -77,6 +77,7 @@ export default function WheelDiceButton({
         viewBox={`0 0 ${size} ${size}`}
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
+        style={{ pointerEvents: 'none' }} // Don't block clicks on button
       >
         {/* Dice square background */}
         <rect
@@ -113,6 +114,7 @@ export default function WheelDiceButton({
       <Box
         sx={{
           animation: isDiceShaking ? 'shake 0.5s ease-in-out' : 'none',
+          pointerEvents: 'auto', // Ensure clicks work through animation container
           '@keyframes shake': {
             '0%, 100%': { transform: 'translateX(0) rotate(0deg)' },
             '10%, 30%, 50%, 70%, 90%': { transform: 'translateX(-4px) rotate(-5deg)' },
@@ -121,7 +123,13 @@ export default function WheelDiceButton({
         }}
       >
         <IconButton
-          onClick={onRandomSpin}
+          onClick={(e) => {
+            e.stopPropagation(); // Prevent event bubbling
+            e.preventDefault();
+            if (!isSpinning && isActive && !isBusy && isReady) {
+              onRandomSpin();
+            }
+          }}
           disabled={isSpinning || !isActive || isBusy || !isReady}
           aria-label="Random spin"
           aria-describedby="dice-button-description"
@@ -135,6 +143,8 @@ export default function WheelDiceButton({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            zIndex: 10, // Ensure button is above everything
+            position: 'relative', // Needed for z-index to work
             '&:hover': {
               color: '#FF9500',
               bgcolor: 'rgba(255, 149, 0, 0.1)',

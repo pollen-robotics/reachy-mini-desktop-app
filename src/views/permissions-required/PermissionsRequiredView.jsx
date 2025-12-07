@@ -198,7 +198,7 @@ export default function PermissionsRequiredView({ isRestarting: externalIsRestar
       logInfo(`[Permissions] Tauri API available: ${typeof invoke === 'function'}`);
       try {
         logInfo('[Permissions] Attempting to invoke plugin command...');
-        const testResult = await invoke('plugin:macos-permissions|check_camera_permission');
+        const testResult = await invoke('check_camera_permission');
         logSuccess(`[Permissions] ✅ Plugin is available, camera check result: ${testResult} (type: ${typeof testResult})`);
       } catch (error) {
         logError(`[Permissions] ❌ Plugin not available or error: ${error.message}`);
@@ -221,8 +221,8 @@ export default function PermissionsRequiredView({ isRestarting: externalIsRestar
     logInfo(`[Permissions] 🔐 Starting ${type} permission request flow...`);
     logInfo(`[Permissions] Timestamp: ${new Date().toISOString()}`);
     try {
-      const checkCommand = `plugin:macos-permissions|check_${type}_permission`;
-      const requestCommand = `plugin:macos-permissions|request_${type}_permission`;
+      const checkCommand = `check_${type}_permission`;
+      const requestCommand = `request_${type}_permission`;
       const settingsCommand = `open_${type}_settings`;
       
       logInfo(`[Permissions] 📋 Step 1: Checking ${type} permission status...`);

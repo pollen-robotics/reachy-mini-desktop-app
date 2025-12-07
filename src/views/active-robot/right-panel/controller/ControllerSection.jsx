@@ -12,6 +12,7 @@ import useAppStore from '../../../../store/useAppStore';
  * Controller Section - Displays controller component in right panel
  */
 export default function ControllerSection({ 
+  showToast,
   isActive = false,
   isBusy = false,
   darkMode = false,
@@ -26,6 +27,7 @@ export default function ControllerSection({
   const isGamepadConnected = useGamepadConnected();
   const activeDevice = useActiveDevice();
   const hasWindowFocus = useWindowFocus();
+  const prevGamepadConnectedRef = useRef(isGamepadConnected);
   
   // Debug: log gamepad state
   React.useEffect(() => {
@@ -38,6 +40,26 @@ export default function ControllerSection({
       });
     }
   }, [isGamepadConnected, activeDevice, hasWindowFocus]);
+
+  // Toast notifications for gamepad connection/disconnection
+  useEffect(() => {
+    // Skip on initial mount (prevGamepadConnectedRef.current will be the initial value)
+    if (prevGamepadConnectedRef.current !== undefined) {
+      if (isGamepadConnected && !prevGamepadConnectedRef.current) {
+        // Gamepad connected
+        if (showToast) {
+          showToast('Gamepad connected', 'success');
+        }
+      } else if (!isGamepadConnected && prevGamepadConnectedRef.current) {
+        // Gamepad disconnected
+        if (showToast) {
+          showToast('Gamepad disconnected', 'warning');
+        }
+      }
+    }
+    // Update ref for next comparison
+    prevGamepadConnectedRef.current = isGamepadConnected;
+  }, [isGamepadConnected, showToast]);
 
   // Auto-reset when leaving controller section (only on exit, not on entry)
   useEffect(() => {

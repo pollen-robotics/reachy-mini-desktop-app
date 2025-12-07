@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Box, Typography, CircularProgress, Button, LinearProgress, useTheme } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
 import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import Viewer3D from '../../components/viewer3d';
@@ -643,33 +642,18 @@ function HardwareScanView({
           >
             {scanComplete && !waitingForDaemon && !waitingForMovements ? (
               <>
-                <Box
+                <Typography
                   sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 1.5,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: darkMode ? '#666' : '#999',
+                    letterSpacing: '1px',
+                    textTransform: 'uppercase',
                     mb: 0.5,
                   }}
                 >
-                  <CheckCircleOutlinedIcon
-                    sx={{
-                      fontSize: 24,
-                      color: theme.palette.success.main,
-                    }}
-                  />
-                  <Typography
-                    sx={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: darkMode ? '#666' : '#999',
-                      letterSpacing: '1px',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Hardware Scan Complete
-                  </Typography>
-                </Box>
+                  Hardware Scan Complete
+                </Typography>
                 
                 <Box sx={{ margin: "auto", width: '100%', maxWidth: '300px' }}>
                   <LinearProgress 
@@ -705,125 +689,89 @@ function HardwareScanView({
               </>
             ) : (
               <>
-                <Typography
+            <Typography
                   sx={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: darkMode ? '#666' : '#999',
-                    letterSpacing: '1px',
-                    textTransform: 'uppercase',
+                fontSize: 11,
+                fontWeight: 600,
+                color: darkMode ? '#666' : '#999',
+                letterSpacing: '1px',
+                textTransform: 'uppercase',
                   }}
-                >
-                  {waitingForMovements 
-                    ? 'Detecting Movements' 
-                    : waitingForDaemon 
-                    ? (daemonStep === 'connecting' 
-                        ? 'Connecting to Daemon'
-                        : daemonStep === 'initializing'
-                        ? 'Initializing Control'
-                        : 'Starting Software')
-                    : 'Scanning Hardware'}
-                </Typography>
-                
-                {!scanComplete && !waitingForDaemon && scanProgress.total > 0 && (
-              <>
-                <Box sx={{ margin: "auto", width: '100%', maxWidth: '300px' }}>
-                  <LinearProgress 
-                    variant="determinate"
-                    value={scanProgress.total > 0 ? (scanProgress.current / scanProgress.total) * 100 : 0}
-                  sx={{ 
-                      height: 4,
-                      borderRadius: 2,
-                      backgroundColor: darkMode 
-                        ? `${theme.palette.primary.main}33` 
-                        : `${theme.palette.primary.main}1A`,
-                      '& .MuiLinearProgress-bar': {
-                        backgroundColor: theme.palette.primary.main,
-                        borderRadius: 2,
-                      },
-                  }} 
-                />
-                </Box>
-                
-                <Box sx={{ textAlign: 'center' }}>
-              <Typography
-                    component="span"
-                sx={{
-                      fontSize: 14,
-                      fontWeight: 500,
-                      color: darkMode ? '#f5f5f5' : '#333',
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    {currentPart ? (
-                      <>
-                        Scanning <Box component="span" sx={{ fontWeight: 700 }}>{currentPart.part}</Box>
-                      </>
-                    ) : (
-                      'Initializing scan...'
-                    )}
-              </Typography>
-                </Box>
-              </>
-            )}
+            >
+              {waitingForMovements 
+                ? 'Detecting Movements' 
+                : waitingForDaemon 
+                ? (daemonStep === 'connecting' 
+                    ? 'Connecting to Daemon'
+                    : daemonStep === 'initializing'
+                    ? 'Initializing Control'
+                    : 'Starting Software')
+                : 'Scanning Hardware'}
+            </Typography>
             
-            {(waitingForDaemon || waitingForMovements) && (
-              <>
-                <Box sx={{ margin: "auto", width: '100%', maxWidth: '300px' }}>
-                  <LinearProgress 
-                    variant="determinate"
-                    value={
-                      waitingForDaemon && daemonStep === 'connecting' 
-                        ? Math.min(33, (daemonAttempts / 60) * 33) // 0-33% during connecting
-                        : waitingForDaemon && daemonStep === 'initializing'
-                        ? 33 + Math.min(33, (daemonAttempts / 60) * 33) // 33-66% during initializing
-                        : waitingForMovements
-                        ? 66 + Math.min(34, (movementAttempts / 40) * 34) // 66-100% during detecting movements
-                        : 0
-                    }
-                    sx={{ 
-                      height: 4,
-                      borderRadius: 2,
-                      backgroundColor: darkMode 
-                        ? `${theme.palette.primary.main}33` 
-                        : `${theme.palette.primary.main}1A`,
-                      '& .MuiLinearProgress-bar': {
-                        backgroundColor: theme.palette.primary.main,
-                        borderRadius: 2,
-                      },
-                    }} 
-                  />
-                </Box>
-                
-                <Box sx={{ textAlign: 'center' }}>
-                  <Typography
-                    component="span"
-                    sx={{
-                      fontSize: 14,
-                      fontWeight: 500,
-                      color: darkMode ? '#f5f5f5' : '#333',
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    {waitingForDaemon && daemonStep === 'connecting' ? (
-                      <>
-                        <Box component="span" sx={{ fontWeight: 700 }}>Connecting</Box> to daemon
-                      </>
-                    ) : waitingForDaemon && daemonStep === 'initializing' ? (
-                      <>
-                        <Box component="span" sx={{ fontWeight: 700 }}>Initializing</Box> robot control
-                      </>
-                    ) : waitingForMovements ? (
-                      <>
-                        <Box component="span" sx={{ fontWeight: 700 }}>Detecting</Box> robot movements
-                      </>
-                    ) : (
-                      'Starting Software'
-                    )}
-                  </Typography>
-                </Box>
-              </>
-            )}
+            <Box sx={{ margin: "auto", width: '100%', maxWidth: '300px' }}>
+              <LinearProgress 
+                variant="determinate"
+                value={
+                  // Hardware scan: 0-50%
+                  !scanComplete && !waitingForDaemon && scanProgress.total > 0
+                    ? (scanProgress.current / scanProgress.total) * 50
+                    // Software startup: 50-100%
+                    : waitingForDaemon && daemonStep === 'connecting'
+                    ? 50 + Math.min(16.5, (daemonAttempts / 60) * 16.5) // 50-66.5% during connecting
+                    : waitingForDaemon && daemonStep === 'initializing'
+                    ? 66.5 + Math.min(16.5, (daemonAttempts / 60) * 16.5) // 66.5-83% during initializing
+                    : waitingForMovements
+                    ? 83 + Math.min(17, (movementAttempts / 40) * 17) // 83-100% during detecting movements
+                    : scanComplete && !waitingForDaemon && !waitingForMovements
+                    ? 100
+                    : 0
+                }
+                sx={{ 
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: darkMode 
+                    ? `${theme.palette.primary.main}33` 
+                    : `${theme.palette.primary.main}1A`,
+                  '& .MuiLinearProgress-bar': {
+                    backgroundColor: theme.palette.primary.main,
+                    borderRadius: 2,
+                  },
+                }} 
+              />
+            </Box>
+            
+            <Box sx={{ textAlign: 'center' }}>
+              <Typography
+                component="span"
+                sx={{
+                  fontSize: 14,
+                  fontWeight: 500,
+                  color: darkMode ? '#f5f5f5' : '#333',
+                  lineHeight: 1.5,
+                }}
+              >
+                {waitingForDaemon && daemonStep === 'connecting' ? (
+                  <>
+                    <Box component="span" sx={{ fontWeight: 700 }}>Connecting</Box> to daemon
+                  </>
+                ) : waitingForDaemon && daemonStep === 'initializing' ? (
+                  <>
+                    <Box component="span" sx={{ fontWeight: 700 }}>Initializing</Box> robot control
+                  </>
+                ) : waitingForMovements ? (
+                  <>
+                    <Box component="span" sx={{ fontWeight: 700 }}>Detecting</Box> robot movements
+                  </>
+                ) : currentPart ? (
+                  <>
+                    Scanning <Box component="span" sx={{ fontWeight: 700 }}>{currentPart.part}</Box>
+                  </>
+                ) : (
+                  'Initializing scan...'
+                )}
+              </Typography>
+            </Box>
               </>
             )}
             

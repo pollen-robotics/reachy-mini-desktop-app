@@ -4,6 +4,8 @@ import * as THREE from 'three';
 import { createXrayMaterial } from '../../utils/viewer3d/materials';
 import { matrix4FromRowMajor } from '../../utils/viewer3d/matrixUtils';
 import robotModelCache from '../../utils/robotModelCache';
+import useAppStore from '../../store/useAppStore';
+import { logInfo } from '../../utils/logging';
 
 /**
  * Robot component loaded from local URDF
@@ -31,10 +33,14 @@ function URDFRobot({
   const meshesRef = useRef([]);
   const displayTimeoutRef = useRef(null);
   const { camera, gl } = useThree();
+  // ✅ Get darkMode from store
+  const darkMode = useAppStore(state => state.darkMode);
   const raycaster = useRef(new THREE.Raycaster());
   const mouse = useRef(new THREE.Vector2());
   const hoveredMesh = useRef(null);
   const frameCountRef = useRef(0); // ✅ OPTIMIZED: Frame counter for deterministic throttling (optimization #2)
+  const lastClickTimeRef = useRef(0); // ✅ Throttle clicks to avoid spam
+  const clickThrottleMs = 300; // Minimum time between clicks (300ms)
   
   // ✅ Reuse Three.js objects to avoid allocations on each frame
   const tempMatrix = useRef(new THREE.Matrix4());
@@ -57,14 +63,54 @@ function URDFRobot({
       mouse.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     };
     
+    // ✅ Click handler to log piece information
+    const handleClick = (event) => {
+      if (!robot) return;
+      
+      // Throttle clicks to avoid spam
+      const now = Date.now();
+      if (now - lastClickTimeRef.current < clickThrottleMs) {
+        return;
+      }
+      lastClickTimeRef.current = now;
+      
+      // Use requestAnimationFrame to avoid blocking
+      requestAnimationFrame(() => {
+        const rect = gl.domElement.getBoundingClientRect();
+        const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        
+        raycaster.current.setFromCamera(new THREE.Vector2(x, y), camera);
+        const intersects = raycaster.current.intersectObject(robot, true);
+        
+        if (intersects.length > 0) {
+          const mesh = intersects[0].object;
+          if (mesh.isMesh && !mesh.userData.isErrorMesh) {
+            // ✅ Fun random messages
+            const messages = [
+              '👆 You clicked on Reachy!',
+              '🤖 That tickles!',
+              '✨ Nice aim!',
+              '🎯 Bullseye!',
+              '👋 Hey there!'
+            ];
+            const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+            logInfo(randomMessage);
+          }
+        }
+      });
+    };
+    
     gl.domElement.addEventListener('mousemove', handleMouseMove);
+    gl.domElement.addEventListener('click', handleClick);
     return () => {
       gl.domElement.removeEventListener('mousemove', handleMouseMove);
+      gl.domElement.removeEventListener('click', handleClick);
     };
-  }, [gl]);
+  }, [gl, camera, robot]);
   
   // ✅ Simple function to apply materials
-  const applyMaterials = useCallback((robotModel, transparent, cellShadingConfig, opacity, wireframeMode) => {
+  const applyMaterials = useCallback((robotModel, transparent, cellShadingConfig, opacity, wireframeMode, isDarkMode) => {
     robotModel.traverse((child) => {
       if (!child.isMesh || child.userData.isErrorMesh) return;
       
@@ -81,6 +127,9 @@ function URDFRobot({
       const isAntenna = child.userData?.isAntenna || 
                        materialName.includes('antenna') ||
                        stlFileName.includes('antenna');
+      // Détection de l'arducam (caméra)
+      const isArducam = materialName.includes('arducam') ||
+                       stlFileName.includes('arducam');
       
       if (wireframeMode) {
         // Wireframe mode: simple wireframe material
@@ -93,11 +142,33 @@ function URDFRobot({
         child.material.needsUpdate = true;
       } else if (transparent) {
         // X-ray mode: simple transparent material
-        let xrayColor = 0x5A6570;
-        if (isAntenna) xrayColor = 0x5A6B7C;
-        else if (isBigLens) xrayColor = 0x6B7B7A;
+        // Use lighter, more vibrant colors in dark mode for better visibility
+        let xrayColor, rimColor;
+        if (isDarkMode) {
+          // Dark mode: brighter cyan/blue tones for better contrast
+          if (isAntenna) {
+            xrayColor = 0x8AACD0; // Even lighter blue-cyan
+            rimColor = 0xAAC8E8; // Brighter cyan rim
+          } else if (isBigLens) {
+            xrayColor = 0x9BB8B8; // Even lighter teal
+            rimColor = 0xB8D8D8; // Brighter teal rim
+          } else {
+            xrayColor = 0x8A9AAA; // Even lighter blue-gray
+            rimColor = 0xAAC0D0; // Brighter blue-gray rim
+          }
+        } else {
+          // Light mode: original colors
+          xrayColor = 0x5A6570;
+          if (isAntenna) xrayColor = 0x5A6B7C;
+          else if (isBigLens) xrayColor = 0x6B7B7A;
+          rimColor = undefined; // Use default
+        }
         
-        child.material = createXrayMaterial(xrayColor, { opacity });
+        child.material = createXrayMaterial(xrayColor, { 
+          opacity: isDarkMode ? Math.min(opacity * 1.5, 0.15) : opacity, // Slightly more visible in dark mode
+          rimColor: rimColor,
+          rimIntensity: isDarkMode ? 0.8 : 0.6, // More intense rim in dark mode
+        });
       } else {
         // Normal mode: flat shading classique
         // Pour un vrai flat shading, on doit calculer les normales par face (pas par vertex)
@@ -116,11 +187,23 @@ function URDFRobot({
             flatShading: true, // ✅ Flat shading classique - normales par face
           });
         } else if (isAntenna) {
+          // Antennes : grises claires en dark mode, noires en light mode
+          const antennaColor = isDarkMode ? 0x999999 : 0x000000;
           child.material = new THREE.MeshStandardMaterial({
-            color: 0x8B4500, // Orange plus clair et visible
+            color: antennaColor,
             flatShading: true,
-            roughness: 0.2, // Légèrement moins brillant pour que la couleur de base soit plus visible
-            metalness: 0.3, // Moins métallique pour que la couleur orange soit plus présente
+            roughness: 0.3,
+            metalness: 0.2,
+          });
+          // Force material update
+          child.material.needsUpdate = true;
+        } else if (isArducam) {
+          // Arducam : gris similaire aux autres pièces grises du robot (0.301961 = 0x4D4D4D)
+          child.material = new THREE.MeshStandardMaterial({
+            color: 0x4D4D4D, // Gris moyen comme body_foot_3dprint, stewart_tricap_3dprint, etc.
+            flatShading: true,
+            roughness: 0.7,
+            metalness: 0.0,
           });
           // Force material update
           child.material.needsUpdate = true;
@@ -134,7 +217,7 @@ function URDFRobot({
         }
       }
     });
-  }, []);
+  }, [darkMode]);
 
 
   // STEP 1: Load URDF model from cache (preloaded at startup)
@@ -448,18 +531,18 @@ function URDFRobot({
     
     const isInitialSetup = !isReady;
     
-    applyMaterials(robot, isTransparent, cellShading, xrayOpacity, wireframe);
+    applyMaterials(robot, isTransparent, cellShading, xrayOpacity, wireframe, darkMode);
     
     // Mark as ready after first material application
     if (isInitialSetup) {
       setIsReady(true);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     robot, 
     isTransparent, 
     xrayOpacity, 
     wireframe,
+    darkMode,
     applyMaterials
   ]);
 

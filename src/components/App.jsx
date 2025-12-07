@@ -42,13 +42,22 @@ function App() {
         }, 3000); // 3 seconds in dev mode
       } else {
         // Production: wait 4 seconds then restart
+        // Note: relaunch() is cross-platform (Windows, macOS, Linux)
         restartTimerRef.current = setTimeout(async () => {
           try {
             const { relaunch } = await import('@tauri-apps/plugin-process');
             await relaunch();
+            // If relaunch succeeds, this code won't execute (app will restart)
           } catch (error) {
-            console.error('Failed to restart app:', error);
+            console.error('[App] ❌ Failed to restart app:', error);
+            console.error('[App] Error details:', {
+              message: error.message,
+              name: error.name,
+              code: error.code,
+            });
+            // Reset state so user can try again
             setIsRestarting(false);
+            restartStartedRef.current = false;
             restartTimerRef.current = null;
           }
         }, 4000); // 4 seconds in production

@@ -22,11 +22,6 @@
       "updater:allow-check",
       "updater:allow-download-and-install",
       "process:default",
-      "process:allow-restart",
-      "macos-permissions:default",
-      "macos-permissions:allow-check-camera-permission",
-      "macos-permissions:allow-request-camera-permission",
-      "macos-permissions:allow-check-microphone-permission",
-      "macos-permissions:allow-request-microphone-permission"
+      "process:allow-restart"
   ]
 }

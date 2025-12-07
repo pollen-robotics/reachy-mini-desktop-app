@@ -17,10 +17,10 @@ export function usePermissions({ checkInterval = 2000 } = {}) {
       try {
         setIsChecking(true);
         
-        // Use plugin commands directly
-        // Plugin returns boolean directly: true = granted, false = not granted
-        const cameraStatus = await invoke('plugin:macos-permissions|check_camera_permission');
-        const micStatus = await invoke('plugin:macos-permissions|check_microphone_permission');
+        // Use custom Tauri commands (cross-platform, no plugin needed)
+        // Commands return boolean directly: true = granted, false = not granted
+        const cameraStatus = await invoke('check_camera_permission');
+        const micStatus = await invoke('check_microphone_permission');
         
         // Plugin returns boolean directly (true = granted, false = not granted)
         setCameraGranted(cameraStatus === true);

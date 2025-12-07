@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react';
-import { FRICTION, MIN_VELOCITY, MIN_ROTATIONS, MAX_ROTATIONS, SPIN_DURATION_MIN, SPIN_DURATION_MAX } from '@utils/wheel/constants';
+import { FRICTION, MIN_VELOCITY, MIN_ROTATIONS, MAX_ROTATIONS, SPIN_DURATION_MIN, SPIN_DURATION_MAX, RANDOM_EXCLUSION_RADIUS } from '@utils/wheel/constants';
 import { normalizeIndex, normalizeAngleDelta } from '@utils/wheel/normalization';
 import { calculateSnapRotation } from '@utils/wheel/geometry';
 import { easeOutCubic } from '@utils/wheel/performance';
@@ -50,11 +50,11 @@ export const useWheelAnimations = ({
         const targetItem = displayItems[snappedIndex] || displayItems[0];
         
         setRotation(finalRotation);
+        // Don't set isSpinning to false here - let action trigger handle it
         
         if (onMomentumEnd) {
-          setTimeout(() => {
-            onMomentumEnd(targetItem, finalRotation);
-          }, 50);
+          // Call immediately, no timeout needed
+          onMomentumEnd(targetItem, finalRotation);
         }
         return;
       }
@@ -76,17 +76,31 @@ export const useWheelAnimations = ({
     
     const rotations = MIN_ROTATIONS + Math.random() * (MAX_ROTATIONS - MIN_ROTATIONS);
     
-    // Simple random: pick any index except the current one (to ensure movement)
+    // Random: pick any index excluding current item and nearby items (to ensure significant movement)
     const currentRotationOffset = rotation / gap;
     const currentListIndex = normalizeIndex(Math.round(currentRotationOffset), itemCount);
     
-    // Pick a random index, excluding the current one to ensure the wheel moves
+    // Calculate excluded indices (current item ± RANDOM_EXCLUSION_RADIUS)
+    const excludedIndices = new Set();
+    for (let offset = -RANDOM_EXCLUSION_RADIUS; offset <= RANDOM_EXCLUSION_RADIUS; offset++) {
+      const excludedIndex = normalizeIndex(currentListIndex + offset, itemCount);
+      excludedIndices.add(excludedIndex);
+    }
+    
+    // Pick a random index from available indices (excluding nearby ones)
     let randomFinalIndex;
-    if (itemCount > 1) {
-      const otherIndices = Array.from({ length: itemCount }, (_, i) => i).filter(i => i !== currentListIndex);
-      randomFinalIndex = otherIndices[Math.floor(Math.random() * otherIndices.length)];
+    if (itemCount > excludedIndices.size) {
+      // Get all indices that are not excluded
+      const availableIndices = Array.from({ length: itemCount }, (_, i) => i)
+        .filter(i => !excludedIndices.has(i));
+      randomFinalIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
     } else {
-      randomFinalIndex = 0;
+      // Fallback: if too many items are excluded, just exclude the current one
+      const otherIndices = Array.from({ length: itemCount }, (_, i) => i)
+        .filter(i => i !== currentListIndex);
+      randomFinalIndex = otherIndices.length > 0 
+        ? otherIndices[Math.floor(Math.random() * otherIndices.length)]
+        : currentListIndex;
     }
     
     const targetRotation = randomFinalIndex * gap + (rotations * 360);
@@ -118,12 +132,12 @@ export const useWheelAnimations = ({
         const targetItem = displayItems[snappedIndex] || displayItems[0];
         
         setRotation(snappedRotation);
-        setIsSpinning(false);
+        // Don't set isSpinning to false here - let action trigger handle it
+        // This prevents the button from flickering between disabled/enabled states
         
         if (onRandomEnd) {
-          setTimeout(() => {
-            onRandomEnd(targetItem, snappedRotation);
-          }, 50);
+          // Call immediately, no timeout needed
+          onRandomEnd(targetItem, snappedRotation);
         }
       }
     };

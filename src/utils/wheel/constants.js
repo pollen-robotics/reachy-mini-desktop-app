@@ -24,7 +24,7 @@ export const MIN_VELOCITY = 0.1; // Minimum velocity to continue spinning (degre
 export const MIN_MOMENTUM = 0.5; // Minimum velocity to apply momentum after drag
 
 // Random spin
-export const MIN_RANDOM_DIFFERENCE = 20; // Minimum items difference for random spin (ensures significant visual change)
+export const RANDOM_EXCLUSION_RADIUS = 15; // Number of items to exclude on each side of current item (total: 2*RADIUS+1 excluded)
 
 // Performance
 export const RESIZE_DEBOUNCE_MS = 150; // Debounce delay for resize events

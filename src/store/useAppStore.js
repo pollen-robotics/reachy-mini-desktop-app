@@ -235,8 +235,8 @@ const useAppStore = create(
       // ============================================
       // LOGS ACTIONS (delegate to useLogsStore)
       // ============================================
+      // Note: addFrontendLog removed - use logger functions from utils/logging instead
       setLogs: (newLogs) => useLogsStore.getState().setLogs(newLogs),
-      addFrontendLog: (message, level) => useLogsStore.getState().addFrontendLog(message, level),
       addAppLog: (message, appName, level) => useLogsStore.getState().addAppLog(message, appName, level),
       clearAppLogs: (appName) => useLogsStore.getState().clearAppLogs(appName),
       

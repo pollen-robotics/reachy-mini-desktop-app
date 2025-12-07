@@ -1,16 +1,17 @@
+import { useLogsStore } from '../../store/useLogsStore';
 import useAppStore from '../../store/useAppStore';
 import { LOG_LEVELS, LOG_EMOJIS, LOG_PREFIXES } from './constants';
 
 /**
- * Helper to safely get store instance
+ * Helper to safely get logs store instance
  */
-const getStore = () => {
+const getLogsStore = () => {
   try {
-    return useAppStore.getState();
+    return useLogsStore.getState();
   } catch (e) {
     // Fallback for cases where store might not be initialized
     if (process.env.NODE_ENV === 'development') {
-      console.warn('[Logger] Store not available:', e);
+      console.warn('[Logger] Logs store not available:', e);
     }
     return null;
   }
@@ -22,10 +23,10 @@ const getStore = () => {
  * In secondary windows: emits event to main window (async, but we don't wait)
  */
 const addLog = (message, level = LOG_LEVELS.INFO) => {
-  // Main window: add directly to store (synchronous, fast path)
-  const store = getStore();
-  if (store?.addFrontendLog) {
-    store.addFrontendLog(message, level);
+  // Main window: add directly to logs store (synchronous, fast path)
+  const logsStore = getLogsStore();
+  if (logsStore?.addFrontendLog) {
+    logsStore.addFrontendLog(message, level);
     return;
   }
   
@@ -120,9 +121,9 @@ export const logDaemon = (message, level = LOG_LEVELS.INFO) => {
  * Log an app message (uses addAppLog)
  */
 export const logApp = (appName, message, level = LOG_LEVELS.INFO) => {
-  const store = getStore();
-  if (store?.addAppLog) {
-    store.addAppLog(message, appName, level);
+  const appStore = useAppStore.getState();
+  if (appStore?.addAppLog) {
+    appStore.addAppLog(message, appName, level);
   }
 };
 

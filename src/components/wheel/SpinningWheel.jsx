@@ -216,6 +216,7 @@ export default function SpinningWheel({
     isDragging,
     onActionClick,
     isMounted: isMountedRef.current,
+    setIsSpinning, // Pass setIsSpinning so action trigger can reset it when action is triggered
   });
   
   // Wheel animations - extracted to hook
@@ -649,7 +650,11 @@ export default function SpinningWheel({
         </Box>
 
       {/* Dice button */}
-        <Box sx={{ pointerEvents: 'auto' }}>
+        <Box sx={{ 
+          pointerEvents: 'auto',
+          zIndex: 10, // Ensure button container is above everything
+          position: 'relative', // Needed for z-index to work
+        }}>
       <WheelDiceButton
         onRandomSpin={handleRandomSpin}
         isSpinning={isSpinning}

@@ -259,20 +259,13 @@ class RobotModelCache {
         let meshCount = 0;
         let shellCount = 0;
         
-        // ✅ List of all loaded STL files
-        const stlFilesList = [];
-        
         robotModel.traverse((child) => {
           if (child.isMesh) {
             meshCount++;
             
-            // ✅ Log STL file name for each mesh
-            // Search for STL file name in different properties
-            let meshFileName = '';
-            
-            // Method 1: Search in all possible geometry URLs (with map)
+            // ✅ Simple extraction of filename from geometry URL (for detections only)
+            let stlFileName = '';
             if (child.geometry) {
-              // Try different userData properties
               const possibleUrls = [
                 child.geometry.userData?.url,
                 child.geometry.userData?.sourceFile,
@@ -281,81 +274,22 @@ class RobotModelCache {
               ].filter(Boolean);
               
               for (const url of possibleUrls) {
-                // First try to find in map
                 const mappedName = stlFileMap.get(url);
                 if (mappedName) {
-                  meshFileName = mappedName;
-                  break;
-                }
-                // Otherwise extract from URL
-                const filename = url.split('/').pop();
-                if (filename && filename.toLowerCase().endsWith('.stl')) {
-                  meshFileName = filename;
-                  break;
-                }
-              }
-            }
-            
-            // Method 2: Search in mesh itself
-            if (!meshFileName && child.userData) {
-              const meshUrls = [
-                child.userData.url,
-                child.userData.sourceFile,
-                child.userData.filename,
-                child.userData.sourceURL,
-              ].filter(Boolean);
-              
-              for (const url of meshUrls) {
-                const mappedName = stlFileMap.get(url);
-                if (mappedName) {
-                  meshFileName = mappedName;
+                  stlFileName = mappedName;
                   break;
                 }
                 const filename = url.split('/').pop();
                 if (filename && filename.toLowerCase().endsWith('.stl')) {
-                  meshFileName = filename;
+                  stlFileName = filename;
                   break;
                 }
               }
             }
             
-            // Method 3: Go up hierarchy to find file name
-            if (!meshFileName) {
-              let parent = child.parent;
-              let depth = 0;
-              while (parent && depth < 5) {
-                // Search in parent userData
-                if (parent.userData?.filename) {
-                  meshFileName = parent.userData.filename;
-                  break;
-                }
-                // Search in parent name
-                if (parent.name && parent.name.toLowerCase().endsWith('.stl')) {
-                  meshFileName = parent.name;
-                  break;
-                }
-                parent = parent.parent;
-                depth++;
-              }
-            }
-            
-            // Method 4: Use mesh name if available
-            if (!meshFileName && child.name) {
-              meshFileName = child.name;
-            }
-            
-            // Fallback: unnamed
-            if (!meshFileName) {
-              meshFileName = 'unnamed';
-            }
-            
-            const stlFileName = meshFileName.toLowerCase().endsWith('.stl') ? meshFileName : `${meshFileName}.stl`;
-            
-            // ✅ STORE STL file name in userData to use it later
-            child.userData.stlFileName = stlFileName;
-            
-            if (!stlFilesList.includes(stlFileName)) {
-              stlFilesList.push(stlFileName);
+            // ✅ Store STL file name in userData (for detections: antennas, arducam, etc.)
+            if (stlFileName) {
+              child.userData.stlFileName = stlFileName;
             }
             
 

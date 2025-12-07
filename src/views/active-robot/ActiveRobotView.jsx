@@ -521,6 +521,7 @@ function ActiveRobotView({
         }}
       >
         <Box 
+          onClick={handleCloseToast}
           sx={{ 
             position: 'relative', 
             overflow: 'hidden', 
@@ -531,6 +532,7 @@ function ActiveRobotView({
               ? '0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3)'
               : '0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08)',
             zIndex: 100000,
+            cursor: 'pointer',
           }}
         >
           {/* Main content */}

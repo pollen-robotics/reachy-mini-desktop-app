@@ -141,7 +141,7 @@ pub fn run() {
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_macos_permissions::init())
+        // Removed tauri-plugin-macos-permissions - using custom implementation instead
         .manage(DaemonState {
             process: std::sync::Mutex::new(None),
             logs: std::sync::Mutex::new(std::collections::VecDeque::new()),
@@ -183,7 +183,11 @@ pub fn run() {
             window::close_window,
             signing::sign_python_binaries,
             permissions::open_camera_settings,
-            permissions::open_microphone_settings
+            permissions::open_microphone_settings,
+            permissions::check_camera_permission,
+            permissions::request_camera_permission,
+            permissions::check_microphone_permission,
+            permissions::request_microphone_permission
         ])
         .on_window_event(|window, event| {
             match event {
