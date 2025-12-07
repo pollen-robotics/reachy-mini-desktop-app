@@ -160,14 +160,25 @@ jobs:
         run: |
           mkdir -p ~/.tauri
           if [ -n "$TAURI_SIGNING_KEY" ]; then
-            # Simple approach: clean only newlines and leading/trailing whitespace
-            # This matches the working version (f0e1350) that successfully built releases
-            # Preserve spaces in the middle (they're part of RAW format structure)
-            # Only remove newlines/carriage returns and leading/trailing whitespace
-            CLEANED_KEY=$(printf '%s' "$TAURI_SIGNING_KEY" | tr -d '\n\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            # Detect key format and clean accordingly
+            # RAW format starts with "untrusted comment:"
+            # Base64 format doesn't have that header
+            FIRST_LINE=$(printf '%s' "$TAURI_SIGNING_KEY" | head -1 | tr -d '\n\r')
+            
+            if echo "$FIRST_LINE" | grep -q "^untrusted comment:"; then
+              # RAW format: preserve spaces (they're part of the structure)
+              # Only remove newlines/carriage returns and leading/trailing whitespace
+              echo "🔍 Detected RAW format key"
+              CLEANED_KEY=$(printf '%s' "$TAURI_SIGNING_KEY" | tr -d '\n\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            else
+              # Base64 format: remove ALL whitespace (base64 shouldn't have any)
+              echo "🔍 Detected base64 format key"
+              CLEANED_KEY=$(printf '%s' "$TAURI_SIGNING_KEY" | tr -d ' \n\r\t')
+            fi
+            
             printf '%s' "$CLEANED_KEY" > ~/.tauri/reachy-mini.key
             chmod 600 ~/.tauri/reachy-mini.key
-            echo "✅ Private key saved (cleaned newlines and leading/trailing whitespace only)"
+            echo "✅ Private key saved (format detected and cleaned appropriately)"
             
             # ✅ Extract public key from tauri.conf.json (standard practice - ensures they match)
             echo "🔑 Extracting public key from tauri.conf.json..."
