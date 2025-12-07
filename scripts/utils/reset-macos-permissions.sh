@@ -54,34 +54,55 @@ echo ""
 # Reset Camera permissions for this specific app
 echo "📷 Resetting Camera permissions..."
 
-# Always try with bundle identifier (works in production)
-tccutil reset Camera "$IDENTIFIER" >/dev/null 2>&1 && echo "   ✅ Camera permissions reset (bundle identifier)" || true
-
-# In dev mode, also reset ALL Camera permissions (original behavior - works for unsigned apps)
-if [ "$IS_DEV" = true ]; then
-    tccutil reset Camera >/dev/null 2>&1 && echo "   ✅ Camera permissions reset (all apps - dev mode)" || true
+# Always try with bundle identifier first (works in production, may work in dev too)
+if tccutil reset Camera "$IDENTIFIER" >/dev/null 2>&1; then
+    echo "   ✅ Camera permissions reset (bundle identifier)"
+else
+    # In dev mode, if bundle identifier doesn't work, don't reset all apps
+    # (unsigned apps may not be in TCC with bundle identifier)
+    if [ "$IS_DEV" = true ]; then
+        echo "   ⚠️  Could not reset Camera permissions for $IDENTIFIER (app may not be in TCC)"
+        echo "      In dev mode, unsigned apps may not be registered in TCC with bundle identifier"
+        echo "      Try running the app first to register it, then run this script again"
+    else
+        echo "   ⚠️  Could not reset Camera permissions for $IDENTIFIER"
+    fi
 fi
 
 # Reset Microphone permissions for this specific app
 echo "🎤 Resetting Microphone permissions..."
 
-# Always try with bundle identifier (works in production)
-tccutil reset Microphone "$IDENTIFIER" >/dev/null 2>&1 && echo "   ✅ Microphone permissions reset (bundle identifier)" || true
-
-# In dev mode, also reset ALL Microphone permissions (original behavior - works for unsigned apps)
-if [ "$IS_DEV" = true ]; then
-    tccutil reset Microphone >/dev/null 2>&1 && echo "   ✅ Microphone permissions reset (all apps - dev mode)" || true
+# Always try with bundle identifier first (works in production, may work in dev too)
+if tccutil reset Microphone "$IDENTIFIER" >/dev/null 2>&1; then
+    echo "   ✅ Microphone permissions reset (bundle identifier)"
+else
+    # In dev mode, if bundle identifier doesn't work, don't reset all apps
+    # (unsigned apps may not be in TCC with bundle identifier)
+    if [ "$IS_DEV" = true ]; then
+        echo "   ⚠️  Could not reset Microphone permissions for $IDENTIFIER (app may not be in TCC)"
+        echo "      In dev mode, unsigned apps may not be registered in TCC with bundle identifier"
+        echo "      Try running the app first to register it, then run this script again"
+    else
+        echo "   ⚠️  Could not reset Microphone permissions for $IDENTIFIER"
+    fi
 fi
 
 # Also reset All permissions (more comprehensive)
 echo "🔄 Resetting All permissions..."
 
-# Always try with bundle identifier (works in production)
-tccutil reset All "$IDENTIFIER" >/dev/null 2>&1 && echo "   ✅ All permissions reset (bundle identifier)" || true
-
-# In dev mode, also reset ALL permissions for all apps (original behavior - works for unsigned apps)
-if [ "$IS_DEV" = true ]; then
-    tccutil reset All >/dev/null 2>&1 && echo "   ✅ All permissions reset (all apps - dev mode)" || true
+# Always try with bundle identifier first (works in production, may work in dev too)
+if tccutil reset All "$IDENTIFIER" >/dev/null 2>&1; then
+    echo "   ✅ All permissions reset (bundle identifier)"
+else
+    # In dev mode, if bundle identifier doesn't work, don't reset all apps
+    # (unsigned apps may not be in TCC with bundle identifier)
+    if [ "$IS_DEV" = true ]; then
+        echo "   ⚠️  Could not reset All permissions for $IDENTIFIER (app may not be in TCC)"
+        echo "      In dev mode, unsigned apps may not be registered in TCC with bundle identifier"
+        echo "      Try running the app first to register it, then run this script again"
+    else
+        echo "   ⚠️  Could not reset All permissions for $IDENTIFIER"
+    fi
 fi
 
 echo ""

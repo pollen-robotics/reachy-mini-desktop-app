@@ -768,7 +768,24 @@ jobs:
         run: |
           export RELEASE_URL_BASE
           export TARGET_TRIPLET
+          echo "🔍 Building update files for platform: ${{ matrix.platform }}"
+          echo "   Version: ${{ steps.version.outputs.version }}"
+          echo "   Target: ${{ matrix.target }}"
+          echo "   Release URL base: ${RELEASE_URL_BASE}"
+          
           bash ./scripts/build/build-update.sh prod "${{ steps.version.outputs.version }}"
+          
+          # Verify that update.json was created
+          echo "🔍 Verifying update.json was created..."
+          UPDATE_JSON=$(find releases -name "update.json" -type f | head -1)
+          if [ -z "$UPDATE_JSON" ]; then
+            echo "❌ update.json was not created by build-update.sh"
+            echo "   Check the script output above for errors"
+            exit 1
+          fi
+          echo "✅ update.json created: $UPDATE_JSON"
+          echo "   Content preview:"
+          cat "$UPDATE_JSON" | jq '.' || echo "   (could not parse JSON)"
 
       - name: Upload update artifacts
         uses: actions/upload-artifact@v4
@@ -812,6 +829,42 @@ jobs:
           merge-multiple: true
           path: update-artifacts
 
+      - name: Verify update artifacts were downloaded
+        run: |
+          echo "🔍 Verifying update artifacts were downloaded..."
+          
+          # List all downloaded artifacts
+          echo "📦 Contents of update-artifacts directory:"
+          find update-artifacts -type f -o -type d | head -20 || echo "   (directory may be empty)"
+          
+          # Check if any update.json files exist
+          UPDATE_FILES=$(find update-artifacts -name "update.json" -type f 2>/dev/null || true)
+          
+          if [ -z "$UPDATE_FILES" ]; then
+            echo "❌ No update.json files found in downloaded artifacts"
+            echo ""
+            echo "🔍 Debug information:"
+            echo "   - Artifacts directory exists: $([ -d update-artifacts ] && echo 'YES' || echo 'NO')"
+            if [ -d update-artifacts ]; then
+              echo "   - Directory contents:"
+              ls -la update-artifacts/ || echo "     (cannot list contents)"
+              echo "   - Recursive contents:"
+              find update-artifacts -type f | head -10 || echo "     (no files found)"
+            fi
+            echo ""
+            echo "❌ This indicates that the 'Build update files' step in build-and-release job failed or did not run"
+            echo "   Check the logs of each platform build to see why update.json files were not generated"
+            exit 1
+          fi
+          
+          echo "✅ Found update.json files:"
+          echo "$UPDATE_FILES" | while IFS= read -r file; do
+            echo "   - $file"
+            if [ -f "$file" ]; then
+              echo "     Version: $(jq -r '.version' "$file" 2>/dev/null || echo 'unknown')"
+            fi
+          done
+
       - name: Merge update.json files into latest.json
         run: |
           sudo apt-get update && sudo apt-get install -y jq
@@ -819,8 +872,8 @@ jobs:
           UPDATE_FILES=$(find update-artifacts -name "update.json" -type f)
           
           if [ -z "$UPDATE_FILES" ]; then
-            echo "⚠️ No update.json files found"
-            exit 0
+            echo "❌ No update.json files found (this should not happen after verification step)"
+            exit 1
           fi
           
           FIRST_FILE=$(echo "$UPDATE_FILES" | head -n1)
@@ -841,15 +894,29 @@ jobs:
             --argjson platforms "$MERGED_PLATFORMS" \
             '{version: $version, notes: $notes, pub_date: $pub_date, platforms: $platforms}')
           
+          echo "✅ Merged JSON created:"
+          echo "$MERGED_JSON" | jq '.'
+          
           # ✅ DRY: Create latest.json in root for release upload
           echo "$MERGED_JSON" > latest.json
-          echo "✅ Created latest.json"
-          cat latest.json
+          echo "✅ Created latest.json (version: $VERSION)"
           
           # ✅ DRY: Create directly in docs/ for GitHub Pages (no copy needed)
           mkdir -p docs
           echo "$MERGED_JSON" > docs/latest.json
-          echo "✅ Created docs/latest.json for GitHub Pages"
+          echo "✅ Created docs/latest.json for GitHub Pages (version: $VERSION)"
+          
+          # Verify the version matches what we expect
+          echo "🔍 Verifying version consistency..."
+          LATEST_VERSION=$(echo "$MERGED_JSON" | jq -r '.version')
+          EXPECTED_VERSION="${{ steps.version.outputs.version }}"
+          if [ "$LATEST_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "⚠️  Warning: Version mismatch!"
+            echo "   Expected: $EXPECTED_VERSION"
+            echo "   Found in latest.json: $LATEST_VERSION"
+          else
+            echo "✅ Version matches: $LATEST_VERSION"
+          fi
           
           # Verify both files exist and are valid JSON
           if [ ! -f "latest.json" ] || [ ! -f "docs/latest.json" ]; then
