@@ -160,92 +160,15 @@ jobs:
         run: |
           mkdir -p ~/.tauri
           if [ -n "$TAURI_SIGNING_KEY" ]; then
-            # The key in GitHub Secrets can be either:
-            # 1. Raw format (starts with "untrusted comment: rsign encrypted secret key")
-            # 2. Base64-encoded format
-            # We detect the format and handle accordingly
-            
-            # Check if it's raw format (starts with "untrusted comment")
-            # Use the first 50 chars to check, avoiding issues with leading whitespace
-            # Remove leading whitespace first for detection
-            FIRST_CHARS=$(printf '%s' "$TAURI_SIGNING_KEY" | sed 's/^[[:space:]]*//' | head -c 50)
-            
-            if echo "$FIRST_CHARS" | grep -q "untrusted comment"; then
-              # Raw format (minisign native) - use directly WITHOUT cleaning
-              # tauri signer expects the key file in raw minisign format (not base64)
-              # DO NOT clean the key - preserve it exactly as stored in GitHub Secrets
-              # printf '%s' does NOT add a trailing newline, so the key is preserved as-is
-              # This works on both Linux (GNU) and macOS (BSD)
-              printf '%s' "$TAURI_SIGNING_KEY" > ~/.tauri/reachy-mini.key
-              echo "✅ Using raw format private key (preserved as-is from GitHub Secrets)"
-              
-              # Verify the key was written correctly (should start with "untrusted comment")
-              if ! head -1 ~/.tauri/reachy-mini.key | grep -q "untrusted comment"; then
-                echo "❌ ERROR: Key file does not start with 'untrusted comment'"
-                echo "   First 50 chars: $(head -1 ~/.tauri/reachy-mini.key | cut -c1-50)"
-                echo "   This indicates the key was corrupted during write"
-                echo ""
-                echo "💡 Solution:"
-                echo "   1. Verify that TAURI_SIGNING_KEY in GitHub Secrets contains the complete raw key"
-                echo "   2. The key should start with: 'untrusted comment: rsign encrypted secret key'"
-                echo "   3. Copy the key directly from ~/.tauri/reachy-mini.key (without any modification)"
-                exit 1
-              fi
-            else
-              # Base64 format in GitHub Secrets - decode to raw first
-              # tauri signer expects raw format, so we decode base64 to raw
-              # Remove ALL whitespace (spaces, newlines, tabs) from base64 before decoding
-              CLEANED_KEY=$(printf '%s' "$TAURI_SIGNING_KEY" | tr -d ' \n\r\t')
-              # Decode base64 to get raw format
-              if ! echo "$CLEANED_KEY" | base64 -d > ~/.tauri/reachy-mini.key 2>&1; then
-                echo "❌ ERROR: Failed to decode base64 private key"
-                echo "   The key in TAURI_SIGNING_KEY may not be valid base64"
-                echo "   First 50 chars (for debug): ${CLEANED_KEY:0:50}..."
-                echo ""
-                echo "💡 Solution:"
-                echo "   1. If the key is in RAW format, ensure it starts with 'untrusted comment'"
-                echo "   2. If the key is in base64, verify it's valid base64 (no spaces/newlines)"
-                echo "   3. Check GitHub Secrets: TAURI_SIGNING_KEY should contain the complete key"
-                echo "   4. For RAW format: copy directly from ~/.tauri/reachy-mini.key"
-                echo "   5. For base64 format: encode with 'cat ~/.tauri/reachy-mini.key | base64'"
-                exit 1
-              fi
-              echo "✅ Decoded base64 format private key to raw (for tauri signer)"
-              
-              # Verify the decoded key is valid (should start with "untrusted comment")
-              if ! head -1 ~/.tauri/reachy-mini.key | grep -q "untrusted comment"; then
-                echo "❌ ERROR: Decoded key does not start with 'untrusted comment'"
-                echo "   First 50 chars: $(head -1 ~/.tauri/reachy-mini.key | cut -c1-50)"
-                echo "   This indicates the base64 key was invalid or corrupted"
-                echo ""
-                echo "💡 Solution:"
-                echo "   1. The base64 key in TAURI_SIGNING_KEY is invalid or corrupted"
-                echo "   2. Regenerate the key: yarn tauri signer generate -w ~/.tauri/reachy-mini.key --ci"
-                echo "   3. Encode to base64: cat ~/.tauri/reachy-mini.key | base64"
-                echo "   4. Update TAURI_SIGNING_KEY in GitHub Secrets with the base64-encoded key"
-                echo "   5. Or use RAW format directly (recommended): copy key as-is to GitHub Secrets"
-                exit 1
-              fi
-            fi
+            # Simple approach: clean whitespace and use key as-is
+            # tauri signer can handle both RAW and base64 formats automatically
+            # Remove newlines/carriage returns and leading/trailing whitespace
+            # If key is base64, it shouldn't have spaces anyway, so this is safe
+            # If key is RAW, spaces in the middle are part of the format and should be preserved
+            CLEANED_KEY=$(printf '%s' "$TAURI_SIGNING_KEY" | tr -d '\n\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            printf '%s' "$CLEANED_KEY" > ~/.tauri/reachy-mini.key
             chmod 600 ~/.tauri/reachy-mini.key
-            
-            # Final verification: ensure key file is readable and has correct format
-            if [ ! -r ~/.tauri/reachy-mini.key ]; then
-              echo "❌ ERROR: Key file is not readable"
-              exit 1
-            fi
-            
-            KEY_SIZE=$(wc -c < ~/.tauri/reachy-mini.key)
-            if [ "$KEY_SIZE" -lt 100 ]; then
-              echo "❌ ERROR: Key file is too small ($KEY_SIZE bytes) - likely corrupted"
-              echo "   Expected size: ~250-300 bytes for a valid minisign private key"
-              echo ""
-              echo "💡 Solution:"
-              echo "   1. Verify that TAURI_SIGNING_KEY in GitHub Secrets contains the complete key"
-              echo "   2. The key should be ~250-300 bytes when decoded"
-              echo "   3. Regenerate if needed: yarn tauri signer generate -w ~/.tauri/reachy-mini.key --ci"
-              exit 1
-            fi
+            echo "✅ Private key saved (cleaned newlines and leading/trailing whitespace)"
             
             # ✅ Extract public key from tauri.conf.json (standard practice - ensures they match)
             echo "🔑 Extracting public key from tauri.conf.json..."
