@@ -150,11 +150,31 @@ if [ -d "$RESOURCES_DIR" ]; then
     fi
     
     # Sign binaries in cpython (for all architectures)
+    # Apply entitlements to Python executables and libraries
     for cpython_dir in "$RESOURCES_DIR"/cpython-*; do
         if [ -d "$cpython_dir" ]; then
             echo "📦 Signing binaries in $(basename "$cpython_dir")..."
+            
+            # First, sign Python executables with entitlements
+            find "$cpython_dir/bin" -type f 2>/dev/null | while read -r binary; do
+                if basename "$binary" | grep -qE "^python[0-9.]*$"; then
+                    echo "   Applying entitlements to Python executable: $binary"
+                    sign_binary "$binary" "$PYTHON_ENTITLEMENTS"
+                fi
+            done
+            
+            # Second, sign Python libraries (libpython*.dylib) with entitlements
+            find "$cpython_dir/lib" -name "libpython*.dylib" -type f 2>/dev/null | while read -r dylib; do
+                echo "   Applying entitlements to Python library: $dylib"
+                sign_binary "$dylib" "$PYTHON_ENTITLEMENTS"
+            done
+            
+            # Finally, sign all other binaries without entitlements
             find "$cpython_dir" -type f \( -name "*.dylib" -o -name "*.so" -o -perm +111 \) | while read -r binary; do
-                sign_binary "$binary"
+                # Skip Python executables and libraries (already signed above)
+                if ! basename "$binary" | grep -qE "^python[0-9.]*$" && ! basename "$binary" | grep -qE "^libpython.*\.dylib$"; then
+                    sign_binary "$binary"
+                fi
             done
         fi
     done
