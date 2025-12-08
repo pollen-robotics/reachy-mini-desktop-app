@@ -59,16 +59,33 @@ fn get_possible_bin_folders() -> Vec<&'static str> {
 
 /// Re-sign all Python binaries (.so, .dylib) in .venv after pip install
 /// This fixes Team ID mismatch issues on macOS
+/// Now supports adhoc signing with entitlements (disable-library-validation)
 #[cfg(target_os = "macos")]
 fn resign_all_venv_binaries(venv_dir: &PathBuf, signing_identity: &str) -> Result<(), String> {
     use std::process::Command;
     
-    if signing_identity == "-" {
-        // No valid Developer ID, skip signing
-        return Ok(());
-    }
-    
     println!("🔐 Re-signing all Python binaries in .venv after pip install...");
+    println!("   Signing identity: {}", if signing_identity == "-" { "adhoc" } else { signing_identity });
+    
+    // Find python-entitlements.plist in Resources (for disable-library-validation)
+    let entitlements_path = std::env::current_exe()
+        .ok()
+        .and_then(|exe| {
+            // Production: exe is in Contents/MacOS, entitlements in Contents/Resources
+            let resources_dir = exe
+                .parent()? // Contents/MacOS
+                .parent()? // Contents
+                .join("Resources");
+            
+            let entitlements = resources_dir.join("python-entitlements.plist");
+            if entitlements.exists() {
+                println!("   📜 Found python-entitlements.plist");
+                Some(entitlements)
+            } else {
+                println!("   ⚠️  python-entitlements.plist not found in Resources");
+                None
+            }
+        });
     
     // Helper to find files recursively
     fn find_files(dir: &PathBuf, pattern: &str) -> Result<Vec<PathBuf>, String> {
@@ -100,8 +117,12 @@ fn resign_all_venv_binaries(venv_dir: &PathBuf, signing_identity: &str) -> Resul
         Ok(files)
     }
     
-    // Helper to sign a binary
-    fn sign_binary(binary_path: &PathBuf, signing_identity: &str) -> Result<bool, String> {
+    // Helper to sign a binary with optional entitlements
+    fn sign_binary_with_entitlements(
+        binary_path: &PathBuf, 
+        signing_identity: &str,
+        entitlements: Option<&PathBuf>
+    ) -> Result<bool, String> {
         // Check if it's a Mach-O binary
         let file_output = Command::new("file")
             .arg(binary_path)
@@ -113,16 +134,28 @@ fn resign_all_venv_binaries(venv_dir: &PathBuf, signing_identity: &str) -> Resul
             return Ok(false);
         }
         
+        // Build codesign command
+        let mut cmd = Command::new("codesign");
+        cmd.arg("--force")
+           .arg("--sign")
+           .arg(signing_identity)
+           .arg("--options")
+           .arg("runtime");
+        
+        // Add entitlements if provided
+        if let Some(ent_path) = entitlements {
+            cmd.arg("--entitlements").arg(ent_path);
+        }
+        
+        // Add timestamp (skip for adhoc as it may not work)
+        if signing_identity != "-" {
+            cmd.arg("--timestamp");
+        }
+        
+        cmd.arg(binary_path);
+        
         // Sign the binary
-        let sign_result = Command::new("codesign")
-            .arg("--force")
-            .arg("--sign")
-            .arg(signing_identity)
-            .arg("--options")
-            .arg("runtime")
-            .arg("--timestamp")
-            .arg(binary_path)
-            .output();
+        let sign_result = cmd.output();
         
         match sign_result {
             Ok(output) => {
@@ -144,10 +177,54 @@ fn resign_all_venv_binaries(venv_dir: &PathBuf, signing_identity: &str) -> Resul
     let mut signed_count = 0;
     let mut error_count = 0;
     
+    // Priority 1: Sign python3 and libpython with entitlements (critical!)
+    let python_bin = venv_dir.join("bin/python3");
+    if python_bin.exists() {
+        println!("   🔐 Signing python3 with entitlements...");
+        if sign_binary_with_entitlements(&python_bin, signing_identity, entitlements_path.as_ref())? {
+            signed_count += 1;
+        } else {
+            error_count += 1;
+        }
+    }
+    
+    let python312_bin = venv_dir.join("bin/python3.12");
+    if python312_bin.exists() && python312_bin != python_bin {
+        println!("   🔐 Signing python3.12 with entitlements...");
+        if sign_binary_with_entitlements(&python312_bin, signing_identity, entitlements_path.as_ref())? {
+            signed_count += 1;
+        } else {
+            error_count += 1;
+        }
+    }
+    
+    let libpython = venv_dir.join("lib/libpython3.12.dylib");
+    if libpython.exists() {
+        println!("   🔐 Signing libpython3.12.dylib with entitlements...");
+        if sign_binary_with_entitlements(&libpython, signing_identity, entitlements_path.as_ref())? {
+            signed_count += 1;
+        } else {
+            error_count += 1;
+        }
+    }
+    
     // Sign all .dylib files
     let dylib_files = find_files(venv_dir, "*.dylib")?;
     for dylib_file in dylib_files {
-        if sign_binary(&dylib_file, signing_identity)? {
+        // Skip libpython if already signed above
+        if dylib_file == libpython {
+            continue;
+        }
+        // Apply entitlements to all libpython*.dylib files
+        let use_entitlements = dylib_file.file_name()
+            .map(|n| n.to_string_lossy().starts_with("libpython"))
+            .unwrap_or(false);
+        
+        if sign_binary_with_entitlements(
+            &dylib_file, 
+            signing_identity, 
+            if use_entitlements { entitlements_path.as_ref() } else { None }
+        )? {
             signed_count += 1;
         } else {
             error_count += 1;
@@ -157,7 +234,7 @@ fn resign_all_venv_binaries(venv_dir: &PathBuf, signing_identity: &str) -> Resul
     // Sign all .so files (Python extensions)
     let so_files = find_files(venv_dir, "*.so")?;
     for so_file in so_files {
-        if sign_binary(&so_file, signing_identity)? {
+        if sign_binary_with_entitlements(&so_file, signing_identity, None)? {
             signed_count += 1;
         } else {
             error_count += 1;
@@ -393,6 +470,7 @@ fn main() -> ExitCode {
                     }
                     
                     // If pip install succeeded, re-sign all binaries in .venv
+                    // This applies entitlements (disable-library-validation) to Python binaries
                     #[cfg(target_os = "macos")]
                     {
                         if is_pip_install && exit_code == 0 {
@@ -414,8 +492,9 @@ fn main() -> ExitCode {
                                         Some(path.to_path_buf())
                                     });
                                 
-                                if let Some(app_bundle) = &app_bundle_path {
-                                    // Detect Developer ID
+                                // Try to detect Developer ID, fallback to adhoc ("-")
+                                let signing_identity = if let Some(app_bundle) = &app_bundle_path {
+                                    // Detect Developer ID from app bundle
                                     let detect_output = Command::new("codesign")
                                         .arg("-d")
                                         .arg("-vv")
@@ -431,18 +510,23 @@ fn main() -> ExitCode {
                                                 line.split("Authority=").nth(1).map(|s| s.trim().to_string())
                                             });
                                         
-                                        if let Some(signing_identity) = dev_id {
-                                            // Find .venv directory (working_dir is already set to Contents/Resources in production)
-                                            let venv_dir = working_dir.join(".venv");
-                                            
-                                            if venv_dir.exists() {
-                                                // Re-sign all binaries
-                                                if let Err(e) = resign_all_venv_binaries(&venv_dir, &signing_identity) {
-                                                    eprintln!("⚠️  Failed to re-sign binaries after pip install: {}", e);
-                                                    // Don't fail the pip install, just log the error
-                                                }
-                                            }
-                                        }
+                                        dev_id.unwrap_or_else(|| "-".to_string())
+                                    } else {
+                                        "-".to_string() // Fallback to adhoc
+                                    }
+                                } else {
+                                    "-".to_string() // Fallback to adhoc
+                                };
+                                
+                                // Find .venv directory (working_dir is already set to Contents/Resources in production)
+                                let venv_dir = working_dir.join(".venv");
+                                
+                                if venv_dir.exists() {
+                                    // Re-sign all binaries with entitlements
+                                    // Now works with both Developer ID AND adhoc (with disable-library-validation)
+                                    if let Err(e) = resign_all_venv_binaries(&venv_dir, &signing_identity) {
+                                        eprintln!("⚠️  Failed to re-sign binaries after pip install: {}", e);
+                                        // Don't fail the pip install, just log the error
                                     }
                                 }
                             }

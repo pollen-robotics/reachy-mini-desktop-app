@@ -171,16 +171,53 @@ pub async fn sign_python_binaries() -> Result<String, String> {
         "-".to_string()
     };
     
-    // 3. Find and sign all binaries in .venv
+    // 3. Find python-entitlements.plist in Resources
+    // This file contains disable-library-validation entitlement required for Python
+    let python_entitlements = if exe_path.to_string_lossy().contains(".app/Contents/MacOS") {
+        let app_bundle = exe_path
+            .parent()
+            .and_then(|p| p.parent())
+            .and_then(|p| p.parent());
+        
+        if let Some(bundle) = app_bundle {
+            let entitlements_path = bundle.join("Contents/Resources/python-entitlements.plist");
+            if entitlements_path.exists() {
+                println!("[tauri] 📜 Found python-entitlements.plist at: {}", entitlements_path.display());
+                Some(entitlements_path)
+            } else {
+                println!("[tauri] ⚠️  python-entitlements.plist not found in Resources");
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        // Dev mode: look for it in src-tauri/
+        let current_dir = env::current_dir().ok();
+        if let Some(dir) = current_dir {
+            let paths_to_try = vec![
+                dir.join("python-entitlements.plist"),
+                dir.join("src-tauri/python-entitlements.plist"),
+                dir.join("../scripts/signing/python-entitlements.plist"),
+            ];
+            paths_to_try.into_iter().find(|p| p.exists())
+        } else {
+            None
+        }
+    };
+    
+    // 4. Find and sign all binaries in .venv
     // IMPORTANT: Sign in order: libpython first, then executables, then extensions
+    // Python binaries need disable-library-validation entitlement!
     let mut signed_count = 0;
     let mut error_count = 0;
     
     // Priority 1: Sign libpython*.dylib FIRST (critical for Python to load)
+    // Apply entitlements to libpython for disable-library-validation
     let libpython_dylib = venv_dir.join("lib/libpython3.12.dylib");
     if libpython_dylib.exists() {
-        println!("[tauri] 🔐 Signing libpython3.12.dylib (priority)...");
-        if sign_binary(&libpython_dylib, &signing_identity)? {
+        println!("[tauri] 🔐 Signing libpython3.12.dylib with entitlements (priority)...");
+        if sign_binary_with_entitlements(&libpython_dylib, &signing_identity, python_entitlements.as_ref())? {
             signed_count += 1;
         } else {
             error_count += 1;
@@ -188,10 +225,22 @@ pub async fn sign_python_binaries() -> Result<String, String> {
     }
     
     // Priority 2: Sign Python executables (python3, python3.12)
+    // Apply entitlements to python3 for disable-library-validation
     let python_bin = venv_dir.join("bin/python3");
     if python_bin.exists() {
-        println!("[tauri] 🔐 Signing python3 executable...");
-        if sign_binary(&python_bin, &signing_identity)? {
+        println!("[tauri] 🔐 Signing python3 executable with entitlements...");
+        if sign_binary_with_entitlements(&python_bin, &signing_identity, python_entitlements.as_ref())? {
+            signed_count += 1;
+        } else {
+            error_count += 1;
+        }
+    }
+    
+    // Also sign python3.12 if it exists and is different from python3
+    let python312_bin = venv_dir.join("bin/python3.12");
+    if python312_bin.exists() && python312_bin != python_bin {
+        println!("[tauri] 🔐 Signing python3.12 executable with entitlements...");
+        if sign_binary_with_entitlements(&python312_bin, &signing_identity, python_entitlements.as_ref())? {
             signed_count += 1;
         } else {
             error_count += 1;
@@ -207,10 +256,23 @@ pub async fn sign_python_binaries() -> Result<String, String> {
         if dylib_file == libpython_dylib {
             continue;
         }
-        if sign_binary(&dylib_file, &signing_identity)? {
-            signed_count += 1;
+        // Apply entitlements to all libpython*.dylib files
+        let use_entitlements = dylib_file.file_name()
+            .map(|n| n.to_string_lossy().starts_with("libpython"))
+            .unwrap_or(false);
+        
+        if use_entitlements {
+            if sign_binary_with_entitlements(&dylib_file, &signing_identity, python_entitlements.as_ref())? {
+                signed_count += 1;
+            } else {
+                error_count += 1;
+            }
         } else {
-            error_count += 1;
+            if sign_binary(&dylib_file, &signing_identity)? {
+                signed_count += 1;
+            } else {
+                error_count += 1;
+            }
         }
     }
     
@@ -282,8 +344,18 @@ pub fn find_files(dir: &PathBuf, pattern: &str) -> Result<Vec<PathBuf>, String> 
     Ok(files)
 }
 
-/// Sign a single binary file
+/// Sign a single binary file (without entitlements)
 pub fn sign_binary(binary_path: &PathBuf, signing_identity: &str) -> Result<bool, String> {
+    sign_binary_with_entitlements(binary_path, signing_identity, None)
+}
+
+/// Sign a single binary file with optional entitlements
+/// entitlements_path: Optional path to .plist file with entitlements
+pub fn sign_binary_with_entitlements(
+    binary_path: &PathBuf, 
+    signing_identity: &str,
+    entitlements_path: Option<&PathBuf>
+) -> Result<bool, String> {
     use std::process::Command;
     
     // Check if it's a Mach-O binary
@@ -298,16 +370,31 @@ pub fn sign_binary(binary_path: &PathBuf, signing_identity: &str) -> Result<bool
         return Ok(false);
     }
     
+    // Build codesign command
+    let mut cmd = Command::new("codesign");
+    cmd.arg("--force")
+       .arg("--sign")
+       .arg(signing_identity)
+       .arg("--options")
+       .arg("runtime");
+    
+    // Add entitlements if provided
+    if let Some(entitlements) = entitlements_path {
+        if entitlements.exists() {
+            cmd.arg("--entitlements").arg(entitlements);
+            println!("[tauri]   📜 Using entitlements: {}", entitlements.display());
+        }
+    }
+    
+    // Add timestamp (skip for adhoc as it may not work)
+    if signing_identity != "-" {
+        cmd.arg("--timestamp");
+    }
+    
+    cmd.arg(binary_path);
+    
     // Sign the binary
-    let sign_result = Command::new("codesign")
-        .arg("--force")
-        .arg("--sign")
-        .arg(signing_identity)
-        .arg("--options")
-        .arg("runtime")
-        .arg("--timestamp")
-        .arg(binary_path)
-        .output();
+    let sign_result = cmd.output();
     
     match sign_result {
         Ok(output) => {
