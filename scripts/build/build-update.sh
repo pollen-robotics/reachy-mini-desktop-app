@@ -466,34 +466,63 @@ if [ ! -f "$SIGNATURE_FILE" ]; then
 else
     echo -e "${GREEN}✅ Bundle signed: ${SIGNATURE_FILE}${NC}"
     
-    # 4. Read signature in base64
-    # Tauri expects the entire signature file (including comments) encoded in base64
-    # The signature file format is:
+    # 4. Read signature for latest.json
+    # Tauri expects: base64(minisign_text_format)
+    # The minisign text format is:
     #   untrusted comment: ...
-    #   <signature line 1>
+    #   <signature line>
     #   trusted comment: ...
-    #   <signature line 2>
-    # We need to encode the entire file, preserving all content
-    # Compatible macOS and Linux
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS: base64 -i reads from file, -b breaks lines every 76 chars (default)
-        # We use -b 0 to disable line breaks, or pipe to tr -d '\n'
-        SIGNATURE=$(base64 -i "$SIGNATURE_FILE" | tr -d '\n\r')
+    #   <hash line>
+    #
+    # IMPORTANT: Detect if .sig is already base64 or raw minisign text
+    # - If raw text (starts with "untrusted comment") → encode to base64
+    # - If already base64 → use as-is (DO NOT double-encode!)
+    
+    FIRST_LINE=$(head -1 "$SIGNATURE_FILE")
+    
+    if echo "$FIRST_LINE" | grep -q "untrusted comment"; then
+        # Raw minisign text format → encode to base64 (correct behavior)
+        echo -e "${BLUE}   Signature is in raw minisign text format, encoding to base64...${NC}"
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            SIGNATURE=$(base64 -i "$SIGNATURE_FILE" | tr -d '\n\r')
+        else
+            SIGNATURE=$(base64 -w 0 "$SIGNATURE_FILE" | tr -d '\r')
+        fi
     else
-        # Linux: base64 -w 0 disables line wrapping
-        SIGNATURE=$(base64 -w 0 "$SIGNATURE_FILE" | tr -d '\r')
+        # Already base64 format → use as-is (avoid double encoding!)
+        echo -e "${YELLOW}⚠️  Signature is already in base64 format, using as-is (no re-encoding)${NC}"
+        SIGNATURE=$(cat "$SIGNATURE_FILE" | tr -d '\n\r\t ')
+        
+        # Verify it decodes to minisign format
+        DECODED_FIRST=$(echo "$SIGNATURE" | base64 -d 2>/dev/null | head -1 || echo "")
+        if ! echo "$DECODED_FIRST" | grep -q "untrusted comment"; then
+            echo -e "${RED}❌ ERROR: Signature file is neither raw minisign text nor valid base64 of minisign text${NC}"
+            echo -e "${RED}   First line of file: $FIRST_LINE${NC}"
+            echo -e "${RED}   First line after base64 decode: $DECODED_FIRST${NC}"
+            exit 1
+        fi
     fi
     
     # ✅ Verify the signature is not empty and is valid base64
     if [ -z "$SIGNATURE" ]; then
         echo -e "${RED}❌ Signature encoding resulted in empty string${NC}"
-            exit 1
-        fi
+        exit 1
+    fi
     
     # Verify it's valid base64 (should only contain A-Z, a-z, 0-9, +, /, =)
     if ! echo "$SIGNATURE" | grep -qE '^[A-Za-z0-9+/=]+$'; then
         echo -e "${YELLOW}⚠️  Warning: Signature may contain invalid base64 characters${NC}"
         echo -e "${YELLOW}   First 100 chars: ${SIGNATURE:0:100}${NC}"
+    fi
+    
+    # ✅ Final verification: decoded signature should be valid minisign format
+    FINAL_CHECK=$(echo "$SIGNATURE" | base64 -d 2>/dev/null | head -1 || echo "")
+    if echo "$FINAL_CHECK" | grep -q "untrusted comment"; then
+        echo -e "${GREEN}✅ Signature verified: valid base64 of minisign format${NC}"
+    else
+        echo -e "${RED}❌ ERROR: Final signature is not valid base64 of minisign format${NC}"
+        echo -e "${RED}   This will cause 'invalid encoding in minisign data' errors!${NC}"
+        exit 1
     fi
 fi
 
