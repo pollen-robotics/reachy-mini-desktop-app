@@ -49,6 +49,15 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> target
+            uv-wrapper -> target
+          cache-on-failure: true
+          shared-key: ${{ matrix.target }}
+
       - name: Install dependencies
         run: yarn install
 
