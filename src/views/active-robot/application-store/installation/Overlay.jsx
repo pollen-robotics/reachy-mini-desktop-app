@@ -164,6 +164,14 @@ export default function InstallOverlay({ appInfo, jobInfo, darkMode, jobType = '
         // Allow manual close - unlock install state when overlay is closed
         unlockInstall();
       }}
+      onBackdropClick={(e) => {
+        // Prevent closing by clicking backdrop during installation
+        // Only allow closing if installation failed (user can see error and close manually)
+        if (isShowingResult && resultState === 'failed') {
+          unlockInstall();
+        }
+        // Otherwise, do nothing (prevent default close behavior)
+      }}
       darkMode={darkMode}
       zIndex={10003} // Above DiscoverModal (10002)
       showCloseButton={isShowingResult && resultState === 'failed'} // Show close button only on error
