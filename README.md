@@ -56,7 +56,7 @@ cd reachy-mini-desktop-app/tauri-app
 yarn install
 
 # Run in development mode
-yarn tauri:dev
+yarn tauri:devc
 ```
 
 ```bash
@@ -91,14 +91,21 @@ yarn tauri build --target x86_64-unknown-linux-gnu
 
 #### Installing the daemon from different sources
 
-By default, the `reachy-mini` package is installed from PyPI (latest stable release). You can also install from the `develop` branch on GitHub by using the `REACHY_MINI_SOURCE` environment variable:
+By default, the `reachy-mini` package is installed from PyPI (latest stable release). You can also install from any GitHub branch by using the `REACHY_MINI_SOURCE` environment variable:
 
 - **PyPI (default)** : `REACHY_MINI_SOURCE=pypi` or omit the variable
-- **GitHub develop** : `REACHY_MINI_SOURCE=develop`
+- **GitHub branch** : `REACHY_MINI_SOURCE=<branch-name>` (e.g., `develop`, `main`, `feature/xyz`)
 
-Example to build the sidecar with the develop version:
+Examples to build the sidecar with different sources:
 ```bash
+# Build with develop branch
 REACHY_MINI_SOURCE=develop bash ./scripts/build/build-sidecar-unix.sh
+
+# Build with main branch
+REACHY_MINI_SOURCE=main bash ./scripts/build/build-sidecar-unix.sh
+
+# Build with any other branch
+REACHY_MINI_SOURCE=feature/my-feature bash ./scripts/build/build-sidecar-unix.sh
 ```
 
 ## 📖 Documentation

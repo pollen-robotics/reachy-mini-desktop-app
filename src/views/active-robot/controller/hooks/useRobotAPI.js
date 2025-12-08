@@ -11,6 +11,8 @@ export function useRobotAPI(isActive, robotState, isDraggingRef) {
   const rafRef = useRef(null);
   const pendingPoseRef = useRef(null);
   const lastSentPoseRef = useRef(null);
+  // AbortController to cancel previous requests when sending a new one
+  const abortControllerRef = useRef(null);
 
   // Stop continuous updates
   const stopContinuousUpdates = useCallback(() => {
@@ -19,6 +21,11 @@ export function useRobotAPI(isActive, robotState, isDraggingRef) {
       rafRef.current = null;
     }
     pendingPoseRef.current = null;
+    // Cancel any pending request when stopping
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
   }, []);
 
   // Continuous update loop
@@ -112,6 +119,14 @@ export function useRobotAPI(isActive, robotState, isDraggingRef) {
     }
     lastSendTimeRef.current = now;
 
+    // Cancel previous request if still pending
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    
+    // Create new AbortController for this request
+    abortControllerRef.current = new AbortController();
+
     // Send directly (smoothing loop handles the continuous updates)
     const requestBody = {
       target_head_pose: headPose,
@@ -125,11 +140,15 @@ export function useRobotAPI(isActive, robotState, isDraggingRef) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
+        signal: abortControllerRef.current.signal,
       },
       DAEMON_CONFIG.MOVEMENT.CONTINUOUS_MOVE_TIMEOUT,
       { label: 'Set target (smoothed)', silent: true }
     ).catch((error) => {
-      console.error('❌ set_target error:', error);
+      // Ignore AbortError - it's normal when a new request cancels the previous one
+      if (error.name !== 'AbortError') {
+        console.error('❌ set_target error:', error);
+      }
     });
   }, [isActive, robotState.bodyYaw]);
 

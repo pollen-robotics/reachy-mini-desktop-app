@@ -16,7 +16,7 @@ struct Args {
     #[arg(short, long, value_delimiter = ' ', num_args = 1..)]
     dependencies: Vec<String>,
 
-    /// Source for reachy-mini package: 'pypi' (default) or 'develop' (from GitHub)
+    /// Source for reachy-mini package: 'pypi' (default) or a GitHub branch name (e.g., 'develop', 'main')
     #[arg(long, default_value = "pypi")]
     reachy_mini_source: String,
 }
@@ -66,13 +66,15 @@ fn main() {
     if !args.dependencies.is_empty() {
         let mut deps = args.dependencies;
         
-        // Replace reachy-mini with GitHub version if develop source is requested
-        if args.reachy_mini_source == "develop" {
-            let github_url = "git+https://github.com/pollen-robotics/reachy_mini.git@develop";
+        // Replace reachy-mini with GitHub version if a branch is specified (not "pypi")
+        let is_github_source = args.reachy_mini_source != "pypi";
+        if is_github_source {
+            let branch = &args.reachy_mini_source;
+            let github_url = format!("git+https://github.com/pollen-robotics/reachy_mini.git@{}", branch);
             deps = deps
                 .iter()
                 .map(|dep| {
-                    // Replace reachy-mini[...] with git+https://...@develop[...]
+                    // Replace reachy-mini[...] with git+https://...@<branch>[...]
                     if dep.starts_with("reachy-mini") {
                         if let Some(extras_start) = dep.find('[') {
                             // Has extras like [placo_kinematics]
@@ -80,7 +82,7 @@ fn main() {
                             format!("{}{}", github_url, extras)
                         } else {
                             // No extras
-                            github_url.to_string()
+                            github_url.clone()
                         }
                     } else {
                         dep.clone()
@@ -93,7 +95,7 @@ fn main() {
         #[cfg(not(target_os = "windows"))]
         {
             // For GitHub installs, configure git to skip LFS smudge to avoid errors with missing LFS files
-            let git_lfs_skip = if args.reachy_mini_source == "develop" {
+            let git_lfs_skip = if is_github_source {
                 "GIT_LFS_SKIP_SMUDGE=1 "
             } else {
                 ""
@@ -107,7 +109,7 @@ fn main() {
         #[cfg(target_os = "windows")]
         {
             // For GitHub installs, configure git to skip LFS smudge to avoid errors with missing LFS files
-            let git_lfs_skip = if args.reachy_mini_source == "develop" {
+            let git_lfs_skip = if is_github_source {
                 "$env:GIT_LFS_SKIP_SMUDGE='1'; "
             } else {
                 ""

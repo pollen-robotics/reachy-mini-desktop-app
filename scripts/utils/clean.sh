@@ -1,48 +1,48 @@
 #!/bin/bash
 
-# Script de nettoyage du projet
-# Supprime tous les fichiers de build et artefacts
+# Project cleanup script
+# Removes all build files and artifacts
 
 set -e
 
-echo "🧹 Nettoyage du projet..."
+echo "🧹 Cleaning project..."
 
-# Répertoires de build à supprimer
+# Build directories to remove
 DIRS_TO_CLEAN=(
-  "dist"                          # Build frontend Vite
-  "src-tauri/target"              # Build Rust Tauri
-  "src-tauri/gen"                 # Générés Tauri
-  "uv-wrapper/target"            # Build Rust uv-wrapper
-  "scripts/__pycache__"          # Cache Python
-  "test-updates"                  # Fichiers de test updates
+  "dist"                          # Frontend Vite build
+  "src-tauri/target"              # Rust Tauri build
+  "src-tauri/gen"                 # Tauri generated files
+  "uv-wrapper/target"            # Rust uv-wrapper build
+  "scripts/__pycache__"          # Python cache
+  "test-updates"                  # Test update files
 )
 
-# Fichiers temporaires à supprimer
+# Temporary files to remove
 FILES_TO_CLEAN=(
-  "*.log"                         # Logs
-  "daemon-develop-test.log"       # Log spécifique
+  "*.log"                         # Log files
+  "daemon-develop-test.log"       # Specific log file
 )
 
-# Supprimer les répertoires
+# Remove directories
 for dir in "${DIRS_TO_CLEAN[@]}"; do
   if [ -d "$dir" ] || [ -f "$dir" ]; then
-    echo "  ❌ Suppression de $dir"
+    echo "  ❌ Removing $dir"
     rm -rf "$dir"
   else
-    echo "  ⏭️  $dir n'existe pas (déjà propre)"
+    echo "  ⏭️  $dir does not exist (already clean)"
   fi
 done
 
-# Supprimer les fichiers
+# Remove files
 for pattern in "${FILES_TO_CLEAN[@]}"; do
   if ls $pattern 1> /dev/null 2>&1; then
-    echo "  ❌ Suppression de $pattern"
+    echo "  ❌ Removing $pattern"
     rm -f $pattern
   fi
 done
 
-echo "✅ Nettoyage terminé !"
+echo "✅ Cleanup complete!"
 echo ""
-echo "💡 Pour réinstaller les dépendances : yarn install"
-echo "💡 Pour reconstruire : yarn build"
+echo "💡 To reinstall dependencies: yarn install"
+echo "💡 To rebuild: yarn build"
 

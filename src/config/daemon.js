@@ -194,9 +194,23 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     
+    // If an external signal is provided, combine it with the timeout signal
+    let finalSignal = controller.signal;
+    if (options.signal) {
+      // Combine external signal with timeout: abort if either is aborted
+      const externalSignal = options.signal;
+      if (externalSignal.aborted) {
+        controller.abort();
+      } else {
+        externalSignal.addEventListener('abort', () => {
+          controller.abort();
+        });
+      }
+    }
+    
     const response = await fetch(url, {
       ...options,
-      signal: controller.signal,
+      signal: finalSignal,
     });
     
     clearTimeout(timeoutId);
