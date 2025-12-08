@@ -4,5 +4,5 @@
  */
 export { default as ActiveRobotView } from './ActiveRobotView';
 export { default as RobotHeader } from './RobotHeader';
-export { default as LogConsole } from './LogConsole';
+export { default as LogConsole } from '@components/LogConsole';
 

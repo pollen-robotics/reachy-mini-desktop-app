@@ -273,7 +273,7 @@ fn main() -> ExitCode {
         {
             if let Some(python_parent) = python_path.parent() {
                 // python_parent is .venv/bin, so parent is .venv
-                if let Some(venv_dir) = python_parent.parent() {
+                if let Some(_venv_dir) = python_parent.parent() {
                     // Check if we're in production (app bundle) or dev mode
                     let is_production = std::env::current_exe()
                         .ok()

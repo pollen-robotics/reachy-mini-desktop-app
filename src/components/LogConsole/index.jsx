@@ -2,7 +2,7 @@ import React, { useMemo, useRef } from 'react';
 import { Box, Typography, IconButton, Tooltip } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import useAppStore from '../../../store/useAppStore';
+import useAppStore from '../../store/useAppStore';
 import { FONT_SIZES, PADDING, EMPTY_ARRAY, TEXT_SELECT_STYLES } from './constants';
 import { useLogProcessing } from './useLogProcessing';
 import { LogItem } from './LogItem';

@@ -8,7 +8,7 @@ import { listen } from '@tauri-apps/api/event';
 import useAppStore from '../../store/useAppStore';
 import { usePermissions } from '../../hooks/system';
 import { logInfo, logError, logWarning, logSuccess } from '../../utils/logging/logger';
-import LogConsole from '../active-robot/LogConsole';
+import LogConsole from '@components/LogConsole';
 import LockedReachy from '../../assets/locked-reachy.svg';
 import SleepingReachy from '../../assets/sleeping-reachy.svg';
 

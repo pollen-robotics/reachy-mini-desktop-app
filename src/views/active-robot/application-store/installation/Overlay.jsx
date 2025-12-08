@@ -5,7 +5,7 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FullscreenOverlay from '@components/FullscreenOverlay';
-import LogConsole from '../../LogConsole';
+import LogConsole from '@components/LogConsole';
 import useAppStore from '../../../../store/useAppStore';
 
 /**

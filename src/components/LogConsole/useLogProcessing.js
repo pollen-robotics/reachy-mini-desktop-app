@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { DAEMON_CONFIG } from '../../../config/daemon';
+import { DAEMON_CONFIG } from '../../config/daemon';
 import { normalizeLog, formatTimestamp } from './utils';
 
 /**

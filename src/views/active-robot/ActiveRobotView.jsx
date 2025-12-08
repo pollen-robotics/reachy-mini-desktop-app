@@ -9,7 +9,7 @@ import { open } from '@tauri-apps/plugin-shell';
 import Viewer3D from '../../components/viewer3d';
 import CameraFeed from './camera/CameraFeed';
 import { ViewportSwapper } from './layout';
-import LogConsole from './LogConsole';
+import LogConsole from '@components/LogConsole';
 import { RightPanel } from './right-panel';
 import RobotHeader from './RobotHeader';
 import { PowerButton } from './controls';

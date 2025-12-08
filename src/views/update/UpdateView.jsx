@@ -4,7 +4,7 @@ import reachyUpdateBoxSvg from '../../assets/reachy-update-box.svg';
 import useAppStore from '../../store/useAppStore';
 import { DAEMON_CONFIG } from '../../config/daemon';
 import { useInternetHealthcheck } from './hooks';
-import LogConsole from '../active-robot/LogConsole';
+import LogConsole from '@components/LogConsole';
 
 /**
  * Update view component
