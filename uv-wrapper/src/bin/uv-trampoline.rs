@@ -410,6 +410,7 @@ fn main() -> ExitCode {
         let mut cmd = Command::new(&python_path);
         cmd.env("UV_WORKING_DIR", &working_dir)
            .env("UV_PYTHON_INSTALL_DIR", &working_dir)
+           .env("GIT_LFS_SKIP_SMUDGE", "1") // Skip LFS downloads during git clone (HuggingFace repos)
            .args(&args[1..]); // Pass remaining arguments
         cmd
     } else {
@@ -419,6 +420,7 @@ fn main() -> ExitCode {
     let mut cmd = Command::new(&uv_exe_path);
     cmd.env("UV_WORKING_DIR", &working_dir)
        .env("UV_PYTHON_INSTALL_DIR", &working_dir)
+       .env("GIT_LFS_SKIP_SMUDGE", "1") // Skip LFS downloads during git clone (HuggingFace repos)
        .args(&args);
         cmd
     };
