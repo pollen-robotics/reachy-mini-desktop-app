@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Reachy Mini Control",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "identifier": "com.pollen-robotics.reachy-mini",
   "build": {
     "beforeDevCommand": "yarn dev",
@@ -57,7 +57,7 @@
       "dangerousInsecureTransportProtocol": false,
       "dangerousAllowDowngrades": false,
       "dialog": false,
-      "pubkey": "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUcxcGJtbHphV2R1SUhCMVlteHBZeUJyWlhrNklETkJOREZCUVVGR1FrRkNPVFkyTlFwU1YxSnNiSEYyTjNGb2NXdEJNMnBrZGxoQlZVcFhORmt3WmtjMWRXZEhLMDlOY2tsWU5HdGhSMWRIYlZSMWFEUTBObEl4UjNveVVnbz0="
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNBNDFBQUFGQkFCOTY2NQpSV1JsbHF2N3FocWtBM2pkdlhBVUpXNFkwZkc1dWdHK09NcklYNGthR1dHbVR1aDQ0NlIxR3oyUgo="
     }
   }
 }

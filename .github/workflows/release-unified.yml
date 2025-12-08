@@ -198,9 +198,9 @@ jobs:
             # We decode it to get the raw public key format that minisign expects
             PUBKEY=$(grep -o '"pubkey": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
             if [ -n "$PUBKEY" ]; then
-              # Decode base64 twice (double encoding in tauri.conf.json) to get raw public key format (what minisign expects)
-              echo "$PUBKEY" | base64 -d | base64 -d > ~/.tauri/reachy-mini.key.pub
-              echo "✅ Extracted public key from tauri.conf.json (double-decoded from base64)"
+              # Decode base64 once (single encoding in tauri.conf.json) to get raw public key format (what minisign expects)
+              echo "$PUBKEY" | base64 -d > ~/.tauri/reachy-mini.key.pub
+              echo "✅ Extracted public key from tauri.conf.json (decoded from base64)"
             else
               echo "❌ No public key found in tauri.conf.json"
               exit 1
@@ -217,8 +217,10 @@ jobs:
                   if minisign -V -p ~/.tauri/reachy-mini.key.pub -m "$TEST_FILE" -x "$TEST_FILE.sig" 2>/dev/null; then
                     echo "✅ Key pair verified - public key matches private key"
                   else
-                    echo "⚠️ Warning: Public key verification failed - keys may not match"
-                    echo "   This could cause 'invalid encoding in minisign data' errors"
+                    echo "❌ ERROR: Public key verification failed - keys do not match"
+                    echo "   This will cause 'invalid encoding in minisign data' errors in production"
+                    echo "   Build will fail to prevent releasing invalid signatures"
+                    exit 1
                   fi
                 fi
                 rm -f "$TEST_FILE" "$TEST_FILE.sig" 2>/dev/null || true
