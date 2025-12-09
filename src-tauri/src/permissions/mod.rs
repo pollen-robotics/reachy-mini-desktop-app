@@ -24,6 +24,7 @@ pub fn request_all_permissions() {
 
 
 #[cfg(not(target_os = "macos"))]
+#[allow(dead_code)]
 pub fn request_all_permissions() {
     // No-op on non-macOS platforms
     println!("ℹ️  Permission requests are only needed on macOS");

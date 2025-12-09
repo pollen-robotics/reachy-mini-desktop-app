@@ -1,10 +1,10 @@
 use tauri::{Manager, AppHandle};
 
 #[tauri::command]
-pub fn apply_transparent_titlebar(app: AppHandle, window_label: String) -> Result<(), String> {
+pub fn apply_transparent_titlebar(_app: AppHandle, _window_label: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        if let Some(window) = app.get_webview_window(&window_label) {
+        if let Some(window) = _app.get_webview_window(&_window_label) {
             use cocoa::base::{id, YES};
             use objc::{msg_send, sel, sel_impl};
             
@@ -27,7 +27,7 @@ pub fn apply_transparent_titlebar(app: AppHandle, window_label: String) -> Resul
                 Err(e) => Err(format!("Failed to get ns_window: {}", e)),
             }
         } else {
-            Err(format!("Window '{}' not found", window_label))
+            Err(format!("Window '{}' not found", _window_label))
         }
     }
     

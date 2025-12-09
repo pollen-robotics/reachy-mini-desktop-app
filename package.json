@@ -18,7 +18,7 @@
     "build:sidecar-macos": "bash ./scripts/build/build-sidecar-unix.sh",
     "build:sidecar-linux": "bash ./scripts/build/build-sidecar-unix.sh",
     "build:sidecar-windows": "powershell ./scripts/build/build-sidecar-windows.ps1",
-    "'build:sidecar-macos:develop'": "REACHY_MINI_SOURCE=develop bash ./scripts/build/build-sidecar-unix.sh",
+    "build:sidecar-macos:develop": "REACHY_MINI_SOURCE=develop bash ./scripts/build/build-sidecar-unix.sh",
     "build:sidecar-linux:develop": " REACHY_MINI_SOURCE=develop bash ./scripts/build/build-sidecar-unix.sh",
     "build:sidecar-windows:develop": "powershell -Command \"$env:REACHY_MINI_SOURCE='develop'; ./scripts/build/build-sidecar-windows.ps1\"",
     "build:sidecar-macos:main": "REACHY_MINI_SOURCE=main bash ./scripts/build/build-sidecar-unix.sh",

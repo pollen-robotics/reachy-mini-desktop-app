@@ -147,10 +147,9 @@ pub fn run() {
             logs: std::sync::Mutex::new(std::collections::VecDeque::new()),
         })
         .setup(|app| {
-            let window = app.get_webview_window("main").unwrap();
-            
             #[cfg(target_os = "macos")]
             {
+                let window = app.get_webview_window("main").unwrap();
                 use cocoa::base::{id, YES};
                 use objc::{msg_send, sel, sel_impl};
                 

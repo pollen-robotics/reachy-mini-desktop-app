@@ -311,7 +311,8 @@ pub fn sign_python_binaries() -> Result<String, String> {
 }
 
 /// Helper to find files matching a pattern recursively
-pub fn find_files(dir: &PathBuf, pattern: &str) -> Result<Vec<PathBuf>, String> {
+#[cfg(target_os = "macos")]
+fn find_files(dir: &PathBuf, pattern: &str) -> Result<Vec<PathBuf>, String> {
     use std::fs;
     
     let mut files = Vec::new();
@@ -345,13 +346,15 @@ pub fn find_files(dir: &PathBuf, pattern: &str) -> Result<Vec<PathBuf>, String> 
 }
 
 /// Sign a single binary file (without entitlements)
-pub fn sign_binary(binary_path: &PathBuf, signing_identity: &str) -> Result<bool, String> {
+#[cfg(target_os = "macos")]
+fn sign_binary(binary_path: &PathBuf, signing_identity: &str) -> Result<bool, String> {
     sign_binary_with_entitlements(binary_path, signing_identity, None)
 }
 
 /// Sign a single binary file with optional entitlements
 /// entitlements_path: Optional path to .plist file with entitlements
-pub fn sign_binary_with_entitlements(
+#[cfg(target_os = "macos")]
+fn sign_binary_with_entitlements(
     binary_path: &PathBuf, 
     signing_identity: &str,
     entitlements_path: Option<&PathBuf>
