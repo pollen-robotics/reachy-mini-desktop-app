@@ -15,6 +15,18 @@
 
 A modern desktop application for controlling and monitoring your Reachy Mini robot. Built with Tauri and React for a native, performant experience.
 
+The Reachy Mini Control application serves as the primary interface between users and their Reachy Mini robot hardware. Unlike command-line tools or web-based interfaces, this desktop app provides a persistent, native experience that manages the robot's daemon lifecycle, handles USB detection and connection management, and offers a unified dashboard for all robot interactions. The application wraps the FastAPI-based daemon that runs on the robot, providing a user-friendly layer over the underlying REST API and Python SDK.
+
+At its core, the app manages the daemon process—starting it when a robot is detected, monitoring its health, and gracefully shutting it down when needed. The 3D visualization engine renders the robot's current state in real-time, showing joint positions, orientations, and overall pose. This visualization isn't just cosmetic; it provides immediate feedback for debugging movements, understanding the robot's current configuration, and verifying that commands are being executed correctly.
+
+The integrated application store connects users to a growing ecosystem of Reachy Mini apps hosted on Hugging Face Spaces. Apps tagged with `reachy_mini` are automatically discoverable, and the app handles the entire lifecycle: installation via pip in isolated environments, execution through the daemon's app management API, and cleanup when apps are removed. This transforms the robot from a standalone device into a platform where developers can share and users can easily discover new capabilities.
+
+Beyond app management, the interface provides direct access to core robot features like audio I/O (with real-time visualization of speaker output and microphone input), camera feed display, and quick access to built-in choreographies and control interfaces. The simulation mode allows developers to work without physical hardware, using MuJoCo physics simulation that automatically installs and configures itself when needed.
+
+The application is built on Tauri 2.0, which provides a lightweight alternative to Electron by using the system's native webview instead of bundling Chromium. The Rust backend handles system-level operations like USB detection, process management, and file system access, while the React frontend provides a responsive, Material-UI-based interface. This architecture ensures low resource usage, fast startup times, and native performance for operations like window management and system integration.
+
+![Desktop Application Screenshot](src/assets/desktop-app-screenshot.png)
+
 ## ✨ Features
 
 - 🤖 **Robot Control** - Start, stop, and monitor your Reachy Mini daemon
