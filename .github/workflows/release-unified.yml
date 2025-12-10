@@ -626,15 +626,25 @@ jobs:
           # Extract .deb
           TEMP_DIR=$(mktemp -d)
           dpkg-deb -x "$DEB_FILE" "$TEMP_DIR/extract"
-          dpkg-deb -e "$DEB_FILE" "$TEMP_DIR/control"
+          dpkg-deb -e "$DEB_FILE" "$TEMP_DIR/extract/DEBIAN"
+          
+          # Verify DEBIAN directory was created
+          if [ ! -d "$TEMP_DIR/extract/DEBIAN" ]; then
+            echo "❌ Failed to extract DEBIAN directory"
+            exit 1
+          fi
           
           # Copy post-install scripts to DEBIAN directory
-          cp linux/deb-postinst.sh "$TEMP_DIR/control/postinst"
-          cp linux/deb-postrm.sh "$TEMP_DIR/control/postrm"
-          chmod +x "$TEMP_DIR/control/postinst" "$TEMP_DIR/control/postrm"
+          cp linux/deb-postinst.sh "$TEMP_DIR/extract/DEBIAN/postinst"
+          cp linux/deb-postrm.sh "$TEMP_DIR/extract/DEBIAN/postrm"
+          chmod +x "$TEMP_DIR/extract/DEBIAN/postinst" "$TEMP_DIR/extract/DEBIAN/postrm"
           
           # Rebuild .deb with scripts
           dpkg-deb -b "$TEMP_DIR/extract" "$DEB_FILE.new"
+          if [ $? -ne 0 ]; then
+            echo "❌ Failed to rebuild .deb package"
+            exit 1
+          fi
           mv "$DEB_FILE.new" "$DEB_FILE"
           
           # Cleanup
