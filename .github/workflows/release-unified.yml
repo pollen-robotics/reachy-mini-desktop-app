@@ -596,7 +596,8 @@ jobs:
             libssl-dev \
             curl \
             file \
-            libc-bin
+            libc-bin \
+            dpkg-dev
           
           # Tauri handles .deb package creation automatically
           # Set environment variables for pkg-config if needed
@@ -606,6 +607,40 @@ jobs:
           rm -rf target/${{ matrix.target }}/release/bundle
           
           yarn tauri build --target ${{ matrix.target }}
+
+      - name: Add post-install scripts to .deb (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        working-directory: src-tauri
+        run: |
+          DEB_DIR="target/${{ matrix.target }}/release/bundle/deb"
+          DEB_FILE=$(find "$DEB_DIR" -name "*.deb" | head -1)
+          
+          if [ -z "$DEB_FILE" ]; then
+            echo "❌ No .deb file found in $DEB_DIR"
+            exit 1
+          fi
+          
+          echo "📦 Adding post-install scripts to .deb package..."
+          
+          # Extract .deb
+          TEMP_DIR=$(mktemp -d)
+          dpkg-deb -x "$DEB_FILE" "$TEMP_DIR/extract"
+          dpkg-deb -e "$DEB_FILE" "$TEMP_DIR/control"
+          
+          # Copy post-install scripts to DEBIAN directory
+          cp linux/deb-postinst.sh "$TEMP_DIR/control/postinst"
+          cp linux/deb-postrm.sh "$TEMP_DIR/control/postrm"
+          chmod +x "$TEMP_DIR/control/postinst" "$TEMP_DIR/control/postrm"
+          
+          # Rebuild .deb with scripts
+          dpkg-deb -b "$TEMP_DIR/extract" "$DEB_FILE.new"
+          mv "$DEB_FILE.new" "$DEB_FILE"
+          
+          # Cleanup
+          rm -rf "$TEMP_DIR"
+          
+          echo "✅ Post-install scripts added to .deb package"
 
       - name: Sign all binaries (macOS only)
         if: matrix.os == 'macos-latest'

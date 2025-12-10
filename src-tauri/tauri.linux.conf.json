@@ -4,12 +4,7 @@
       "deb": {
         "depends": [],
         "files": {
-          "/etc/udev/rules.d/99-reachy-mini.rules": "linux/99-reachy-mini.rules",
-          "/usr/share/reachy-mini-control/99-reachy-mini.rules": "linux/99-reachy-mini.rules"
-        },
-        "scripts": {
-          "postinst": "linux/deb-postinst.sh",
-          "postrm": "linux/deb-postrm.sh"
+          "/etc/udev/rules.d/99-reachy-mini.rules": "linux/99-reachy-mini.rules"
         }
       }
     }

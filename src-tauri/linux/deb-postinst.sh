@@ -6,6 +6,7 @@ set -e
 
 UDEV_RULES_FILE="/etc/udev/rules.d/99-reachy-mini.rules"
 UDEV_RULES_SOURCE="/usr/share/reachy-mini-control/99-reachy-mini.rules"
+POSTINST_SCRIPT="/usr/share/reachy-mini-control/deb-postinst.sh"
 
 echo "🔧 Configuring Reachy Mini USB permissions..."
 
