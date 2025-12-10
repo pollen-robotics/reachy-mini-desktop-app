@@ -430,6 +430,71 @@ jobs:
             security list-keychains -d user -s "$KEYCHAIN_PATH" $EXISTING_KEYCHAINS || true
           fi
 
+      - name: Setup Windows Code Signing
+        if: matrix.os == 'windows-latest'
+        env:
+          WINDOWS_CERTIFICATE_PFX: ${{ secrets.WINDOWS_CERTIFICATE_PFX }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          if ([string]::IsNullOrEmpty($env:WINDOWS_CERTIFICATE_PFX) -or 
+              [string]::IsNullOrEmpty($env:WINDOWS_CERTIFICATE_PASSWORD)) {
+            Write-Warning "⚠️  Windows signing secrets not configured - skipping signature setup"
+            Write-Warning "   The build will continue but binaries will not be signed"
+            Write-Warning "   Configure WINDOWS_CERTIFICATE_PFX and WINDOWS_CERTIFICATE_PASSWORD secrets to enable signing"
+            exit 0
+          }
+          
+          Write-Host "✅ Windows certificate variables configured"
+          
+          # Decode certificate from base64
+          $certBytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_PFX)
+          $tempCertPath = "$env:RUNNER_TEMP\code-signing-cert.pfx"
+          [System.IO.File]::WriteAllBytes($tempCertPath, $certBytes)
+          
+          # Verify certificate is valid
+          try {
+            $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(
+              $tempCertPath,
+              $env:WINDOWS_CERTIFICATE_PASSWORD
+            )
+            Write-Host "✅ Certificate loaded successfully"
+            Write-Host "   Subject: $($cert.Subject)"
+            Write-Host "   Thumbprint: $($cert.Thumbprint)"
+            
+            # Export for next steps
+            echo "WINDOWS_CERT_PATH=$tempCertPath" >> $env:GITHUB_ENV
+            echo "WINDOWS_SIGNING_ENABLED=true" >> $env:GITHUB_ENV
+          } catch {
+            Write-Error "❌ Failed to load certificate: $($_.Exception.Message)"
+            exit 1
+          }
+          
+          # Find signtool.exe
+          $signtoolPath = $null
+          $possiblePaths = @(
+            "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe",
+            "${env:ProgramFiles}\Windows Kits\10\bin\*\x64\signtool.exe"
+          )
+          
+          foreach ($path in $possiblePaths) {
+            $found = Get-ChildItem -Path $path -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) {
+              $signtoolPath = $found.FullName
+              break
+            }
+          }
+          
+          if (-not $signtoolPath) {
+            Write-Error "❌ signtool.exe not found"
+            Write-Error "   Windows SDK should be installed on GitHub Actions runners"
+            exit 1
+          }
+          
+          Write-Host "✅ signtool.exe found: $signtoolPath"
+          echo "SIGNTOOL_PATH=$signtoolPath" >> $env:GITHUB_ENV
+
       - name: Build Tauri app (Windows)
         if: matrix.os == 'windows-latest'
         shell: bash
@@ -437,12 +502,80 @@ jobs:
         run: |
           yarn tauri build --target ${{ matrix.target }}
 
+      - name: Sign all binaries (Windows)
+        if: matrix.os == 'windows-latest' && env.WINDOWS_SIGNING_ENABLED == 'true'
+        env:
+          WINDOWS_CERT_PATH: ${{ env.WINDOWS_CERT_PATH }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          SIGNTOOL_PATH: ${{ env.SIGNTOOL_PATH }}
+        shell: pwsh
+        run: |
+          $BUNDLE_DIR = "src-tauri/target/${{ matrix.target }}/release"
+          
+          Write-Host "🔐 Signing Windows binaries..."
+          
+          # Use the existing script
+          & ./scripts/signing/sign-windows-binaries.ps1 `
+            -TargetPath "$BUNDLE_DIR" `
+            -CertificatePath $env:WINDOWS_CERT_PATH `
+            -CertificatePassword $env:WINDOWS_CERTIFICATE_PASSWORD `
+            -TimestampUrl "http://timestamp.digicert.com"
+          
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "❌ Failed to sign binaries"
+            exit 1
+          }
+          
+          Write-Host "✅ All binaries signed successfully!"
+
+      - name: Sign MSI installer (Windows)
+        if: matrix.os == 'windows-latest' && env.WINDOWS_SIGNING_ENABLED == 'true'
+        env:
+          WINDOWS_CERT_PATH: ${{ env.WINDOWS_CERT_PATH }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          SIGNTOOL_PATH: ${{ env.SIGNTOOL_PATH }}
+        shell: pwsh
+        run: |
+          $MSI_DIR = "src-tauri/target/${{ matrix.target }}/release/bundle/msi"
+          $MSI_FILE = Get-ChildItem -Path $MSI_DIR -Filter "*.msi" -ErrorAction SilentlyContinue | Select-Object -First 1
+          
+          if (-not $MSI_FILE) {
+            Write-Error "❌ MSI file not found in: $MSI_DIR"
+            exit 1
+          }
+          
+          Write-Host "🔐 Signing MSI installer..."
+          Write-Host "   File: $($MSI_FILE.FullName)"
+          
+          & $env:SIGNTOOL_PATH sign `
+            /f $env:WINDOWS_CERT_PATH `
+            /p $env:WINDOWS_CERTIFICATE_PASSWORD `
+            /fd sha256 `
+            /tr http://timestamp.digicert.com `
+            /td sha256 `
+            $MSI_FILE.FullName
+          
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "❌ Failed to sign MSI"
+            exit 1
+          }
+          
+          # Verify MSI signature
+          Write-Host "✅ Verifying MSI signature..."
+          & $env:SIGNTOOL_PATH verify /pa /v $MSI_FILE.FullName
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "❌ MSI signature verification failed"
+            exit 1
+          }
+          
+          Write-Host "✅ MSI signed and verified successfully!"
+
       - name: Build Tauri app (Linux)
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         working-directory: src-tauri
         run: |
-          # Install dependencies required for AppImage build
+          # Install dependencies required for .deb build
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
@@ -465,7 +598,7 @@ jobs:
             file \
             libc-bin
           
-          # Ensure linuxdeploy can be downloaded (Tauri handles this automatically)
+          # Tauri handles .deb package creation automatically
           # Set environment variables for pkg-config if needed
           export PKG_CONFIG_PATH=/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig
           
@@ -786,7 +919,7 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'alpha') }}
           files: |
-            src-tauri/target/*/release/bundle/appimage/*.AppImage
+            src-tauri/target/*/release/bundle/deb/*.deb
             src-tauri/target/*/release/bundle/msi/*.msi
             src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.dmg
             src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.zip
@@ -801,7 +934,7 @@ jobs:
           tag_name: v${{ steps.version.outputs.version }}
           files: |
             ${{ matrix.os == 'windows-latest' && format('src-tauri/target/{0}/release/bundle/msi/*.msi', matrix.target) || '' }}
-            ${{ matrix.os == 'ubuntu-latest' && format('src-tauri/target/{0}/release/bundle/appimage/*.AppImage', matrix.target) || '' }}
+            ${{ matrix.os == 'ubuntu-latest' && format('src-tauri/target/{0}/release/bundle/deb/*.deb', matrix.target) || '' }}
             ${{ matrix.os == 'macos-latest' && format('src-tauri/target/{0}/release/bundle/macos/*.dmg', matrix.target) || '' }}
             ${{ matrix.os == 'macos-latest' && format('src-tauri/target/{0}/release/bundle/macos/*.zip', matrix.target) || '' }}
             releases/**/*.tar.gz

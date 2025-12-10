@@ -11,6 +11,8 @@ lerna-debug.log*
 Reachy
 Test
 
+.playwright-mcp
+
 .analysis/
 .claude/
 .claude-4.5-sonnet-analysis/

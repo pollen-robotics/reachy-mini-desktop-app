@@ -65,10 +65,10 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS
     BUNDLE_PATH="${BUNDLE_DIR}/macos/Reachy Mini Control.app"
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    # Linux - find first AppImage
-    BUNDLE_PATH=$(find "${BUNDLE_DIR}/appimage" -name "*.AppImage" 2>/dev/null | head -1)
+    # Linux - find first .deb package
+    BUNDLE_PATH=$(find "${BUNDLE_DIR}/deb" -name "*.deb" 2>/dev/null | head -1)
     if [ -z "$BUNDLE_PATH" ]; then
-        echo -e "${RED}❌ No AppImage found in ${BUNDLE_DIR}/appimage${NC}"
+        echo -e "${RED}❌ No .deb package found in ${BUNDLE_DIR}/deb${NC}"
         exit 1
     fi
 else

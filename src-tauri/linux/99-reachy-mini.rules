@@ -1,0 +1,9 @@
+# udev rules for Reachy Mini USB devices
+# This file allows non-root access to Reachy Mini hardware
+
+# Reachy Mini main board (CH340)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d3", MODE="0666", GROUP="dialout"
+
+# Reachy Mini soundcard
+SUBSYSTEM=="tty", ATTRS{idVendor}=="38fb", ATTRS{idProduct}=="1001", MODE="0666", GROUP="dialout"
+

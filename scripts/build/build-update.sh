@@ -146,7 +146,7 @@ elif [[ "$PLATFORM" == windows-* ]]; then
         BUNDLE_EXISTS=true
     fi
 elif [[ "$PLATFORM" == linux-* ]]; then
-    if [ -d "$BUNDLE_DIR/appimage" ] && [ -n "$(find "$BUNDLE_DIR/appimage" -name "*.AppImage" 2>/dev/null | head -1)" ]; then
+    if [ -d "$BUNDLE_DIR/deb" ] && [ -n "$(find "$BUNDLE_DIR/deb" -name "*.deb" 2>/dev/null | head -1)" ]; then
         BUNDLE_EXISTS=true
     fi
 fi
@@ -299,21 +299,21 @@ elif [[ "$PLATFORM" == windows-* ]]; then
     cp "$BUNDLE_FILE" "$OUTPUT_DIR/"
     BUNDLE_FILE="$OUTPUT_DIR/$(basename "$BUNDLE_FILE")"
 elif [[ "$PLATFORM" == linux-* ]]; then
-    # Find AppImage file - try multiple methods for robustness
-    APPIMAGE_DIR="$BUNDLE_DIR/appimage"
+    # Find .deb file - try multiple methods for robustness
+    DEB_DIR="$BUNDLE_DIR/deb"
     
     # Always use absolute path from PROJECT_DIR
-    if [[ "$APPIMAGE_DIR" != /* ]]; then
+    if [[ "$DEB_DIR" != /* ]]; then
         # Relative path - make it absolute
-        APPIMAGE_DIR="$PROJECT_DIR/$APPIMAGE_DIR"
+        DEB_DIR="$PROJECT_DIR/$DEB_DIR"
     fi
     
     # Verify the directory exists
-    if [ ! -d "$APPIMAGE_DIR" ]; then
-        echo -e "${RED}❌ AppImage directory not found: ${APPIMAGE_DIR}${NC}"
+    if [ ! -d "$DEB_DIR" ]; then
+        echo -e "${RED}❌ Debian package directory not found: ${DEB_DIR}${NC}"
         echo -e "${YELLOW}   PROJECT_DIR: ${PROJECT_DIR}${NC}"
         echo -e "${YELLOW}   BUNDLE_DIR: ${BUNDLE_DIR}${NC}"
-        echo -e "${YELLOW}   Looking for AppImage files in bundle directory:${NC}"
+        echo -e "${YELLOW}   Looking for .deb files in bundle directory:${NC}"
         ABS_BUNDLE_DIR="$PROJECT_DIR/$BUNDLE_DIR"
         if [ -d "$ABS_BUNDLE_DIR" ]; then
             echo -e "${YELLOW}   Contents of: ${ABS_BUNDLE_DIR}${NC}"
@@ -328,21 +328,21 @@ elif [[ "$PLATFORM" == linux-* ]]; then
     fi
     
     # Try find first (works on Unix-like systems)
-    BUNDLE_FILE=$(find "$APPIMAGE_DIR" -name "*.AppImage" 2>/dev/null | head -1)
+    BUNDLE_FILE=$(find "$DEB_DIR" -name "*.deb" 2>/dev/null | head -1)
     
     # If find failed, try ls as fallback
     if [ -z "$BUNDLE_FILE" ]; then
-        BUNDLE_FILE=$(ls "$APPIMAGE_DIR"/*.AppImage 2>/dev/null | head -1)
+        BUNDLE_FILE=$(ls "$DEB_DIR"/*.deb 2>/dev/null | head -1)
     fi
     
     if [ -z "$BUNDLE_FILE" ] || [ ! -f "$BUNDLE_FILE" ]; then
-        echo -e "${RED}❌ AppImage bundle not found in: ${APPIMAGE_DIR}${NC}"
-        echo -e "${YELLOW}   Contents of AppImage directory:${NC}"
-        ls -la "$APPIMAGE_DIR" || true
+        echo -e "${RED}❌ Debian package not found in: ${DEB_DIR}${NC}"
+        echo -e "${YELLOW}   Contents of deb directory:${NC}"
+        ls -la "$DEB_DIR" || true
         exit 1
     fi
     
-    echo -e "${BLUE}📦 Found AppImage: ${BUNDLE_FILE}${NC}"
+    echo -e "${BLUE}📦 Found Debian package: ${BUNDLE_FILE}${NC}"
     cp "$BUNDLE_FILE" "$OUTPUT_DIR/"
     BUNDLE_FILE="$OUTPUT_DIR/$(basename "$BUNDLE_FILE")"
 fi
@@ -546,10 +546,10 @@ elif [[ "$PLATFORM" == windows-* ]]; then
     # For now, use a pattern that matches common Tauri MSI naming
     FILE_NAME="Reachy.Mini.Control_${VERSION}_x64-setup.msi"
 elif [[ "$PLATFORM" == linux-* ]]; then
-    # Linux AppImage: Tauri generates names based on productName
-    # Typically: Reachy Mini Control_${VERSION}_x86_64.AppImage
+    # Linux .deb: Tauri generates names based on productName
+    # Typically: reachy-mini-control_${VERSION}_amd64.deb
     # But GitHub might have different naming. Use the actual filename from bundle if available.
-    FILE_NAME="Reachy.Mini.Control_${VERSION}_x86_64.AppImage"
+    FILE_NAME="reachy-mini-control_${VERSION}_amd64.deb"
 fi
 
 # File URL (dev = localhost, prod = to be configured)
