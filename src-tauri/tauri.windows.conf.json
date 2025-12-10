@@ -3,12 +3,7 @@
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
-      "timestampUrl": "http://timestamp.digicert.com",
-      "wix": {
-        "installMode": "perUser",
-        "allowDowngrades": false,
-        "enableElevatedUpdateTask": false
-      }
+      "timestampUrl": "http://timestamp.digicert.com"
     }
   }
 }
