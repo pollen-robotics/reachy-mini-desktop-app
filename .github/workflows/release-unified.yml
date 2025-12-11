@@ -83,36 +83,9 @@ jobs:
           echo "   Updating tauri.linux.conf.json..."
           
           # Update the tauri.linux.conf.json with the exact cpython folder name
-          # Replace the glob patterns with the actual folder name
-          # Using a simple Python script for reliable JSON manipulation
-          python3 << EOF
-import json
-
-with open('src-tauri/tauri.linux.conf.json', 'r') as f:
-    config = json.load(f)
-
-cpython_folder = "$CPYTHON_FOLDER"
-
-# Update resources with correct cpython folder name
-new_resources = {}
-for src, dst in config['bundle']['resources'].items():
-    if 'cpython-3.12*-linux-x86_64*' in src:
-        # Replace the source pattern
-        new_src = src.replace('cpython-3.12*-linux-x86_64*', cpython_folder)
-        # Replace the destination pattern
-        new_dst = dst.replace('cpython-3.12-linux-x86_64', cpython_folder)
-        new_resources[new_src] = new_dst
-    else:
-        new_resources[src] = dst
-
-config['bundle']['resources'] = new_resources
-
-with open('src-tauri/tauri.linux.conf.json', 'w') as f:
-    json.dump(config, f, indent=2)
-    f.write('\n')
-
-print(f"✅ Updated config with cpython folder: {cpython_folder}")
-EOF
+          # Replace glob patterns with the actual folder name using sed
+          sed -i "s|cpython-3.12\*-linux-x86_64\*|$CPYTHON_FOLDER|g" src-tauri/tauri.linux.conf.json
+          sed -i "s|cpython-3.12-linux-x86_64|$CPYTHON_FOLDER|g" src-tauri/tauri.linux.conf.json
           
           echo "✅ Updated tauri.linux.conf.json:"
           cat src-tauri/tauri.linux.conf.json
