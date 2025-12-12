@@ -69,6 +69,7 @@
     "swiper": "^12.0.3",
     "three": "^0.181.0",
     "urdf-loader": "^0.12.6",
+    "webrtc-adapter": "^9.0.3",
     "zustand": "^5.0.8"
   }
 }
