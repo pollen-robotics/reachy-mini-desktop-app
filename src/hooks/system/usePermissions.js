@@ -8,8 +8,8 @@ import { invoke } from '@tauri-apps/api/core';
  * Exposes a manual refresh function for immediate checks
  */
 export function usePermissions({ checkInterval = 2000 } = {}) {
-  const [cameraGranted, setCameraGranted] = useState(false);
-  const [microphoneGranted, setMicrophoneGranted] = useState(false);
+  const [cameraGranted, setCameraGranted] = useState(null);
+  const [microphoneGranted, setMicrophoneGranted] = useState(null);
   const [isChecking, setIsChecking] = useState(true);
   const [hasChecked, setHasChecked] = useState(false);
 
@@ -34,6 +34,9 @@ export function usePermissions({ checkInterval = 2000 } = {}) {
       setCameraGranted(cameraStatus === true);
       setMicrophoneGranted(micStatus === true);
       setHasChecked(true);
+      
+      console.log(`[usePermissions] Final cameraGranted: ${cameraStatus === true} (raw: ${cameraStatus})`);
+      console.log(`[usePermissions] Final microphoneGranted: ${micStatus === true} (raw: ${micStatus})`);
       
       console.log(`[usePermissions] 📊 Final state - Camera: ${cameraStatus === true ? '✅ Granted' : '❌ Not granted'}, Microphone: ${micStatus === true ? '✅ Granted' : '❌ Not granted'}`);
     } catch (error) {

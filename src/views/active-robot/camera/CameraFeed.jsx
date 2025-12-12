@@ -5,7 +5,7 @@ import VideocamOffOutlinedIcon from '@mui/icons-material/VideocamOffOutlined';
 /**
  * CameraFeed Component - Displays camera unavailable placeholder
  */
-export default function CameraFeed({ width = 240, height = 180, isLarge = false }) {
+export default function CameraFeed({ width = 240, height = 180, isLarge = false, message = 'Camera Unavailable' }) {
   return (
     <Box
       sx={{
@@ -36,9 +36,11 @@ export default function CameraFeed({ width = 240, height = 180, isLarge = false 
           fontFamily: 'SF Mono, Monaco, Menlo, monospace',
           textTransform: 'uppercase',
           letterSpacing: '0.5px',
+          textAlign: 'center',
+          px: 2,
         }}
       >
-        Camera Unavailable
+        {message}
       </Typography>
     </Box>
   );
