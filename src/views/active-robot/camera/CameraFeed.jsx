@@ -20,7 +20,7 @@ export default function CameraFeed({ width = 240, height = 180, isLarge = false 
 
   useEffect(() => {
     mountedRef.current = true;
-    
+
     return () => {
       mountedRef.current = false;
       if (retryTimeoutRef.current) {
@@ -42,7 +42,7 @@ export default function CameraFeed({ width = 240, height = 180, isLarge = false 
       console.log('[CameraFeed] ❌ MJPEG stream error, will retry...');
       setIsLoaded(false);
       setHasError(true);
-      
+
       // Retry after delay by re-mounting the img element with new URL
       retryTimeoutRef.current = setTimeout(() => {
         if (mountedRef.current) {
@@ -84,7 +84,7 @@ export default function CameraFeed({ width = 240, height = 180, isLarge = false 
           }}
         />
       )}
-      
+
       {/* Placeholder when no video */}
       {showPlaceholder && (
         <Box
@@ -134,7 +134,6 @@ export default function CameraFeed({ width = 240, height = 180, isLarge = false 
           </Typography>
         </Box>
       )}
-      
     </Box>
   );
 }

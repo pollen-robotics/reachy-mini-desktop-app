@@ -11,8 +11,8 @@ import { invoke } from '@tauri-apps/api/core';
  * API responses could overwrite more recent permission states.
  */
 export function usePermissions({ checkInterval = 2000 } = {}) {
-  const [cameraGranted, setCameraGranted] = useState(false);
-  const [microphoneGranted, setMicrophoneGranted] = useState(false);
+  const [cameraGranted, setCameraGranted] = useState(null);
+  const [microphoneGranted, setMicrophoneGranted] = useState(null);
   const [isChecking, setIsChecking] = useState(true);
   const [hasChecked, setHasChecked] = useState(false);
   
