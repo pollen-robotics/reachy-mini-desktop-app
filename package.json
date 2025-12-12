@@ -71,6 +71,7 @@
     "three": "^0.181.0",
     "urdf-loader": "^0.12.6",
     "use-sound": "^5.0.0",
+    "webrtc-adapter": "^9.0.3",
     "zustand": "^5.0.8"
   }
 }

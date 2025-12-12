@@ -208,6 +208,7 @@ pub fn spawn_and_monitor_sidecar(
         .shell()
         .sidecar("uv-trampoline")
         .map_err(|e| e.to_string())?
+        .env("PYTHONPATH", "/Users/twinpeakstownie/reachy_mini/src")
         .args(daemon_args_refs);
     
     let (mut rx, child) = sidecar_command.spawn().map_err(|e| e.to_string())?;

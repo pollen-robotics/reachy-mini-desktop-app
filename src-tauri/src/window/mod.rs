@@ -18,6 +18,8 @@ pub fn apply_transparent_titlebar(_app: AppHandle, _window_label: String) -> Res
                         let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: YES];
                         
                         // Full size content view so content goes under titlebar
+                        // Suppress clippy warning for this specific macro usage
+                        #[allow(unexpected_cfgs)]
                         let style_mask: u64 = msg_send![ns_window, styleMask];
                         let new_style = style_mask | (1 << 15); // NSWindowStyleMaskFullSizeContentView
                         let _: () = msg_send![ns_window, setStyleMask: new_style];

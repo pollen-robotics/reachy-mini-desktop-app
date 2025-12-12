@@ -25,7 +25,8 @@ export function useViewRouter({
   // Permissions
   permissionsGranted,
   isRestarting,
-  
+  hasChecked,
+
   // Update
   shouldShowUpdateView,
   isChecking,
@@ -34,11 +35,11 @@ export function useViewRouter({
   updateAvailable,
   updateError,
   onInstallUpdate,
-  
+
   // USB
   shouldShowUsbCheck,
   isUsbConnected,
-  
+
   // Daemon
   isStarting,
   isStopping,
@@ -48,12 +49,12 @@ export function useViewRouter({
   startupError,
   startDaemon,
   stopDaemon,
-  
+
   // Robot commands
   sendCommand,
   playRecordedMove,
   isCommandRunning,
-  
+
   // Other
   logs,
   daemonVersion,
@@ -61,7 +62,16 @@ export function useViewRouter({
   onAppsReady,
 }) {
   return useMemo(() => {
-    // PRIORITY 0: Permissions view
+    // PRIORITY 0: Initialization
+    if (!hasChecked) {
+      return {
+        viewComponent: () => <Box sx={{ width: '100%', height: '100vh', bgcolor: 'background.default' }} />,
+        viewProps: {},
+        showTopBar: false,
+      };
+    }
+
+    // PRIORITY 0.5: Permissions view
     if (!permissionsGranted || isRestarting) {
       return {
         viewComponent: PermissionsRequiredView,
@@ -208,6 +218,7 @@ export function useViewRouter({
     daemonVersion,
     usbPortName,
     onAppsReady,
+    hasChecked,
   ]);
 }
 
@@ -217,17 +228,17 @@ export function useViewRouter({
  */
 export function ViewRouterWrapper({ viewConfig }) {
   const { viewComponent: ViewComponent, viewProps, showTopBar, backgroundComponent: BackgroundComponent, backgroundProps, needsContext } = viewConfig;
-  
+
   // Get context config from adapter (only used when needsContext is true)
   // This is always called (React hooks rule) but only used when needed
   const contextConfig = useActiveRobotAdapter();
 
   if (BackgroundComponent) {
     // Transition view with background component
-    const bgPropsWithContext = needsContext 
-      ? { ...backgroundProps, contextConfig } 
+    const bgPropsWithContext = needsContext
+      ? { ...backgroundProps, contextConfig }
       : backgroundProps;
-    
+
     return (
       <Box sx={{ position: 'relative', width: '100%', height: '100vh' }}>
         {showTopBar && <AppTopBar />}
@@ -241,17 +252,17 @@ export function ViewRouterWrapper({ viewConfig }) {
 
   if (!showTopBar) {
     // View has its own topbar (e.g., ClosingView)
-    const propsWithContext = needsContext 
-      ? { ...viewProps, contextConfig } 
+    const propsWithContext = needsContext
+      ? { ...viewProps, contextConfig }
       : viewProps;
     return <ViewComponent {...propsWithContext} />;
   }
 
   // Standard view with topbar
-  const propsWithContext = needsContext 
-    ? { ...viewProps, contextConfig } 
+  const propsWithContext = needsContext
+    ? { ...viewProps, contextConfig }
     : viewProps;
-  
+
   return (
     <Box sx={{ position: 'relative', width: '100%', height: '100vh' }}>
       <AppTopBar />

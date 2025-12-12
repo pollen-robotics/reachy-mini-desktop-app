@@ -7,7 +7,7 @@ import VideocamOutlinedIcon from '@mui/icons-material/VideocamOutlined';
  * CameraFeed Component - Displays live video stream from the robot's camera
  * Uses MJPEG stream from the daemon's /api/camera/stream endpoint
  */
-export default function CameraFeed({ width = 240, height = 180, isLarge = false }) {
+export default function CameraFeed({ width = 240, height = 180, isLarge = false, message }) {
   const imgRef = useRef(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -130,7 +130,7 @@ export default function CameraFeed({ width = 240, height = 180, isLarge = false 
               letterSpacing: '0.5px',
             }}
           >
-            {hasError ? 'Camera unavailable' : 'Connecting...'}
+            {message || (hasError ? 'Camera unavailable' : 'Connecting...')}
           </Typography>
         </Box>
       )}
