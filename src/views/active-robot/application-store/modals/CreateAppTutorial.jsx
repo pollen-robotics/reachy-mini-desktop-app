@@ -26,21 +26,21 @@ export default function CreateAppTutorialModal({
       icon: JoystickIcon,
       title: 'Get familiar with the robot',
       description: 'Use the daemon API via console commands',
-      url: 'https://example.com/tutorial-console',
+      url: 'https://github.com/pollen-robotics/reachy_mini/blob/main/docs/rest-api.md',
     },
     {
       id: 'create',
       icon: BlueprintIcon,
       title: 'Create your own app',
       description: 'Build your app with the Python SDK',
-      url: 'https://example.com/tutorial-create',
+      url: 'https://github.com/pollen-robotics/reachy_mini/blob/main/docs/python-sdk.md',
     },
     {
       id: 'deploy',
       icon: RocketIcon,
       title: 'Deploy',
       description: 'Share your app on Hugging Face Spaces',
-      url: 'https://example.com/tutorial-deploy',
+      url: 'https://huggingface.co/blog/pollen-robotics/make-and-publish-your-reachy-mini-apps',
     },
   ];
 

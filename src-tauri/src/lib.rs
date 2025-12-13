@@ -182,11 +182,7 @@ pub fn run() {
             window::close_window,
             signing::sign_python_binaries,
             permissions::open_camera_settings,
-            permissions::open_microphone_settings,
-            permissions::check_camera_permission,
-            permissions::request_camera_permission,
-            permissions::check_microphone_permission,
-            permissions::request_microphone_permission
+            permissions::open_microphone_settings
         ])
         .on_window_event(|window, event| {
             match event {
