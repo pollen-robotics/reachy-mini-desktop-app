@@ -18,46 +18,54 @@ function App() {
   const { isUsbConnected, usbPortName, checkUsbRobot } = useUsbDetection();
   const { sendCommand, playRecordedMove, isCommandRunning } = useRobotCommands();
   const { logs, fetchLogs } = useLogs();
-  
+
   // 🔐 Permissions check (macOS only)
   // Blocks the app until camera and microphone permissions are granted
   const { allGranted: permissionsGranted, cameraGranted, microphoneGranted, hasChecked } = usePermissions({ checkInterval: 2000 });
+
+  // Debug: Log permission states
+  useEffect(() => {
+    console.log(`[App] Permission state update - camera: ${cameraGranted}, microphone: ${microphoneGranted}, hasChecked: ${hasChecked}`);
+  }, [cameraGranted, microphoneGranted, hasChecked]);
   const [isRestarting, setIsRestarting] = useState(false);
   const restartTimerRef = useRef(null);
   const restartStartedRef = useRef(false);
   // Track if permissions were already granted on the first check (mount)
   const permissionsGrantedOnFirstCheckRef = useRef(null);
-  
+
   // Check if permissions were already granted on first check (to avoid restart loop)
   useEffect(() => {
     if (hasChecked && permissionsGrantedOnFirstCheckRef.current === null) {
       // First check completed - remember if permissions were already granted
-      permissionsGrantedOnFirstCheckRef.current = permissionsGranted;
-      if (permissionsGranted) {
+      // Handle null states (initial loading)
+      const actualPermissionsGranted = cameraGranted === true && microphoneGranted === true;
+      permissionsGrantedOnFirstCheckRef.current = actualPermissionsGranted;
+      if (actualPermissionsGranted) {
         console.log('[App] ✅ Permissions already granted on first check - no restart needed');
       } else {
         console.log('[App] ❌ Permissions not granted on first check - will restart when granted');
       }
     }
-  }, [hasChecked, permissionsGranted]);
-  
+  }, [hasChecked, permissionsGranted, cameraGranted, microphoneGranted]);
+
   // Handle restart when permissions are granted
   useEffect(() => {
     // Only start restart flow if:
     // 1. Permissions are granted
     // 2. We haven't started the restart yet
     // 3. Permissions were NOT already granted on first check (to avoid restart loop)
+    const actualPermissionsGranted = cameraGranted === true && microphoneGranted === true;
     if (
-      permissionsGranted && 
-      !restartStartedRef.current && 
+      actualPermissionsGranted &&
+      !restartStartedRef.current &&
       permissionsGrantedOnFirstCheckRef.current === false
     ) {
       restartStartedRef.current = true;
       const isDev = isDevMode();
       setIsRestarting(true);
-      
+
       console.log('[App] 🔄 Permissions just granted - restarting app...');
-      
+
       if (isDev) {
         // Dev mode: show restart UI for 3 seconds, then continue (simulate restart)
         restartTimerRef.current = setTimeout(() => {
@@ -87,7 +95,7 @@ function App() {
         }, 4000); // 4 seconds in production
       }
     }
-    
+
     return () => {
       if (restartTimerRef.current) {
         clearTimeout(restartTimerRef.current);
@@ -95,7 +103,7 @@ function App() {
       }
     };
   }, [permissionsGranted]);
-  
+
   // 🔄 Automatic update system
   // Tries to fetch latest.json directly - if it works, we have internet + we know if there's an update
   // In dev mode, skip automatic check but still show the view for minimum time
@@ -113,7 +121,7 @@ function App() {
     checkInterval: DAEMON_CONFIG.UPDATE_CHECK.INTERVAL,
     silent: false,
   });
-  
+
   // 🔍 DEBUG: Force update check in dev mode for testing
   useEffect(() => {
     if (isDev) {
@@ -122,7 +130,7 @@ function App() {
       console.log('   Or temporarily set autoCheck: true in useUpdater hook');
     }
   }, [isDev, checkForUpdates]);
-  
+
   // ✨ Update view state management with useReducer
   // Handles all cases: dev mode, production mode, minimum display time, errors
   const shouldShowUpdateView = useUpdateViewState({
@@ -135,17 +143,17 @@ function App() {
     isStarting,
     isStopping,
   });
-  
+
   // 🕐 USB check timing - manages when to start USB check after update view
   const { shouldShowUsbCheck } = useUsbCheckTiming(shouldShowUpdateView);
-  
+
   // 🎯 Centralized robot state polling (SINGLE place for /api/state/full calls)
   useRobotState(isActive);
-  
+
   // 🏥 Centralized health check (monitors robotStateFull updates for crash detection)
   useDaemonHealthCheck();
-  
-  
+
+
   // ⚡ Cleanup is handled on Rust side in lib.rs:
   // - Signal handler (SIGTERM/SIGINT) → cleanup_system_daemons()
   // - on_window_event(CloseRequested) → kill_daemon()
@@ -158,13 +166,13 @@ function App() {
     if (isStopping) {
       return 'compact';
     }
-    
+
     // ⚡ Expanded view: daemon active OR transitioning (but NEVER during StartingView)
     // BLOCK resize as long as isStarting = true (scan in progress)
     if (!isStarting && (isActive || isTransitioning) && !hardwareError) {
       return 'expanded';
     }
-    
+
     // Compact view: all others (RobotNotDetected, Starting, ReadyToStart)
     return 'compact';
   }, [isActive, hardwareError, isStopping, isTransitioning, isStarting]);
@@ -177,13 +185,13 @@ function App() {
     // It polls every 1.33s and updates isActive, so no need for separate 3s polling
     fetchLogs();
     fetchDaemonVersion();
-    
+
     // ⚠️ IMPORTANT: Don't check USB until update check is complete
     // This ensures UpdateView is shown FIRST, before USB check
     if (!shouldShowUpdateView) {
       checkUsbRobot();
     }
-    
+
     const logsInterval = setInterval(fetchLogs, DAEMON_CONFIG.INTERVALS.LOGS_FETCH);
     const usbInterval = setInterval(() => {
       // Only check USB if update check is complete
@@ -249,6 +257,7 @@ function App() {
     daemonVersion,
     usbPortName,
     onAppsReady: handleAppsReady,
+    hasChecked,
   });
 
   return <ViewRouterWrapper viewConfig={viewConfig} />;

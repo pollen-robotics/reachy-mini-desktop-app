@@ -6,6 +6,8 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 import Viewer3D from '../../components/viewer3d';
 import CameraFeed from './camera/CameraFeed';
+import WebRTCVideo from '../../components/WebRTCVideo';
+import CameraStatusManager from '../../components/CameraStatusManager';
 import { ViewportSwapper } from './layout';
 import LogConsole from '@components/LogConsole';
 import { RightPanel } from './right-panel';
@@ -397,7 +399,7 @@ function ActiveRobotView({
                 />
               }
               viewCamera={
-                <CameraFeed 
+                <CameraStatusManager 
                   width={640}
                   height={480}
                   isLarge={true}

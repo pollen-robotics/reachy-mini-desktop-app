@@ -102,16 +102,18 @@ const PermissionCard = ({
         variant="body1"
         sx={{
           fontWeight: 600,
-          color: granted
+          color: granted === true
             ? (darkMode ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.85)')
-            : (darkMode ? '#fff' : '#1a1a1a'),
+            : granted === false
+              ? (darkMode ? '#fff' : '#1a1a1a')
+              : (darkMode ? '#999' : '#666'),
           mb: 2,
           textAlign: 'center',
         }}
       >
-        {title}
+        {title} {granted === null && '⏳'}
       </Typography>
-      {granted ? (
+      {granted === true ? (
         <Box
           sx={{
             display: 'flex',
@@ -143,7 +145,7 @@ const PermissionCard = ({
             Granted
           </Typography>
         </Box>
-      ) : (
+      ) : granted === false ? (
         <Button
           variant="outlined"
           color="primary"
@@ -152,6 +154,18 @@ const PermissionCard = ({
         >
           {requested ? 'Open Settings' : 'Ask Access'}
         </Button>
+      ) : (
+        <Typography
+          sx={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: darkMode ? '#999' : '#666',
+            textAlign: 'center',
+            py: 1,
+          }}
+        >
+          Checking...
+        </Typography>
       )}
     </Box>
   );
@@ -242,7 +256,13 @@ export default function PermissionsRequiredView({ isRestarting: externalIsRestar
         logInfo('[Permissions] Attempting to invoke plugin command...');
         // Format: plugin:macos-permissions|check_camera_permission (with underscores, no params)
         const testResult = await invoke('plugin:macos-permissions|check_camera_permission');
-        logSuccess(`[Permissions] ✅ Plugin is available, camera check result: ${testResult} (type: ${typeof testResult})`);
+        logInfo(`[Permissions] ✅ Plugin is available, camera check result: ${testResult} (type: ${typeof testResult})`);
+        
+        // Update the permission state immediately if the plugin returns a different result
+        if (testResult !== cameraGranted) {
+          logWarning(`[Permissions] ⚠️  Plugin result (${testResult}) differs from hook state (${cameraGranted}). Refreshing permissions...`);
+          await refreshPermissions();
+        }
       } catch (error) {
         logError(`[Permissions] ❌ Plugin not available or error: ${error.message}`);
         logError(`[Permissions] Error name: ${error.name}`);
@@ -257,7 +277,7 @@ export default function PermissionsRequiredView({ isRestarting: externalIsRestar
       }
     };
     testPlugin();
-  }, []);
+  }, [cameraGranted, refreshPermissions]);
 
   // Generic permission request handler
   const requestPermission = async (type) => {
@@ -437,7 +457,13 @@ export default function PermissionsRequiredView({ isRestarting: externalIsRestar
 
   // Log permission state changes
   React.useEffect(() => {
-    logInfo(`[Permissions] 📊 Permission state - Camera: ${cameraGranted ? '✅ Granted' : '❌ Not granted'}, Microphone: ${microphoneGranted ? '✅ Granted' : '❌ Not granted'}`);
+    const cameraStatus = cameraGranted === true ? '✅ Granted' : cameraGranted === false ? '❌ Not granted' : '⏳ Checking...';
+    const microphoneStatus = microphoneGranted === true ? '✅ Granted' : microphoneGranted === false ? '❌ Not granted' : '⏳ Checking...';
+    logInfo(`[Permissions] 📊 Permission state - Camera: ${cameraStatus}, Microphone: ${microphoneStatus}`);
+    
+    // Debug: Log the actual boolean values
+    console.log(`[DEBUG] Camera granted: ${cameraGranted} (${typeof cameraGranted})`);
+    console.log(`[DEBUG] Microphone granted: ${microphoneGranted} (${typeof microphoneGranted})`);
   }, [cameraGranted, microphoneGranted]);
 
   return (
