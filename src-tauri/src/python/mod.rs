@@ -67,10 +67,7 @@ pub fn build_daemon_args(sim_mode: bool) -> Result<Vec<String>, String> {
         "reachy_mini.daemon.app.main".to_string(),
         "--kinematics-engine".to_string(),
         "Placo".to_string(),
-        // Enable video/audio streaming via WebSocket
-        "--websocket-uri".to_string(),
-        "ws://localhost:8000".to_string(),
-        "--stream-media".to_string(),
+        "--desktop-app-daemon".to_string(),
     ];
     
     if sim_mode {

@@ -1,150 +1,60 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Box, Typography } from '@mui/material';
 import VideocamOffOutlinedIcon from '@mui/icons-material/VideocamOffOutlined';
 import VideocamOutlinedIcon from '@mui/icons-material/VideocamOutlined';
 
 /**
  * CameraFeed Component - Displays live video stream from the robot's camera
- * Connects to the daemon's WebSocket video stream endpoint
+ * Uses MJPEG stream from the daemon's /api/camera/stream endpoint
  */
 export default function CameraFeed({ width = 240, height = 180, isLarge = false }) {
-  const canvasRef = useRef(null);
-  const wsRef = useRef(null);
-  const reconnectTimeoutRef = useRef(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const [hasReceivedFrame, setHasReceivedFrame] = useState(false);
-  const [error, setError] = useState(null);
+  const imgRef = useRef(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const retryTimeoutRef = useRef(null);
   const mountedRef = useRef(true);
 
-  // WebSocket URL for video stream
-  const WS_URL = 'ws://localhost:8000/video_stream';
-
-  const connectWebSocket = useCallback(() => {
-    if (!mountedRef.current) return;
-    
-    // Clean up existing connection
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-
-    try {
-      console.log('[CameraFeed] 🎥 Connecting to video stream:', WS_URL);
-      const ws = new WebSocket(WS_URL);
-      ws.binaryType = 'arraybuffer';
-      
-      ws.onopen = () => {
-        if (!mountedRef.current) return;
-        console.log('[CameraFeed] ✅ Connected to video stream');
-        setIsConnected(true);
-        setError(null);
-      };
-
-      ws.onmessage = (event) => {
-        if (!mountedRef.current) return;
-        
-        try {
-          // The daemon sends JPEG frames as binary data
-          const arrayBuffer = event.data;
-          const blob = new Blob([arrayBuffer], { type: 'image/jpeg' });
-          const imageUrl = URL.createObjectURL(blob);
-          
-          const img = new Image();
-          img.onload = () => {
-            if (!mountedRef.current) return;
-            
-            const canvas = canvasRef.current;
-            if (canvas) {
-              const ctx = canvas.getContext('2d');
-              
-              // Set canvas size to match image (first frame only)
-              if (canvas.width !== img.width || canvas.height !== img.height) {
-                canvas.width = img.width;
-                canvas.height = img.height;
-              }
-              
-              // Draw the frame
-              ctx.drawImage(img, 0, 0);
-              
-              if (!hasReceivedFrame) {
-                setHasReceivedFrame(true);
-                console.log('[CameraFeed] 🖼️ First frame received:', img.width, 'x', img.height);
-              }
-            }
-            
-            // Clean up blob URL
-            URL.revokeObjectURL(imageUrl);
-          };
-          
-          img.onerror = () => {
-            URL.revokeObjectURL(imageUrl);
-          };
-          
-          img.src = imageUrl;
-        } catch (err) {
-          console.error('[CameraFeed] ❌ Error processing frame:', err);
-        }
-      };
-
-      ws.onerror = (event) => {
-        console.error('[CameraFeed] ❌ WebSocket error:', event);
-        setError('Connection error');
-      };
-
-      ws.onclose = (event) => {
-        if (!mountedRef.current) return;
-        console.log('[CameraFeed] 🔌 Disconnected from video stream, code:', event.code);
-        setIsConnected(false);
-        
-        // Reconnect after delay (only if component is still mounted)
-        if (mountedRef.current) {
-          reconnectTimeoutRef.current = setTimeout(() => {
-            if (mountedRef.current) {
-              console.log('[CameraFeed] 🔄 Attempting to reconnect...');
-              connectWebSocket();
-            }
-          }, 2000);
-        }
-      };
-
-      wsRef.current = ws;
-    } catch (err) {
-      console.error('[CameraFeed] ❌ Failed to create WebSocket:', err);
-      setError('Failed to connect');
-      
-      // Retry after delay
-      if (mountedRef.current) {
-        reconnectTimeoutRef.current = setTimeout(() => {
-          if (mountedRef.current) {
-            connectWebSocket();
-          }
-        }, 3000);
-      }
-    }
-  }, [hasReceivedFrame]);
+  // MJPEG stream URL
+  const STREAM_URL = 'http://localhost:8000/api/camera/stream?fps=15&quality=70';
 
   useEffect(() => {
     mountedRef.current = true;
     
-    // Start WebSocket connection
-    connectWebSocket();
-
     return () => {
       mountedRef.current = false;
-      
-      // Clean up
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
       }
     };
-  }, [connectWebSocket]);
+  }, []);
 
-  // Show placeholder when not connected or no frames received
-  const showPlaceholder = !isConnected || !hasReceivedFrame;
+  const handleLoad = () => {
+    if (mountedRef.current) {
+      console.log('[CameraFeed] 🎥 MJPEG stream loaded');
+      setIsLoaded(true);
+      setHasError(false);
+    }
+  };
+
+  const handleError = () => {
+    if (mountedRef.current) {
+      console.log('[CameraFeed] ❌ MJPEG stream error, will retry...');
+      setIsLoaded(false);
+      setHasError(true);
+      
+      // Retry after delay by forcing a reload
+      retryTimeoutRef.current = setTimeout(() => {
+        if (mountedRef.current && imgRef.current) {
+          setHasError(false);
+          // Add timestamp to force reload
+          imgRef.current.src = `${STREAM_URL}&_t=${Date.now()}`;
+        }
+      }, 3000);
+    }
+  };
+
+  // Show placeholder when not loaded or error
+  const showPlaceholder = !isLoaded || hasError;
 
   return (
     <Box
@@ -158,9 +68,13 @@ export default function CameraFeed({ width = 240, height = 180, isLarge = false 
         bgcolor: '#000000',
       }}
     >
-      {/* Canvas for video frames */}
-      <canvas
-        ref={canvasRef}
+      {/* MJPEG stream image */}
+      <img
+        ref={imgRef}
+        src={hasError ? '' : STREAM_URL}
+        alt="Camera Feed"
+        onLoad={handleLoad}
+        onError={handleError}
         style={{
           width: '100%',
           height: '100%',
@@ -185,7 +99,14 @@ export default function CameraFeed({ width = 240, height = 180, isLarge = false 
             gap: 1,
           }}
         >
-          {isConnected ? (
+          {hasError ? (
+            <VideocamOffOutlinedIcon
+              sx={{
+                fontSize: isLarge ? 64 : 32,
+                color: 'rgba(255, 255, 255, 0.3)',
+              }}
+            />
+          ) : (
             <VideocamOutlinedIcon
               sx={{
                 fontSize: isLarge ? 64 : 32,
@@ -195,13 +116,6 @@ export default function CameraFeed({ width = 240, height = 180, isLarge = false 
                   '0%, 100%': { opacity: 0.5 },
                   '50%': { opacity: 1 },
                 },
-              }}
-            />
-          ) : (
-            <VideocamOffOutlinedIcon
-              sx={{
-                fontSize: isLarge ? 64 : 32,
-                color: 'rgba(255, 255, 255, 0.3)',
               }}
             />
           )}
@@ -214,7 +128,7 @@ export default function CameraFeed({ width = 240, height = 180, isLarge = false 
               letterSpacing: '0.5px',
             }}
           >
-            {error ? error : isConnected ? 'Waiting for video...' : 'Connecting...'}
+            {hasError ? 'Camera unavailable' : 'Connecting...'}
           </Typography>
         </Box>
       )}
@@ -228,8 +142,8 @@ export default function CameraFeed({ width = 240, height = 180, isLarge = false 
           width: 8,
           height: 8,
           borderRadius: '50%',
-          bgcolor: isConnected ? '#22c55e' : '#ef4444',
-          boxShadow: isConnected 
+          bgcolor: isLoaded && !hasError ? '#22c55e' : '#ef4444',
+          boxShadow: isLoaded && !hasError
             ? '0 0 8px rgba(34, 197, 94, 0.6)' 
             : '0 0 8px rgba(239, 68, 68, 0.6)',
         }}

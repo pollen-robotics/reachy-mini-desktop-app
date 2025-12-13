@@ -97,6 +97,26 @@ export default function FullscreenOverlay({
         overflow: 'auto',
       }}
     >
+      {/* Close button - top right */}
+      {showCloseButton && (
+        <IconButton
+          onClick={onClose}
+          sx={{
+            position: 'absolute',
+            top: 16,
+            right: 16,
+            color: darkMode ? '#fff' : '#333',
+            bgcolor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+            '&:hover': {
+              bgcolor: darkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
+            },
+            zIndex: 1,
+          }}
+        >
+          <CloseIcon />
+        </IconButton>
+      )}
+
       {/* Content wrapper - prevents click propagation */}
       <Box
         onClick={(e) => e.stopPropagation()}
