@@ -11,11 +11,12 @@ export default function CameraFeed({ width = 240, height = 180, isLarge = false 
   const imgRef = useRef(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const retryTimeoutRef = useRef(null);
   const mountedRef = useRef(true);
 
-  // MJPEG stream URL
-  const STREAM_URL = 'http://localhost:8000/api/camera/stream?fps=15&quality=70';
+  // MJPEG stream URL with cache-busting
+  const STREAM_URL = `http://localhost:8000/api/camera/stream?fps=15&quality=70&_t=${retryCount}`;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -42,12 +43,11 @@ export default function CameraFeed({ width = 240, height = 180, isLarge = false 
       setIsLoaded(false);
       setHasError(true);
       
-      // Retry after delay by forcing a reload
+      // Retry after delay by re-mounting the img element with new URL
       retryTimeoutRef.current = setTimeout(() => {
-        if (mountedRef.current && imgRef.current) {
-          setHasError(false);
-          // Add timestamp to force reload
-          imgRef.current.src = `${STREAM_URL}&_t=${Date.now()}`;
+        if (mountedRef.current) {
+          setRetryCount(c => c + 1); // New URL to bypass cache
+          setHasError(false); // This will re-render the img element
         }
       }, 3000);
     }
@@ -68,20 +68,22 @@ export default function CameraFeed({ width = 240, height = 180, isLarge = false 
         bgcolor: '#000000',
       }}
     >
-      {/* MJPEG stream image */}
-      <img
-        ref={imgRef}
-        src={hasError ? '' : STREAM_URL}
-        alt="Camera Feed"
-        onLoad={handleLoad}
-        onError={handleError}
-        style={{
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          display: showPlaceholder ? 'none' : 'block',
-        }}
-      />
+      {/* MJPEG stream image - only render when not in error state */}
+      {!hasError && (
+        <img
+          ref={imgRef}
+          src={STREAM_URL}
+          alt="Camera Feed"
+          onLoad={handleLoad}
+          onError={handleError}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            display: showPlaceholder ? 'none' : 'block',
+          }}
+        />
+      )}
       
       {/* Placeholder when no video */}
       {showPlaceholder && (
@@ -133,21 +135,6 @@ export default function CameraFeed({ width = 240, height = 180, isLarge = false 
         </Box>
       )}
       
-      {/* Connection status indicator */}
-      <Box
-        sx={{
-          position: 'absolute',
-          top: 8,
-          right: 8,
-          width: 8,
-          height: 8,
-          borderRadius: '50%',
-          bgcolor: isLoaded && !hasError ? '#22c55e' : '#ef4444',
-          boxShadow: isLoaded && !hasError
-            ? '0 0 8px rgba(34, 197, 94, 0.6)' 
-            : '0 0 8px rgba(239, 68, 68, 0.6)',
-        }}
-      />
     </Box>
   );
 }

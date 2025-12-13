@@ -37,6 +37,7 @@
     "test:all": "yarn test:sidecar && yarn test:app && yarn test:updater",
     "kill-daemon": "./scripts/daemon/kill-daemon.sh",
     "check-daemon": "./scripts/daemon/check-daemon.sh",
+    "kill-zombie-apps": "bash ./scripts/utils/kill-zombie-apps.sh",
     "reset-permissions": "bash ./scripts/utils/reset-macos-permissions.sh",
     "clean": "bash ./scripts/utils/clean.sh"
   },
