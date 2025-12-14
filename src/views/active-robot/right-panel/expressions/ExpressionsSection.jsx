@@ -1,23 +1,19 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
-import { Box, IconButton, Typography, Tooltip, InputBase } from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
-import CloseIcon from '@mui/icons-material/Close';
+import { Box, IconButton, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
-import West from '@mui/icons-material/West';
-import East from '@mui/icons-material/East';
-import SwapHoriz from '@mui/icons-material/SwapHoriz';
-import { EmojiPicker } from '@components/emoji-grid';
-import { CHOREOGRAPHY_DATASETS, QUICK_ACTIONS, EMOTIONS, DANCES, EMOTION_EMOJIS, DANCE_EMOJIS } from '@constants/choreographies';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import { EmotionWheel, EmojiPicker } from '@components/emoji-grid';
+import { CHOREOGRAPHY_DATASETS, EMOTIONS, DANCES, EMOTION_EMOJIS, DANCE_EMOJIS } from '@constants/choreographies';
 import { useRobotCommands } from '@hooks/robot';
 import { useActiveRobotContext } from '../../context';
 import { useLogger } from '@/utils/logging';
+import { openUrl } from '@/utils/tauriCompat';
 
-// Constants - moved outside component to avoid recreation
+// Constants
 const BUSY_DEBOUNCE_MS = 150;
 const EFFECT_DURATION_MS = 4000;
 
-// Effect mapping for 3D visual effects - moved outside component
+// Effect mapping for 3D visual effects
 const EFFECT_MAP = {
   'goto_sleep': 'sleep',
   'wake_up': null,
@@ -27,15 +23,40 @@ const EFFECT_MAP = {
 };
 
 /**
- * Expressions Section - Wrapper for SpinningWheel in right panel
- * Displays the Expressions component in the right column instead of a separate window
- * Uses ActiveRobotContext for decoupling from global stores
+ * Expressions Section V2 - Emotion Wheel + Library view
+ * Displays a curated wheel of 12 emotions, with access to full library
  */
 export default function ExpressionsSection({ 
   isActive: isActiveProp = false,
   isBusy: isBusyProp = false,
   darkMode = false,
 }) {
+  // View state: 'wheel' or 'library'
+  const [currentView, setCurrentView] = useState('wheel');
+  
+  // Space key animation state
+  const [spacePressed, setSpacePressed] = useState(false);
+  
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.code === 'Space' && !e.repeat && currentView === 'wheel') {
+        setSpacePressed(true);
+      }
+    };
+    const handleKeyUp = (e) => {
+      if (e.code === 'Space') {
+        setSpacePressed(false);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [currentView]);
+  
   // Get state and actions from context
   const { robotState, actions } = useActiveRobotContext();
   const { 
@@ -47,17 +68,10 @@ export default function ExpressionsSection({
   } = robotState;
   const { setRightPanelView, triggerEffect, stopEffect } = actions;
   
-  // Use context value or prop fallback
   const isActive = isActiveFromContext ?? isActiveProp;
-  
-  // Compute isReady and isBusy from state
   const isReady = robotStatus === 'ready';
   
-  // Search state
-  const [searchQuery, setSearchQuery] = useState('');
-  const searchInputRef = useRef(null);
-  
-  // Debounce isBusy to prevent flickering when state changes rapidly
+  // Debounce isBusy
   const rawIsBusy = robotStatus === 'busy' || isCommandRunning || isAppRunning || isInstalling;
   const [debouncedIsBusy, setDebouncedIsBusy] = useState(rawIsBusy);
   const debounceTimeoutRef = useRef(null);
@@ -82,15 +96,13 @@ export default function ExpressionsSection({
     };
   }, [rawIsBusy, debouncedIsBusy]);
   
-  const { sendCommand, playRecordedMove } = useRobotCommands();
+  const { playRecordedMove } = useRobotCommands();
   const logger = useLogger();
 
-  // Store timeout ref for effect cleanup
   const effectTimeoutRef = useRef(null);
 
-  // Handler for quick actions
-  const handleQuickAction = useCallback((action) => {
-    // Find the specific emoji for this expression
+  const handleAction = useCallback((action) => {
+    // Get emoji based on type
     let emoji = null;
     if (action.type === 'emotion') {
       emoji = EMOTION_EMOJIS[action.name] || null;
@@ -98,24 +110,20 @@ export default function ExpressionsSection({
       emoji = DANCE_EMOJIS[action.name] || null;
     }
     
-    // Log the action with emoji if found, otherwise just the label
     const logMessage = emoji ? `${emoji} ${action.label}` : action.label;
     logger.userAction(logMessage);
     
-    if (action.type === 'action') {
-      sendCommand(`/api/move/play/${action.name}`, action.label);
-    } else if (action.type === 'dance') {
+    // Play the move based on type
+    if (action.type === 'dance') {
       playRecordedMove(CHOREOGRAPHY_DATASETS.DANCES, action.name);
     } else {
       playRecordedMove(CHOREOGRAPHY_DATASETS.EMOTIONS, action.name);
     }
     
-    // Trigger corresponding 3D visual effect
     const effectType = EFFECT_MAP[action.name];
     if (effectType) {
       triggerEffect(effectType);
       
-      // Clear previous timeout if exists
       if (effectTimeoutRef.current) {
         clearTimeout(effectTimeoutRef.current);
       }
@@ -125,9 +133,8 @@ export default function ExpressionsSection({
         effectTimeoutRef.current = null;
       }, EFFECT_DURATION_MS);
     }
-  }, [sendCommand, playRecordedMove, triggerEffect, stopEffect]);
+  }, [playRecordedMove, triggerEffect, stopEffect, logger]);
 
-  // Cleanup effect timeout on unmount
   useEffect(() => {
     return () => {
       if (effectTimeoutRef.current) {
@@ -137,16 +144,23 @@ export default function ExpressionsSection({
     };
   }, []);
 
-  const quickActions = QUICK_ACTIONS;
-
-  // Handle grid action
-  const handleGridAction = useCallback((action) => {
+  const handleWheelAction = useCallback((action) => {
     if (debouncedIsBusy) return;
-    handleQuickAction(action);
-  }, [debouncedIsBusy, handleQuickAction]);
+    handleAction(action);
+  }, [debouncedIsBusy, handleAction]);
 
   const handleBack = () => {
-    setRightPanelView(null);
+    if (currentView === 'library') {
+      // Go back to wheel
+      setCurrentView('wheel');
+    } else {
+      // Close the panel
+      setRightPanelView(null);
+    }
+  };
+
+  const handleOpenLibrary = () => {
+    setCurrentView('library');
   };
 
   return (
@@ -157,20 +171,19 @@ export default function ExpressionsSection({
         display: 'flex',
         flexDirection: 'column',
         bgcolor: 'transparent',
-        overflow: 'visible', // Allow wheel to overflow container
+        position: 'relative',
       }}
     >
-      {/* Header with back button, title and library tabs */}
+      {/* Header with back button */}
       <Box
         sx={{
           px: 2,
           pt: 1.5,
+          pb: 1,
           bgcolor: 'transparent',
-          position: 'relative',
-          zIndex: 1000, // Above wheel and all its components
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <IconButton
             onClick={handleBack}
             size="small"
@@ -191,220 +204,174 @@ export default function ExpressionsSection({
               letterSpacing: '-0.3px',
             }}
           >
-            Expressions
+            {currentView === 'wheel' ? 'Expressions' : 'All Libraries'}
           </Typography>
-          <Tooltip
-            title={
-              <Box sx={{ p: 1.5 }}>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                    <Box sx={{ display: 'flex', gap: 0.5 }}>
-                      <Box
-                        sx={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          width: '20px',
-                          height: '20px',
-                          borderRadius: '3px',
-                          backgroundColor: 'rgba(255, 255, 255, 0.15)',
-                          border: '1px solid rgba(255, 255, 255, 0.2)',
-                          color: 'rgba(255, 255, 255, 0.9)',
-                        }}
-                      >
-                        <West sx={{ fontSize: '12px' }} />
-                      </Box>
-                      <Box
-                        sx={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          width: '20px',
-                          height: '20px',
-                          borderRadius: '3px',
-                          backgroundColor: 'rgba(255, 255, 255, 0.15)',
-                          border: '1px solid rgba(255, 255, 255, 0.2)',
-                          color: 'rgba(255, 255, 255, 0.9)',
-                        }}
-                      >
-                        <East sx={{ fontSize: '12px' }} />
-                      </Box>
-                    </Box>
-                    <Typography sx={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.8)' }}>
-                      Keyboard navigate
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                    <Box
-                      sx={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        minWidth: '65px',
-                        height: '20px',
-                        px: 1,
-                        borderRadius: '3px',
-                        backgroundColor: 'rgba(255, 255, 255, 0.15)',
-                        border: '1px solid rgba(255, 255, 255, 0.2)',
-                        fontSize: '9px',
-                        fontFamily: 'system-ui, sans-serif',
-                        fontWeight: 500,
-                        color: 'rgba(255, 255, 255, 0.9)',
-                      }}
-                    >
-                      Space
-                    </Box>
-                    <Typography sx={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.8)' }}>
-                      Keyboard trigger
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                    <Box
-                      sx={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        width: '20px',
-                        height: '20px',
-                        borderRadius: '3px',
-                        backgroundColor: 'rgba(255, 255, 255, 0.15)',
-                        border: '1px solid rgba(255, 255, 255, 0.2)',
-                        color: 'rgba(255, 255, 255, 0.9)',
-                      }}
-                    >
-                      <SwapHoriz sx={{ fontSize: '12px' }} />
-                    </Box>
-                    <Typography sx={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.8)' }}>
-                      Mouse drag
-                    </Typography>
-                  </Box>
-                </Box>
-              </Box>
-            }
-            arrow
-            placement="bottom"
-            componentsProps={{
-              tooltip: {
-                sx: {
-                  bgcolor: darkMode ? 'rgba(30, 30, 30, 0.95)' : 'rgba(50, 50, 50, 0.95)',
-                  backdropFilter: 'blur(10px)',
-                  border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.2)'}`,
-                  maxWidth: 'none',
-                },
-              },
-              arrow: {
-                sx: {
-                  color: darkMode ? 'rgba(30, 30, 30, 0.95)' : 'rgba(50, 50, 50, 0.95)',
-                },
-              },
-            }}
-          >
-            <IconButton
-              size="small"
-              sx={{
-                color: darkMode ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.4)',
-                '&:hover': {
-                  color: darkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)',
-                  bgcolor: darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)',
-                },
-                p: 0.5,
-              }}
-            >
-              <InfoOutlinedIcon sx={{ fontSize: 16 }} />
-            </IconButton>
-          </Tooltip>
-          
-          {/* Spacer */}
-          <Box sx={{ flex: 1 }} />
-          
-          {/* Search input - discrete */}
+        </Box>
+      </Box>
+
+      {/* Content based on current view */}
+      {currentView === 'wheel' ? (
+        <>
+          {/* Centered Emotion Wheel */}
           <Box
             sx={{
+              flex: 1,
               display: 'flex',
               alignItems: 'center',
-              gap: 0.5,
-              px: 1,
-              py: 0.5,
-              borderRadius: 2,
-              bgcolor: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}`,
-              transition: 'all 0.2s ease',
-              '&:focus-within': {
-                bgcolor: darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
-                borderColor: 'rgba(255,149,0,0.4)',
-              },
+              justifyContent: 'center',
+              px: 2,
+              pb: 6,
             }}
           >
-            <SearchIcon 
-              sx={{ 
-                fontSize: 14, 
-                color: darkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.3)',
-              }} 
+            <EmotionWheel
+              onAction={handleWheelAction}
+              darkMode={darkMode}
+              disabled={debouncedIsBusy || !isActive}
+              isBusy={debouncedIsBusy}
             />
-            <InputBase
-              ref={searchInputRef}
-              placeholder="Search..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+          </Box>
+
+          {/* Footer links */}
+          <Box
+            sx={{
+              position: 'absolute',
+              bottom: 24,
+              left: 0,
+              right: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 1,
+            }}
+          >
+            {/* Line 1: Keyboard shortcut */}
+            <Box
               sx={{
-                fontSize: 12,
-                color: darkMode ? '#fff' : '#333',
-                width: searchQuery ? 100 : 60,
-                transition: 'width 0.2s ease',
-                '& input': {
-                  padding: 0,
-                  '&::placeholder': {
-                    color: darkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)',
-                    opacity: 1,
-                  },
-                },
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 1,
+                color: darkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.3)',
+                fontSize: 11,
               }}
-            />
-            {searchQuery && (
-              <IconButton
-                size="small"
-                onClick={() => setSearchQuery('')}
+            >
+              <Box
+                component="span"
                 sx={{
-                  p: 0.25,
-                  color: darkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.3)',
+                  px: 1.5,
+                  py: 0.25,
+                  borderRadius: 1,
+                  border: spacePressed 
+                    ? '1px solid #FF9500' 
+                    : `1px solid ${darkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)'}`,
+                  bgcolor: spacePressed 
+                    ? 'rgba(255,149,0,0.15)' 
+                    : 'transparent',
+                  color: spacePressed 
+                    ? '#FF9500' 
+                    : 'inherit',
+                  fontFamily: 'monospace',
+                  fontSize: 8,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.1em',
+                  transition: 'all 0.15s ease',
+                  transform: spacePressed ? 'scale(1.05)' : 'scale(1)',
+                }}
+              >
+                Space
+              </Box>
+              <span>random</span>
+            </Box>
+
+            {/* Line 2: Links */}
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1.5,
+              }}
+            >
+              {/* See all libraries link */}
+              <Box
+                component="button"
+                onClick={handleOpenLibrary}
+                sx={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  color: darkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.3)',
+                  fontSize: 11,
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 0,
+                  textDecoration: 'underline',
+                  transition: 'all 0.2s ease',
+                  whiteSpace: 'nowrap',
                   '&:hover': {
                     color: '#FF9500',
                   },
                 }}
               >
-                <CloseIcon sx={{ fontSize: 12 }} />
-              </IconButton>
-            )}
+                See all libraries
+              </Box>
+
+              {/* Separator */}
+              <Box
+                component="span"
+                sx={{
+                  color: darkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)',
+                  fontSize: 11,
+                }}
+              >
+                •
+              </Box>
+
+              {/* Emotion Wheel App link */}
+              <Box
+                component="a"
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  openUrl('https://huggingface.co/spaces/RemiFabre/emotions');
+                }}
+                sx={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 0.5,
+                  color: darkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.3)',
+                  fontSize: 11,
+                  textDecoration: 'underline',
+                  transition: 'all 0.2s ease',
+                  whiteSpace: 'nowrap',
+                  '&:hover': {
+                    color: '#FF9500',
+                  },
+                }}
+              >
+                <span>Emotion Wheel App</span>
+                <OpenInNewIcon sx={{ fontSize: 12 }} />
+              </Box>
+            </Box>
           </Box>
+        </>
+      ) : (
+        /* Library view - full emoji picker */
+        <Box
+          sx={{
+            flex: 1,
+            overflow: 'auto',
+            px: 2,
+            py: 2,
+          }}
+        >
+          <EmojiPicker
+            emotions={EMOTIONS}
+            dances={DANCES}
+            onAction={handleWheelAction}
+            darkMode={darkMode}
+            disabled={debouncedIsBusy || !isActive}
+          />
         </Box>
-        
-      </Box>
-      {/* Emoji Grid Section */}
-      <Box
-        sx={{
-          width: '100%',
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          bgcolor: 'transparent',
-          position: 'relative',
-          overflow: 'auto',
-          minHeight: 0,
-          px: 2,
-          py: 2,
-        }}
-      >
-        <EmojiPicker
-          emotions={EMOTIONS}
-          dances={DANCES}
-          onAction={handleGridAction}
-          darkMode={darkMode}
-          disabled={debouncedIsBusy || !isActive}
-          searchQuery={searchQuery}
-        />
-      </Box>
+      )}
     </Box>
   );
 }
-
-

@@ -145,14 +145,14 @@ export const EMOTION_EMOJIS = {
   // Fear & Anxiety
   'fear1': '😨',           // Fearful face
   'scared1': '😱',         // Screaming in fear
-  'anxiety1': '😰',        // Anxious with sweat
+  'anxiety1': '😟',        // Worried face
   
   // Sadness & Melancholy
-  'sad1': '😢',            // Crying face
-  'sad2': '😿',            // Crying cat (variation)
+  'sad1': '😭',            // Loudly crying
+  'sad2': '😢',            // Crying face
   'lonely1': '🥺',         // Pleading, lonely eyes
-  'downcast1': '😞',       // Disappointed
-  'resigned1': '😔',       // Pensive, resigned
+  'downcast1': '😔',       // Pensive, head down
+  'resigned1': '😞',       // Disappointed, resigned
   'yes_sad1': '🥹',        // Holding back tears
   'no_sad1': '😥',         // Sad but relieved
   
@@ -161,7 +161,7 @@ export const EMOTION_EMOJIS = {
   'loving1': '🥰',         // Smiling with hearts
   'laughing1': '😂',       // Tears of joy
   'laughing2': '🤣',       // Rolling on floor laughing
-  'amazed1': '🤩',         // Star-struck
+  'amazed1': '🤩',         // Star-struck, wow!
   'enthusiastic1': '🎊',   // Celebration
   'enthusiastic2': '🥳',   // Party face
   
@@ -175,8 +175,8 @@ export const EMOTION_EMOJIS = {
   // Anger & Frustration
   'rage1': '😡',           // Angry red face
   'furious1': '🤬',        // Symbols on mouth
-  'irritated1': '😤',      // Steam from nose
-  'irritated2': '😾',      // Angry cat (variation)
+  'irritated1': '😠',      // Angry face
+  'irritated2': '😤',      // Steam from nose (variation)
   'frustrated1': '😫',     // Tired and frustrated
   'impatient1': '⏳',      // Waiting impatiently
   'impatient2': '🙄',      // Eye roll impatient
@@ -187,7 +187,7 @@ export const EMOTION_EMOJIS = {
   
   // Confusion & Uncertainty
   'confused1': '😕',       // Confused
-  'lost1': '🫤',           // Diagonal mouth, lost
+  'lost1': '😵‍💫',          // Dizzy, disoriented
   'uncertain1': '🤨',      // Raised eyebrow
   'incomprehensible2': '🤷', // Shrug
   
@@ -197,9 +197,9 @@ export const EMOTION_EMOJIS = {
   'curious1': '🧐',        // Monocle, investigating
   'inquiring1': '❓',      // Question
   'inquiring2': '🔍',      // Searching
-  'inquiring3': '👁️',      // Observing
+  'inquiring3': '🤨',      // Raised eyebrow, questioning
   'attentive1': '👂',      // Listening
-  'attentive2': '👀',      // Eyes watching
+  'attentive2': '🦉',      // Owl - vigilant
   
   // Tiredness & Exhaustion
   'tired1': '😴',          // Sleeping
@@ -233,8 +233,8 @@ export const EMOTION_EMOJIS = {
   'no1': '🙅',             // No gesture
   'no_excited1': '🙅‍♂️',    // Emphatic no
   'go_away1': '👉',        // Pointing away
-  'reprimand1': '☝️',      // Finger up, lecturing
-  'reprimand2': '👎',      // Thumbs down
+  'reprimand1': '😤',      // Stern disapproval
+  'reprimand2': '😡',      // Angry red face
   'reprimand3': '🚫',      // Prohibited
   
   // Positive Responses
@@ -249,7 +249,7 @@ export const EMOTION_EMOJIS = {
   
   // Special & Expressive
   'indifferent1': '😐',    // Neutral face
-  'dying1': '💀',          // Skull (dramatic)
+  'dying1': '😵',          // Knocked out, dramatic
   'electric1': '⚡',       // Electric energy
   
   // Dance emotions (in emotion library)
