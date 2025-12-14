@@ -38,10 +38,11 @@ fn main() {
     .expect("Failed to install uv");
     
     // On Windows, download uv directly (the install.ps1 script has issues with Get-ExecutionPolicy on CI)
+    // IMPORTANT: Use curl.exe (not curl which is a PowerShell alias for Invoke-WebRequest)
     #[cfg(target_os = "windows")]
     {
-        // Download uv zip from GitHub releases
-        run_command("curl -LsSf -o uv.zip https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip")
+        // Download uv zip from GitHub releases using curl.exe (the real curl, not the PowerShell alias)
+        run_command("curl.exe -L -o uv.zip https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip")
             .expect("Failed to download uv");
         
         // Extract the zip (PowerShell's Expand-Archive)
