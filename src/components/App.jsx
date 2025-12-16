@@ -13,7 +13,7 @@ function App() {
   useEffect(() => {
     setAppStoreInstance(useAppStore);
   }, []);
-  const { daemonVersion, hardwareError, isTransitioning, setIsTransitioning, setHardwareError } = useAppStore();
+  const { daemonVersion, hardwareError, isTransitioning, setIsTransitioning, setHardwareError, connectionMode } = useAppStore();
   const { isActive, isStarting, isStopping, startupError, startDaemon, stopDaemon, fetchDaemonVersion } = useDaemon();
   const { isUsbConnected, usbPortName, checkUsbRobot } = useUsbDetection();
   const { sendCommand, playRecordedMove, isCommandRunning } = useRobotCommands();
@@ -165,7 +165,7 @@ function App() {
       return 'expanded';
     }
     
-    // Compact view: all others (RobotNotDetected, Starting, ReadyToStart)
+    // Compact view: all others (FindingRobot, Starting, ReadyToStart)
     return 'compact';
   }, [isActive, hardwareError, isStopping, isTransitioning, isStarting]);
 
@@ -199,12 +199,13 @@ function App() {
     };
   }, [fetchLogs, checkUsbRobot, fetchDaemonVersion, shouldShowUpdateView]);
 
-  // Stop daemon automatically if robot gets disconnected
+  // Stop daemon automatically if USB robot gets disconnected (USB mode only)
+  // 🌐 WiFi mode doesn't use isUsbConnected, so skip this check
   useEffect(() => {
-    if (!isUsbConnected && isActive) {
+    if (connectionMode === 'usb' && !isUsbConnected && isActive) {
       stopDaemon();
     }
-  }, [isUsbConnected, isActive, stopDaemon]);
+  }, [connectionMode, isUsbConnected, isActive, stopDaemon]);
 
   // Reset hardware error when returning to ready-to-start view
   useEffect(() => {
@@ -234,6 +235,7 @@ function App() {
     onInstallUpdate: installUpdate,
     shouldShowUsbCheck,
     isUsbConnected,
+    connectionMode,
     isStarting,
     isStopping,
     isActive,

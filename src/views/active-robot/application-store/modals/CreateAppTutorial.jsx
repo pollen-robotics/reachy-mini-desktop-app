@@ -7,6 +7,7 @@ import HowToCreateApp from '@assets/reachy-how-to-create-app.svg';
 import JoystickIcon from '@assets/joystick.svg';
 import BlueprintIcon from '@assets/blueprint.svg';
 import RocketIcon from '@assets/rocket.svg';
+import { getBaseUrl } from '../../../../config/daemon';
 
 /**
  * Modal overlay for tutorial on creating your own Reachy Mini app
@@ -226,7 +227,7 @@ export default function CreateAppTutorialModal({
               component="span"
               onClick={async () => {
                 try {
-                  await open('http://localhost:8000/docs');
+                  await open(`${getBaseUrl()}/docs`);
                 } catch (err) {
                   console.error('Failed to open API docs:', err);
                 }

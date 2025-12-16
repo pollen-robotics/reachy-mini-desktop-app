@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Box } from '@mui/material';
-import { PermissionsRequiredView, RobotNotDetectedView, StartingView, ReadyToStartView, TransitionView, ActiveRobotView, ClosingView, UpdateView, ActiveRobotModule } from '../../views';
+import { PermissionsRequiredView, FindingRobotView, StartingView, TransitionView, ActiveRobotView, ClosingView, UpdateView, ActiveRobotModule } from '../../views';
 import AppTopBar from '../../components/AppTopBar';
 import { useActiveRobotAdapter } from '../useActiveRobotAdapter';
 
@@ -10,13 +10,13 @@ import { useActiveRobotAdapter } from '../useActiveRobotAdapter';
  * Priority order:
  * 0. Permissions (macOS only) - Blocks app until permissions granted
  * 1. Update view - Always first, before everything else
- * 2. USB check view - Show during USB detection (minimum 2s)
- * 3. Robot not connected (after USB check minimum time)
- * 4. Starting daemon (visual scan)
- * 5. Transition view - After scan, during resize
- * 6. Stopping daemon - Show spinner
- * 7. Ready to start - Robot connected but daemon not active
- * 8. Active robot - Full control view
+ * 2. Finding robot view - User selects connection (USB/WiFi/Sim) and clicks Start
+ * 3. Starting daemon (visual scan) - USB/Simulation only
+ * 4. Transition view - After scan, during resize
+ * 5. Stopping daemon - Show spinner
+ * 6. Active robot - Full control view
+ * 
+ * 🌐 WiFi mode: Skips Starting view (daemon already active on remote)
  * 
  * @param {object} props - View routing props
  * @returns {object} { viewComponent, viewProps }
@@ -35,9 +35,10 @@ export function useViewRouter({
   updateError,
   onInstallUpdate,
   
-  // USB
+  // USB/Connection
   shouldShowUsbCheck,
   isUsbConnected,
+  connectionMode, // 🌐 NEW: 'usb' | 'wifi' | 'simulation' | null
   
   // Daemon
   isStarting,
@@ -86,25 +87,20 @@ export function useViewRouter({
       };
     }
 
-    // PRIORITY 2: USB check view
-    if (shouldShowUsbCheck) {
+    // PRIORITY 2: Finding robot view
+    // 🌐 Show FindingRobotView until user selects a connection mode
+    // Don't auto-advance when USB is detected - wait for user selection
+    // Note: FindingRobotView uses useConnection hook internally (no props needed)
+    if (shouldShowUsbCheck || !connectionMode) {
       return {
-        viewComponent: RobotNotDetectedView,
-        viewProps: { startDaemon },
+        viewComponent: FindingRobotView,
+        viewProps: {},
         showTopBar: true,
       };
     }
 
-    // PRIORITY 3: Robot not connected
-    if (!isUsbConnected) {
-      return {
-        viewComponent: RobotNotDetectedView,
-        viewProps: { startDaemon },
-        showTopBar: true,
-      };
-    }
-
-    // PRIORITY 4: Starting daemon
+    // PRIORITY 4: Starting daemon (all modes including WiFi)
+    // 🌐 WiFi mode also passes through scan view for consistent UX
     if (isStarting || hardwareError) {
       return {
         viewComponent: StartingView,
@@ -149,18 +145,8 @@ export function useViewRouter({
       };
     }
 
-    // PRIORITY 7: Ready to start
-    if (isUsbConnected && !isActive && !isStarting) {
-      return {
-        viewComponent: ReadyToStartView,
-        viewProps: {
-          startDaemon,
-          isStarting,
-          usbPortName,
-        },
-        showTopBar: true,
-      };
-    }
+    // PRIORITY 7: (REMOVED - ReadyToStartView merged into FindingRobotView)
+    // User now selects connection AND clicks Start in FindingRobotView
 
     // PRIORITY 8: Active robot
     return {
@@ -193,6 +179,7 @@ export function useViewRouter({
     onInstallUpdate,
     shouldShowUsbCheck,
     isUsbConnected,
+    connectionMode,
     isStarting,
     isStopping,
     isActive,

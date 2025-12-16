@@ -700,6 +700,9 @@ jobs:
         if: matrix.os == 'ubuntu-22.04'
         shell: bash
         working-directory: src-tauri
+        env:
+          # Required for AppImage tools to work without FUSE (not available in GitHub Actions)
+          APPIMAGE_EXTRACT_AND_RUN: 1
         run: |
           # Install dependencies required for .deb build
           sudo apt-get update

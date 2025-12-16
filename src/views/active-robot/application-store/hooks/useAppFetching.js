@@ -223,41 +223,41 @@ export function useAppFetching() {
       const HF_SPACES_API_URL = 'https://huggingface.co/api/spaces';
       const runtimePromises = daemonApps.map(async (app) => {
         // Skip if already has runtime
-        if (app.extra?.runtime) {
-          return app;
-        }
-        
-        // Get space ID from app.id (root level) or app.extra.id
-        const spaceId = app.id || app.extra?.id;
-        if (!spaceId) {
-          console.warn(`⚠️ No ID found for app ${app.name}, skipping runtime enrichment`);
-          return app;
-        }
-        
-        try {
-          // Build space ID (might be full path or just name)
-          const fullSpaceId = spaceId.includes('/') ? spaceId : `pollen-robotics/${spaceId}`;
-          console.log(`🔄 Fetching runtime for ${fullSpaceId}`);
-          const spaceResponse = await fetchExternal(`${HF_SPACES_API_URL}/${fullSpaceId}`, {}, DAEMON_CONFIG.TIMEOUTS.APPS_LIST, { silent: true });
-          if (spaceResponse.ok) {
-            const spaceData = await spaceResponse.json();
-            if (spaceData.runtime) {
+          if (app.extra?.runtime) {
+            return app;
+          }
+          
+          // Get space ID from app.id (root level) or app.extra.id
+          const spaceId = app.id || app.extra?.id;
+          if (!spaceId) {
+            console.warn(`⚠️ No ID found for app ${app.name}, skipping runtime enrichment`);
+            return app;
+          }
+          
+          try {
+            // Build space ID (might be full path or just name)
+            const fullSpaceId = spaceId.includes('/') ? spaceId : `pollen-robotics/${spaceId}`;
+            console.log(`🔄 Fetching runtime for ${fullSpaceId}`);
+            const spaceResponse = await fetchExternal(`${HF_SPACES_API_URL}/${fullSpaceId}`, {}, DAEMON_CONFIG.TIMEOUTS.APPS_LIST, { silent: true });
+            if (spaceResponse.ok) {
+              const spaceData = await spaceResponse.json();
+              if (spaceData.runtime) {
               // Add runtime to extra
               app.extra = {
-                ...app.extra,
-                runtime: spaceData.runtime,
-              };
+                    ...app.extra,
+                    runtime: spaceData.runtime,
+                };
               console.log(`✅ Added runtime for ${app.name}:`, spaceData.runtime);
+              } else {
+                console.log(`⚠️ No runtime data in API response for ${app.name}`);
+              }
             } else {
-              console.log(`⚠️ No runtime data in API response for ${app.name}`);
+              console.warn(`⚠️ Failed to fetch runtime for ${fullSpaceId}: ${spaceResponse.status}`);
             }
-          } else {
-            console.warn(`⚠️ Failed to fetch runtime for ${fullSpaceId}: ${spaceResponse.status}`);
+          } catch (err) {
+            console.warn(`⚠️ Error fetching runtime for ${app.name}:`, err.message);
           }
-        } catch (err) {
-          console.warn(`⚠️ Error fetching runtime for ${app.name}:`, err.message);
-        }
-        return app;
+          return app;
       });
       
       daemonApps = await Promise.all(runtimePromises);

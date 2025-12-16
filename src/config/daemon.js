@@ -3,6 +3,8 @@
  */
 
 import { logApiCall, logPermission, logTimeout, logError, logSuccess } from '../utils/logging';
+import { useRobotStore } from '../store/useRobotStore';
+import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 
 export const DAEMON_CONFIG = {
   // API timeouts (in milliseconds)
@@ -137,9 +139,14 @@ export const DAEMON_CONFIG = {
   
   // API endpoints
   ENDPOINTS: {
-    BASE_URL: 'http://localhost:8000',
+    // ⚠️ BASE_URL is now dynamic - use getBaseUrl() instead of DAEMON_CONFIG.ENDPOINTS.BASE_URL
+    BASE_URL_LOCAL: 'http://localhost:8000',
+    BASE_URL_DEFAULT_WIFI: 'http://reachy-mini.home:8000',
     STATE_FULL: '/api/state/full',
     DAEMON_STATUS: '/api/daemon/status',
+    // 🌐 WiFi daemon control (handshake for remote sessions)
+    DAEMON_START: '/api/daemon/start',
+    DAEMON_STOP: '/api/daemon/stop',
     EMOTIONS_LIST: '/api/move/recorded-move-datasets/list/pollen-robotics/reachy-mini-emotions-library',
     VOLUME_CURRENT: '/api/volume/current',
     VOLUME_SET: '/api/volume/set',
@@ -214,8 +221,9 @@ function isLikelySystemPopupTimeout(error, duration, timeoutMs) {
 export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions = {}) {
   const { silent = false, label = null } = logOptions;
   
-  // Extract endpoint from URL
-  const endpoint = url.replace(DAEMON_CONFIG.ENDPOINTS.BASE_URL, '');
+  // Extract endpoint from URL (handle both local and remote URLs)
+  const currentBaseUrl = getBaseUrl();
+  const endpoint = url.replace(currentBaseUrl, '').replace(DAEMON_CONFIG.ENDPOINTS.BASE_URL_LOCAL, '');
   const baseEndpoint = endpoint.split('?')[0]; // Without query params
   
   // Check if it's a silent endpoint
@@ -224,15 +232,31 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions 
   const method = options.method || 'GET';
   const startTime = Date.now();
   
+  // 🌐 Check if we need to use Tauri fetch (for WiFi mode or remote IPs)
+  // This bypasses WebView network restrictions (Private Network Access, CORS)
+  const robotStore = useRobotStore.getState();
+  const isRemoteHost = robotStore.connectionMode === 'wifi' || 
+                       (robotStore.remoteHost && url.includes(robotStore.remoteHost));
+  
   try {
-    // Create AbortController to be able to cancel manually if needed
+    let response;
+    
+    if (isRemoteHost) {
+      // 🌐 Use Tauri HTTP plugin for remote connections (bypasses WebView)
+      response = await tauriFetch(url, {
+        method: options.method || 'GET',
+        headers: options.headers,
+        body: options.body,
+        connectTimeout: timeoutMs,
+      });
+    } else {
+      // Local daemon: use native fetch with AbortController
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     
     // If an external signal is provided, combine it with the timeout signal
     let finalSignal = controller.signal;
     if (options.signal) {
-      // Combine external signal with timeout: abort if either is aborted
       const externalSignal = options.signal;
       if (externalSignal.aborted) {
         controller.abort();
@@ -243,12 +267,14 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions 
       }
     }
     
-    const response = await fetch(url, {
+      response = await fetch(url, {
       ...options,
       signal: finalSignal,
     });
     
     clearTimeout(timeoutId);
+    }
+    
     const duration = Date.now() - startTime;
     
     // Log result if not silent
@@ -333,10 +359,55 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions 
 }
 
 /**
- * Helper to build full API URL
+ * 🌐 Get the current base URL based on connection mode
+ * - WiFi mode: uses remoteHost from store (e.g. 'http://reachy-mini.home:8000')
+ * - USB/Simulation: uses localhost
+ */
+export function getBaseUrl() {
+  const { connectionMode, remoteHost } = useRobotStore.getState();
+  
+  if (connectionMode === 'wifi' && remoteHost) {
+    // Ensure proper URL format
+    const host = remoteHost.includes('://') ? remoteHost : `http://${remoteHost}`;
+    return host.endsWith(':8000') ? host : `${host}:8000`;
+  }
+  
+  // Default: local daemon (USB or simulation)
+  return DAEMON_CONFIG.ENDPOINTS.BASE_URL_LOCAL;
+}
+
+/**
+ * 🌐 Get WebSocket base URL based on connection mode
+ */
+export function getWsBaseUrl() {
+  const httpUrl = getBaseUrl();
+  return httpUrl.replace('http://', 'ws://').replace('https://', 'wss://');
+}
+
+/**
+ * Helper to build full API URL (now dynamic based on connection mode)
  */
 export function buildApiUrl(endpoint) {
-  return `${DAEMON_CONFIG.ENDPOINTS.BASE_URL}${endpoint}`;
+  return `${getBaseUrl()}${endpoint}`;
+}
+
+/**
+ * 🌐 Get daemon hostname only (without protocol or port)
+ * Used for remapping app URLs to the correct robot host
+ * @returns {string} Hostname like 'localhost', 'reachy-mini.home', or '192.168.1.18'
+ */
+export function getDaemonHostname() {
+  const { connectionMode, remoteHost } = useRobotStore.getState();
+  
+  if (connectionMode === 'wifi' && remoteHost) {
+    // Strip protocol if present
+    const cleanHost = remoteHost.replace(/^https?:\/\//, '');
+    // Strip port if present
+    return cleanHost.replace(/:8000$/, '');
+  }
+  
+  // Default: localhost
+  return 'localhost';
 }
 
 /**

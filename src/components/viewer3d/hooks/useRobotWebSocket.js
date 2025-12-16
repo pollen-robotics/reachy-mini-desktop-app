@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import { arraysEqual } from '../../../utils/arraysEqual';
+import { getWsBaseUrl } from '../../../config/daemon';
 
 /**
  * 🚀 GAME-CHANGING: Unified WebSocket hook for ALL robot data
@@ -39,9 +40,9 @@ export function useRobotWebSocket(isActive) {
     const connectWebSocket = () => {
       try {
         // 🚀 GAME-CHANGING: Single WebSocket with ALL data (includes passive_joints)
-        const ws = new WebSocket(
-          'ws://localhost:8000/api/state/ws/full?frequency=10&with_head_pose=true&use_pose_matrix=true&with_head_joints=true&with_antenna_positions=true&with_passive_joints=true'
-        );
+        // 🌐 Dynamic URL based on connection mode (USB/WiFi/Simulation)
+        const wsUrl = `${getWsBaseUrl()}/api/state/ws/full?frequency=10&with_head_pose=true&use_pose_matrix=true&with_head_joints=true&with_antenna_positions=true&with_passive_joints=true`;
+        const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
           // WebSocket connected
@@ -77,13 +78,13 @@ export function useRobotWebSocket(isActive) {
             }
             
             // 🚀 GAME-CHANGING: Passive joints (21 values: passive_1_x/y/z to passive_7_x/y/z)
-            // Only available if Placo is active (kinematics_engine == "Placo")
+            // Only available with full kinematics solver
             if (data.passive_joints !== null && data.passive_joints !== undefined) {
               if (Array.isArray(data.passive_joints) && data.passive_joints.length >= 21) {
                 newState.passiveJoints = data.passive_joints;
               }
             } else {
-              // Explicitly null if Placo is not active
+              // Explicitly null if passive joints not available
               newState.passiveJoints = null;
             }
             

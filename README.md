@@ -348,9 +348,9 @@ stateDiagram-v2
     DownloadingUpdate --> Installing: Download Complete
     Installing --> [*]: Restart Required
     
-    USBCheck --> RobotNotDetected: No USB
+    USBCheck --> FindingRobot: No USB
     USBCheck --> ReadyToStart: USB Connected
-    RobotNotDetected --> ReadyToStart: USB Connected
+    FindingRobot --> ReadyToStart: USB Connected
     
     ReadyToStart --> Starting: User Clicks Start
     Starting --> HardwareScan: Daemon Starting
@@ -360,10 +360,10 @@ stateDiagram-v2
     
     Transition --> ActiveRobot: Window Resized
     ActiveRobot --> Closing: User Stops
-    ActiveRobot --> RobotNotDetected: USB Disconnected
+    ActiveRobot --> FindingRobot: USB Disconnected
     
     Closing --> ReadyToStart: Daemon Stopped
-    Closing --> RobotNotDetected: USB Gone
+    Closing --> FindingRobot: USB Gone
 ```
 
 **Priority order (highest to lowest):**
