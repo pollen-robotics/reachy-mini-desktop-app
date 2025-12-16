@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Box, Typography } from '@mui/material';
 import VideocamOffOutlinedIcon from '@mui/icons-material/VideocamOffOutlined';
 import VideocamOutlinedIcon from '@mui/icons-material/VideocamOutlined';
-import { getBaseUrl } from '../../../config/daemon';
 
 /**
  * CameraFeed Component - Displays live video stream from the robot's camera
@@ -16,8 +15,8 @@ export default function CameraFeed({ width = 240, height = 180, isLarge = false 
   const retryTimeoutRef = useRef(null);
   const mountedRef = useRef(true);
 
-  // MJPEG stream URL with cache-busting (dynamic based on connection mode)
-  const STREAM_URL = `${getBaseUrl()}/api/camera/stream?fps=15&quality=70&_t=${retryCount}`;
+  // MJPEG stream URL with cache-busting
+  const STREAM_URL = `http://localhost:8000/api/camera/stream?fps=15&quality=70&_t=${retryCount}`;
 
   useEffect(() => {
     mountedRef.current = true;

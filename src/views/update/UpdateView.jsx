@@ -319,56 +319,11 @@ export default function UpdateView({
         ) : null}
       </Box>
 
-      {/* Internet connectivity indicator - discrete pastille above logger */}
-      {/* Only display after first check is complete */}
-      {hasInternetChecked && (
-        <Box
-          sx={{
-            position: 'absolute',
-            bottom: 220, // Above the LogConsole
-            left: '50%',
-            transform: 'translateX(-50%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 1,
-            zIndex: 10,
-          }}
-        >
-          <Box
-            sx={{
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              bgcolor: isInternetOnline 
-                ? (darkMode ? 'rgba(34, 197, 94, 0.6)' : 'rgba(34, 197, 94, 0.5)')
-                : (darkMode ? 'rgba(239, 68, 68, 0.6)' : 'rgba(239, 68, 68, 0.5)'),
-              boxShadow: isInternetOnline
-                ? (darkMode ? '0 0 4px rgba(34, 197, 94, 0.3)' : '0 0 3px rgba(34, 197, 94, 0.2)')
-                : (darkMode ? '0 0 4px rgba(239, 68, 68, 0.3)' : '0 0 3px rgba(239, 68, 68, 0.2)'),
-              transition: 'all 0.3s ease',
-              flexShrink: 0,
-            }}
-          />
-          <Typography
-            sx={{
-              fontSize: 12,
-              fontWeight: 400,
-              color: darkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)',
-              whiteSpace: 'nowrap',
-              transition: 'color 0.3s ease',
-            }}
-          >
-            {isInternetOnline ? 'Online' : 'Offline'}
-          </Typography>
-        </Box>
-      )}
-
-      {/* Update logs console - positioned at bottom */}
+      {/* Update logs console - positioned above online/offline indicator */}
       <Box
         sx={{
           position: 'absolute',
-          bottom: 16,
+          bottom: hasInternetChecked ? 56 : 16, // Above online/offline indicator if visible
           left: '50%',
           transform: 'translateX(-50%)',
           width: 'calc(100% - 32px)',
@@ -397,6 +352,51 @@ export default function UpdateView({
           }}
         />
       </Box>
+
+      {/* Internet connectivity indicator - discrete pastille at bottom center */}
+      {/* Only display after first check is complete */}
+      {hasInternetChecked && (
+        <Box
+          sx={{
+            position: 'absolute',
+            bottom: 16,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 1,
+            zIndex: 10,
+          }}
+        >
+        <Box
+          sx={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            bgcolor: isInternetOnline 
+              ? (darkMode ? 'rgba(34, 197, 94, 0.6)' : 'rgba(34, 197, 94, 0.5)')
+              : (darkMode ? 'rgba(239, 68, 68, 0.6)' : 'rgba(239, 68, 68, 0.5)'),
+            boxShadow: isInternetOnline
+              ? (darkMode ? '0 0 4px rgba(34, 197, 94, 0.3)' : '0 0 3px rgba(34, 197, 94, 0.2)')
+              : (darkMode ? '0 0 4px rgba(239, 68, 68, 0.3)' : '0 0 3px rgba(239, 68, 68, 0.2)'),
+            transition: 'all 0.3s ease',
+            flexShrink: 0,
+          }}
+        />
+        <Typography
+          sx={{
+            fontSize: 12,
+            fontWeight: 400,
+            color: darkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)',
+            whiteSpace: 'nowrap',
+            transition: 'color 0.3s ease',
+          }}
+        >
+          {isInternetOnline ? 'Online' : 'Offline'}
+        </Typography>
+        </Box>
+      )}
     </Box>
   );
 }

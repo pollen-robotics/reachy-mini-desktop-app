@@ -15,7 +15,7 @@ import { arraysEqual } from '../../utils/arraysEqual';
 function URDFRobot({ 
   headPose, // ✅ Pose matrix (for debug/comparison, but we use joints)
   headJoints, // ✅ Array of 7 values [yaw_body, stewart_1, ..., stewart_6]
-  passiveJoints, // ✅ Array of 21 values [passive_1_x, passive_1_y, passive_1_z, ..., passive_7_z] (optional, requires full kinematics solver)
+  passiveJoints, // ✅ Array of 21 values [passive_1_x, passive_1_y, passive_1_z, ..., passive_7_z] (optional, only if Placo active)
   yawBody, 
   antennas, 
   isActive, 
@@ -54,22 +54,6 @@ function URDFRobot({
   const lastPassiveJointsRef = useRef(null);
   const lastYawBodyRef = useRef(undefined);
   const lastAntennasRef = useRef(null);
-  
-  // ✅ Track visibility state of stewart platform (hidden when passiveJoints not available)
-  const lastRodsVisibleRef = useRef(null);
-  const stewartRodMeshesRef = useRef([]); // Rods meshes
-  const stewartPlatformMeshesRef = useRef([]); // All platform meshes (horns, balls, etc.)
-  const headLinkRef = useRef(null); // Reference to xl_330 link (head)
-  const bodyLinkRef = useRef(null); // Reference to body_down_3dprint link (body after yaw_body)
-  const headLinkParentMatrixRef = useRef(new THREE.Matrix4()); // Parent matrix for head positioning
-  
-  // ✅ Transformation matrices for coordinate system conversion (daemon Z-up → Three.js Y-up)
-  const rotationXRef = useRef(new THREE.Matrix4().makeRotationX(-Math.PI / 2)); // -90° around X
-  const rotationYRef = useRef(new THREE.Matrix4().makeRotationY(-Math.PI / 2)); // -90° around Y
-  const tempMatrix2 = useRef(new THREE.Matrix4());
-  
-  // ✅ Head offset above body (from MuJoCo backend: 0.177m)
-  const HEAD_HEIGHT_OFFSET = 0.177;
   
   // ✅ Mouse movement handler for raycaster
   useEffect(() => {
@@ -256,48 +240,12 @@ function URDFRobot({
       
       // Collect meshes
       const collectedMeshes = [];
-      const stewartRodMeshes = [];
-      const stewartPlatformMeshes = [];
-      let headLink = null;
-      
       robotModel.traverse((child) => {
-        const childName = (child.name || '').toLowerCase();
-        const parentName = (child.parent?.name || '').toLowerCase();
-        
-        // ✅ Find the head link (xl_330)
-        if (child.name === 'xl_330') {
-          headLink = child;
-        }
-        
-        // ✅ Find the body link (body_down_3dprint - after yaw_body joint)
-        if (child.name === 'body_down_3dprint') {
-          bodyLinkRef.current = child;
-        }
-        
         if (child.isMesh) {
           collectedMeshes.push(child);
-          
-          // ✅ Identify stewart rod meshes (the rods connecting to passive joints)
-          if (childName.includes('stewart_link_rod') || parentName.includes('stewart_link_rod')) {
-            stewartRodMeshes.push(child);
-          }
-          
-          // ✅ Identify stewart platform meshes (horns, balls, passive links)
-          // These are all elements that depend on passive joints for correct positioning
-          if (childName.includes('stewart_link_ball') || 
-              childName.includes('dc15_a01_horn') ||
-              parentName.includes('dc15_a01_horn') ||
-              parentName.includes('passive_') ||
-              childName.includes('passive_')) {
-            stewartPlatformMeshes.push(child);
-          }
         }
       });
-      
       meshesRef.current = collectedMeshes;
-      stewartRodMeshesRef.current = stewartRodMeshes;
-      stewartPlatformMeshesRef.current = stewartPlatformMeshes;
-      headLinkRef.current = headLink;
       
       // Notify parent that meshes are ready
       if (onMeshesReady) {
@@ -372,35 +320,6 @@ function URDFRobot({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, forceLoad, onMeshesReady]); // ✅ Load when isActive or forceLoad changes
 
-  // ✅ Toggle visibility of stewart platform based on passiveJoints availability
-  // When passiveJoints is null, hide rods and platform elements to avoid incorrect positioning
-  // Head will be positioned directly via headPose matrix instead
-  useEffect(() => {
-    if (!robot) return;
-    
-    const hasPassiveJoints = passiveJoints !== null && passiveJoints !== undefined && 
-      (Array.isArray(passiveJoints) ? passiveJoints.length >= 21 : passiveJoints?.array?.length >= 21);
-    
-    // Only update if visibility state changed
-    if (lastRodsVisibleRef.current !== hasPassiveJoints) {
-      // Hide/show stewart rods
-      stewartRodMeshesRef.current.forEach(mesh => {
-        mesh.visible = hasPassiveJoints;
-      });
-      
-      // Hide/show stewart platform elements (horns, balls)
-      stewartPlatformMeshesRef.current.forEach(mesh => {
-        mesh.visible = hasPassiveJoints;
-      });
-      
-      lastRodsVisibleRef.current = hasPassiveJoints;
-      
-      if (!hasPassiveJoints) {
-        logInfo('🔧 Stewart platform hidden (using direct head pose)');
-      }
-    }
-  }, [robot, passiveJoints]);
-
   // ✅ Apply antennas on initial load and when they change (even if isActive=false)
   const lastAntennasLogRef = useRef(null);
   useEffect(() => {
@@ -451,48 +370,67 @@ function URDFRobot({
       return; // Skip this frame - only process every 6th frame (~10 Hz)
     }
 
-    // ✅ Check if we have passive joints (full kinematics mode)
-    const hasPassiveJoints = passiveJoints !== null && passiveJoints !== undefined && 
-      (Array.isArray(passiveJoints) ? passiveJoints.length >= 21 : passiveJoints?.array?.length >= 21);
-
-    // =====================================================
-    // MODE 1: Full kinematics (with passive joints)
-    // Apply all joints normally via URDF kinematics
-    // =====================================================
-    if (hasPassiveJoints) {
-      // ✅ Re-enable matrixAutoUpdate if we were in simplified mode before
-      if (headLinkRef.current && !headLinkRef.current.matrixAutoUpdate) {
-        headLinkRef.current.matrixAutoUpdate = true;
-      }
+    // STEP 1: Apply head joints (yaw_body + stewart_1 to stewart_6)
+    // ✅ Use joints directly like in Rerun code (more precise than pose matrix)
+    // Joints respect URDF kinematics
+    // ✅ IMPORTANT: URDFLoader automatically updates matrices on setJointValue
+    // Do NOT force updateMatrixWorld() to avoid conflicts and flickering
+    if (headJoints && Array.isArray(headJoints) && headJoints.length === 7) {
+      const headJointsChanged = !arraysEqual(headJoints, lastHeadJointsRef.current);
       
-      // STEP 1: Apply head joints (yaw_body + stewart_1 to stewart_6)
-      if (headJoints && Array.isArray(headJoints) && headJoints.length === 7) {
-        const headJointsChanged = !arraysEqual(headJoints, lastHeadJointsRef.current);
+      if (headJointsChanged) {
+        // yaw_body (index 0) - Apply first
+        if (robot.joints['yaw_body']) {
+          robot.setJointValue('yaw_body', headJoints[0]);
+        } else {
+          console.warn('⚠️ Joint yaw_body not found in robot model');
+        }
         
-        if (headJointsChanged) {
-          // yaw_body (index 0)
-          if (robot.joints['yaw_body']) {
-            robot.setJointValue('yaw_body', headJoints[0]);
-          }
-          
-          // stewart_1 to stewart_6 (indices 1-6)
-          const stewartJointNames = ['stewart_1', 'stewart_2', 'stewart_3', 'stewart_4', 'stewart_5', 'stewart_6'];
-          for (let i = 0; i < 6; i++) {
-            const jointName = stewartJointNames[i];
-            if (robot.joints[jointName]) {
-              robot.setJointValue(jointName, headJoints[i + 1]);
+        // stewart_1 to stewart_6 (indices 1-6) - Apply next
+        const stewartJointNames = ['stewart_1', 'stewart_2', 'stewart_3', 'stewart_4', 'stewart_5', 'stewart_6'];
+        let appliedCount = 0;
+        const appliedValues = {};
+        for (let i = 0; i < 6; i++) {
+          const jointName = stewartJointNames[i];
+          if (robot.joints[jointName]) {
+            const jointValue = headJoints[i + 1];
+            robot.setJointValue(jointName, jointValue);
+            appliedValues[jointName] = jointValue;
+            appliedCount++;
+          } else {
+            if (!lastHeadJointsRef.current) {
+              console.warn(`⚠️ Joint ${jointName} not found in robot model`);
             }
           }
-          
-          lastHeadJointsRef.current = headJoints;
         }
+        
+        if (appliedCount < 6 && !lastHeadJointsRef.current) {
+          console.warn(`⚠️ Only ${appliedCount}/6 stewart joints were applied`);
+        }
+        
+        // ✅ OPTIMIZED: Store reference directly (arrays from WebSocket are not mutated)
+        // Only slice if we need a copy for safety, but WebSocket arrays are safe to reference
+        lastHeadJointsRef.current = headJoints;
       }
+    } else if (yawBody !== lastYawBodyRef.current && yawBody !== undefined && robot.joints['yaw_body']) {
+      // ✅ Fallback: use yawBody alone if headJoints is not available
+      // ✅ OPTIMIZED: Increased tolerance to match arraysEqual (0.005 rad)
+      const yawChanged = Math.abs(yawBody - (lastYawBodyRef.current || 0)) > 0.005;
+      if (yawChanged) {
+      robot.setJointValue('yaw_body', yawBody);
+      lastYawBodyRef.current = yawBody;
+    }
+    }
 
-      // STEP 1.5: Apply passive joints (21 values)
+    // STEP 1.5: Apply passive joints (21 values: passive_1_x/y/z to passive_7_x/y/z)
+    // ✅ CRITICAL: Passive joints are necessary for complete Stewart platform kinematics
+    // Only available if Placo is active
+    if (passiveJoints && (Array.isArray(passiveJoints) || (passiveJoints.array && Array.isArray(passiveJoints.array)))) {
       const passiveArray = Array.isArray(passiveJoints) ? passiveJoints : passiveJoints.array;
       const passiveJointsChanged = !arraysEqual(passiveArray, lastPassiveJointsRef.current);
     
       if (passiveJointsChanged && passiveArray.length >= 21) {
+        // ✅ Passive joint names in exact daemon order
         const passiveJointNames = [
           'passive_1_x', 'passive_1_y', 'passive_1_z',
           'passive_2_x', 'passive_2_y', 'passive_2_z',
@@ -503,6 +441,7 @@ function URDFRobot({
           'passive_7_x', 'passive_7_y', 'passive_7_z',
         ];
         
+        // Apply all passive joints
         for (let i = 0; i < Math.min(passiveArray.length, passiveJointNames.length); i++) {
           const jointName = passiveJointNames[i];
           if (robot.joints[jointName]) {
@@ -510,84 +449,23 @@ function URDFRobot({
           }
         }
         
+        // ✅ OPTIMIZED: Store reference directly (arrays from WebSocket are not mutated)
         lastPassiveJointsRef.current = passiveArray;
       }
     }
-    // =====================================================
-    // MODE 2: Simplified mode (no passive joints)
-    // Apply only yaw_body + position head directly via headPose
-    // Stewart platform is hidden
-    // =====================================================
-    else {
-      // STEP 1: Apply only yaw_body (body rotation)
-      if (headJoints && Array.isArray(headJoints) && headJoints.length >= 1) {
-        const yawChanged = !lastHeadJointsRef.current || 
-          Math.abs(headJoints[0] - (lastHeadJointsRef.current[0] || 0)) > 0.005;
-        
-        if (yawChanged && robot.joints['yaw_body']) {
-          robot.setJointValue('yaw_body', headJoints[0]);
-          lastHeadJointsRef.current = headJoints;
-        }
-      } else if (yawBody !== undefined && robot.joints['yaw_body']) {
-        const yawChanged = Math.abs(yawBody - (lastYawBodyRef.current || 0)) > 0.005;
-        if (yawChanged) {
-          robot.setJointValue('yaw_body', yawBody);
-          lastYawBodyRef.current = yawBody;
-        }
-      }
 
-      // STEP 2: Position head relative to BODY (not to broken URDF chain)
-      // Without passive joints, the stewart platform chain is broken
-      // So we position the head directly above the body using headPose orientation
-      if (headPose && headPose.length === 16 && headLinkRef.current && bodyLinkRef.current) {
-        const headPoseChanged = !arraysEqual(headPose, lastHeadPoseRef.current);
-        
-        if (headPoseChanged) {
-          const headLink = headLinkRef.current;
-          const bodyLink = bodyLinkRef.current;
-          
-          // Get body's world position (after yaw_body rotation)
-          bodyLink.updateWorldMatrix(true, false);
-          const bodyWorldPos = new THREE.Vector3();
-          bodyLink.getWorldPosition(bodyWorldPos);
-          
-          // Convert headPose array to Three.js Matrix4
-          // ⚠️ headPose from daemon is in ROW-MAJOR order (numpy flatten)
-          tempMatrix.current.fromArray(headPose);
-          tempMatrix.current.transpose(); // Convert row-major to column-major
-          
-          // Extract rotation from headPose
-          tempQuaternion.current.setFromRotationMatrix(tempMatrix.current);
-          
-          // The rotation is in daemon frame (Z-up, looking forward)
-          // We need to transform it to match the robot's orientation in the scene
-          // The robot primitive has rotation [-π/2, 0, 0] and group has [0, -π/2, 0]
-          
-          // Position head above body (in world coordinates)
-          // Head should be HEAD_HEIGHT_OFFSET above body in the Z-up daemon frame
-          // Which is Y-up in Three.js after the scene rotations
-          const headWorldPos = new THREE.Vector3(
-            bodyWorldPos.x,
-            bodyWorldPos.y + HEAD_HEIGHT_OFFSET, // Above body in Y (Three.js up)
-            bodyWorldPos.z
-          );
-          
-          // Set head world position by computing local position from parent
-          if (headLink.parent) {
-            headLink.parent.updateWorldMatrix(true, false);
-            const parentInverse = new THREE.Matrix4().copy(headLink.parent.matrixWorld).invert();
-            const localPos = headWorldPos.clone().applyMatrix4(parentInverse);
-            headLink.position.copy(localPos);
-          } else {
-            headLink.position.copy(headWorldPos);
-          }
-          
-          // Apply head orientation (keep original for now, the URDF default orientation)
-          // The headPose rotation is small (head is nearly upright) so we can skip complex transforms
-          
-          headLink.updateMatrixWorld(true);
-          lastHeadPoseRef.current = headPose;
-        }
+    // ✅ IMPORTANT: Do NOT force updateMatrixWorld() here
+    // URDFLoader automatically updates matrices on setJointValue()
+    // Forcing updateMatrixWorld() can create conflicts and cause flickering
+
+    // STEP 2: Optional - Apply head_pose for comparison/debug (but joints are priority)
+    // ✅ Pose matrix can be used to verify consistency, but joints are the source of truth
+    if (headPose && headPose.length === 16) {
+      const headPoseChanged = !arraysEqual(headPose, lastHeadPoseRef.current);
+      if (headPoseChanged) {
+        // ✅ OPTIMIZED: Store reference directly (arrays from WebSocket are not mutated)
+        lastHeadPoseRef.current = headPose;
+        // Note: We no longer apply the matrix directly as joints are more precise
       }
     }
 

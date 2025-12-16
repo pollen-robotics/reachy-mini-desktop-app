@@ -27,17 +27,6 @@
       "macos-permissions:allow-check-camera-permission",
       "macos-permissions:allow-request-camera-permission",
       "macos-permissions:allow-check-microphone-permission",
-    "macos-permissions:allow-request-microphone-permission",
-    {
-      "identifier": "http:default",
-      "allow": [
-        { "url": "http://localhost:*" },
-        { "url": "http://127.0.0.1:*" },
-        { "url": "http://192.168.*:*" },
-        { "url": "http://10.*:*" },
-        { "url": "http://*.local:*" },
-        { "url": "http://*.home:*" }
-      ]
-    }
+      "macos-permissions:allow-request-microphone-permission"
   ]
 }

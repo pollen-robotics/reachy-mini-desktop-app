@@ -49,7 +49,7 @@ export function useWindowResize(view) {
     // Set sizes according to view (fixed height 670px, only width changes)
     const FIXED_HEIGHT = 670;
     const sizes = {
-      compact: { width: 450, height: FIXED_HEIGHT },    // Views: FindingRobot, ReadyToStart, Starting, Closing
+      compact: { width: 450, height: FIXED_HEIGHT },    // Views: RobotNotDetected, ReadyToStart, Starting, Closing
       expanded: { width: 900, height: FIXED_HEIGHT },   // View: ActiveRobotView (2x wider)
     };
 

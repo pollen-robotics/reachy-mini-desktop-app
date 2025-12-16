@@ -7,7 +7,6 @@ export { useUpdater } from './useUpdater';
 export { useUpdateViewState } from './useUpdateViewState';
 export { useUsbDetection } from './useUsbDetection';
 export { useUsbCheckTiming } from './useUsbCheckTiming';
-export { useRobotDiscovery } from './useRobotDiscovery';
 export { useWindowResize } from './useWindowResize';
 export { usePermissions } from './usePermissions';
 export { useViewRouter, ViewRouterWrapper } from './useViewRouter';

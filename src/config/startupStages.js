@@ -86,8 +86,8 @@ export const STARTUP_STAGES = {
     isSimOnly: false,
     logPatterns: [
       'control_mode',
+      'Placo',
       'kinematics',
-      'AnalyticalKinematics',
       'Robot initialized',
     ],
   },

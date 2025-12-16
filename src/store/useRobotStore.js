@@ -31,14 +31,6 @@ export const useRobotStore = create((set, get) => ({
   usbPortName: null,
   isFirstCheck: true,
   
-  // 🌐 Connection mode (USB vs WiFi vs Simulation)
-  // - 'usb': Robot connected via USB, daemon runs locally
-  // - 'wifi': Robot on network, daemon runs on remote host (Pi)
-  // - 'simulation': No physical robot, daemon runs locally with MuJoCo
-  // - null: No connection selected yet
-  connectionMode: null,
-  remoteHost: null, // e.g. 'reachy-mini.home' for WiFi mode
-  
   // 🎯 Centralized robot state (polled by useRobotState)
   // All components should consume this instead of polling separately
   robotStateFull: {
@@ -273,55 +265,6 @@ export const useRobotStore = create((set, get) => ({
   
   setUsbPortName: (value) => set({ usbPortName: value }),
   setIsFirstCheck: (value) => set({ isFirstCheck: value }),
-  
-  // 🌐 Connection mode setters
-  setConnectionMode: (mode) => set({ connectionMode: mode }),
-  setRemoteHost: (host) => set({ remoteHost: host }),
-  
-  // 🌐 Helper to check if we're in WiFi mode (daemon is remote, not local)
-  isWifiMode: () => get().connectionMode === 'wifi',
-  
-  // 🌐 Helper to check if daemon is managed locally (USB or simulation)
-  isLocalDaemon: () => {
-    const mode = get().connectionMode;
-    return mode === 'usb' || mode === 'simulation';
-  },
-  
-  // 🌐 Reset connection state (return to FindingRobotView)
-  // Used when disconnecting from any mode (USB/WiFi/Simulation)
-  resetConnection: () => {
-    set({
-      robotStatus: 'disconnected',
-      busyReason: null,
-      isActive: false,
-      isStarting: false,
-      isStopping: false,
-      connectionMode: null,
-      remoteHost: null,
-      isUsbConnected: false,
-      usbPortName: null,
-      isFirstCheck: true,
-      daemonVersion: null, // Reset version for clean state
-    });
-  },
-  
-  // 🌐 Start connection - atomic action to avoid state cascade
-  // Sets all necessary state at once without triggering intermediate transitions
-  startConnection: (mode, options = {}) => {
-    const { portName, remoteHost } = options;
-    set({
-      connectionMode: mode,
-      remoteHost: remoteHost || null,
-      isUsbConnected: mode !== 'wifi', // USB and simulation need this
-      usbPortName: portName || null,
-      robotStatus: 'starting',
-      isStarting: true,
-      isActive: false,
-      isStopping: false,
-      hardwareError: null,
-      startupError: null,
-    });
-  },
   setRobotStateFull: (value) => set((state) => {
     // If value is a function, call it with previous state
     if (typeof value === 'function') {

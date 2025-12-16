@@ -9,7 +9,6 @@ import LaunchIcon from '@mui/icons-material/Launch';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import DiscoverAppsButton from '../discover/Button';
 import ReachiesCarousel from '@components/ReachiesCarousel';
-import { getDaemonHostname } from '../../../../config/daemon';
 
 // ✅ Timeout for app to transition from "starting" to "running"
 const APP_STARTING_TIMEOUT = 60000; // 60 seconds max for app to fully start
@@ -75,9 +74,9 @@ function useUrlAccessibility(url, enabled = false, onTimeout = null, timeoutMs =
       }
 
       try {
-        // Remap hostname to daemon host (supports USB localhost and WiFi remote)
+        // Remap hostname to current location
         const targetUrl = new URL(url);
-        targetUrl.hostname = getDaemonHostname();
+        targetUrl.hostname = window.location.hostname;
         
         // Use AbortController for timeout on individual requests
         const controller = new AbortController();
@@ -255,7 +254,7 @@ function OpenAppButton({ customAppUrl, isStartingOrRunning, isRunning, darkMode,
     e.stopPropagation();
     try {
       const url = new URL(customAppUrl);
-      url.hostname = getDaemonHostname();
+      url.hostname = window.location.hostname;
       
       try {
         const { open } = await import('@tauri-apps/plugin-shell');
