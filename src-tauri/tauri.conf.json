@@ -52,7 +52,7 @@
         "https://pollen-robotics.github.io/reachy-mini-desktop-app/latest.json"
       ],
       "dangerousInsecureTransportProtocol": false,
-      "dangerousAllowDowngrades": false,
+      "dangerousAllowDowngrades": true,
       "dialog": false,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNBNDFBQUFGQkFCOTY2NQpSV1JsbHF2N3FocWtBM2pkdlhBVUpXNFkwZkc1dWdHK09NcklYNGthR1dHbVR1aDQ0NlIxR3oyUgo="
     }
