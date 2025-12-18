@@ -560,6 +560,17 @@ fn main() -> ExitCode {
         cmd
     };
     
+    // Add the working directory (where uv is located) to PATH
+    // This allows Python subprocess to find uv when installing apps
+    let current_path = env::var("PATH").unwrap_or_default();
+    let new_path = if cfg!(target_os = "windows") {
+        format!("{};{}", working_dir.display(), current_path)
+    } else {
+        format!("{}:{}", working_dir.display(), current_path)
+    };
+    cmd.env("PATH", &new_path);
+    println!("📍 Added {} to PATH for subprocess", working_dir.display());
+    
     // Check if this is a pip install command (for auto-signing after installation)
     #[cfg(target_os = "macos")]
     let is_pip_install = !args.is_empty() && args[0] == "pip" && args.len() >= 2 && args[1] == "install";
