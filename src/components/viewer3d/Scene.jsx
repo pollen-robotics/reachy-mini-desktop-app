@@ -11,8 +11,8 @@ import CinematicCamera from './CinematicCamera';
 import HeadFollowCamera from './HeadFollowCamera';
 import useAppStore from '../../store/useAppStore';
 import { DAEMON_CONFIG } from '../../config/daemon';
-import { arraysEqual } from '../../utils/arraysEqual';
 // 🚀 GAME-CHANGING: Removed useRobotParts - now using unified WebSocket via props
+// ⚡ OPTIMIZED: Removed arraysEqual - using dataVersion for memo comparison instead
 
 /**
  * 3D Scene with lighting, environment and post-processing effects
@@ -40,6 +40,7 @@ function Scene({
   errorFocusMesh = null, // Mesh to focus on in case of error
   hideEffects = false, // Hide particle effects
   darkMode = false, // Dark mode to adapt grid
+  dataVersion = 0, // ⚡ OPTIMIZED: Skip comparisons in URDFRobot if version unchanged
 }) {
   // State to store meshes to outline
   const [outlineMeshes, setOutlineMeshes] = useState([]);
@@ -312,18 +313,18 @@ function Scene({
       
       <URDFRobot 
         headPose={headPose} 
-        headJoints={headJoints} // ✅ Use joints directly (like Rerun)
-        passiveJoints={passiveJoints} // ✅ Passive joints for complete Stewart kinematics
+        headJoints={headJoints}
+        passiveJoints={passiveJoints}
         yawBody={yawBody} 
         antennas={antennas}
         isActive={isActive} 
         isTransparent={isTransparent}
-        wireframe={wireframe} // ✅ Wireframe mode
-        cellShading={cellShading}
+        wireframe={wireframe}
         xrayOpacity={xraySettings.opacity}
         onMeshesReady={setOutlineMeshes}
         onRobotReady={setRobotRef}
         forceLoad={forceLoad}
+        dataVersion={dataVersion}
       />
       
       {/* Scan effect during loading */}
@@ -447,7 +448,7 @@ function Scene({
 }
 
 // 🚀 GAME-CHANGING: Memoize Scene to prevent unnecessary re-renders
-// Only re-render if props actually changed (deep comparison for arrays)
+// ⚡ OPTIMIZED: Use dataVersion instead of comparing all arrays individually
 export default memo(Scene, (prevProps, nextProps) => {
   // Compare primitive props
   if (
@@ -461,30 +462,15 @@ export default memo(Scene, (prevProps, nextProps) => {
     prevProps.useHeadFollowCamera !== nextProps.useHeadFollowCamera ||
     prevProps.lockCameraToHead !== nextProps.lockCameraToHead ||
     prevProps.hideEffects !== nextProps.hideEffects ||
-    prevProps.darkMode !== nextProps.darkMode ||
-    prevProps.yawBody !== nextProps.yawBody
+    prevProps.darkMode !== nextProps.darkMode
   ) {
     return false; // Re-render
   }
   
-  // Compare headJoints
-  if (!arraysEqual(prevProps.headJoints, nextProps.headJoints)) {
-    return false; // Re-render
-  }
-  
-  // Compare passiveJoints
-  if (!arraysEqual(prevProps.passiveJoints, nextProps.passiveJoints)) {
-    return false; // Re-render
-  }
-  
-  // Compare antennas
-  if (!arraysEqual(prevProps.antennas, nextProps.antennas)) {
-    return false; // Re-render
-  }
-  
-  // Compare headPose
-  if (!arraysEqual(prevProps.headPose, nextProps.headPose)) {
-    return false; // Re-render
+  // ⚡ OPTIMIZED: Compare dataVersion instead of all arrays (O(1) vs O(n))
+  // dataVersion increments when any robot data changes in WebSocket
+  if (prevProps.dataVersion !== nextProps.dataVersion) {
+    return false; // Re-render - new robot data available
   }
   
   // All props are equal, skip re-render

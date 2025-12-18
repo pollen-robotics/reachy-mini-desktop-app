@@ -22,6 +22,7 @@ export function useRobotWebSocket(isActive) {
     yawBody: 0, // yaw rotation of the body (extracted from headJoints[0])
     antennas: [0, 0], // [left, right]
     passiveJoints: null, // Array of 21 values [passive_1_x, passive_1_y, passive_1_z, ..., passive_7_z]
+    dataVersion: 0, // ⚡ OPTIMIZED: Increments on each change, allows useFrame to skip comparisons
   });
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null); // ✅ Track reconnect timeout for cleanup
@@ -155,7 +156,8 @@ export function useRobotWebSocket(isActive) {
                   return prev;
                 }
                 
-                return { ...prev, ...newState };
+                // ⚡ OPTIMIZED: Increment dataVersion so useFrame can skip comparisons
+                return { ...prev, ...newState, dataVersion: prev.dataVersion + 1 };
               });
             }
           } catch (err) {
