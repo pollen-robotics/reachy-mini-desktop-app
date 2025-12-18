@@ -143,6 +143,7 @@ export const createRobotSlice = (set, get) => ({
   
   transitionTo: {
     disconnected: () => {
+      console.log('[Store] 🔴 transitionTo.disconnected() called');
       set({
         robotStatus: 'disconnected',
         busyReason: null,
@@ -158,6 +159,7 @@ export const createRobotSlice = (set, get) => ({
     },
     
     readyToStart: () => {
+      console.log('[Store] 🟡 transitionTo.readyToStart() called');
       set({
         robotStatus: 'ready-to-start',
         busyReason: null,
@@ -170,6 +172,7 @@ export const createRobotSlice = (set, get) => ({
     },
     
     starting: () => {
+      console.log('[Store] 🟠 transitionTo.starting() called');
       set({
         robotStatus: 'starting',
         busyReason: null,
@@ -184,27 +187,39 @@ export const createRobotSlice = (set, get) => ({
     ready: () => {
       const state = get();
       
+      // 🔍 DEBUG: Log state when transitionTo.ready() is called
+      console.log('[Store] 🎯 transitionTo.ready() called', {
+        hardwareError: state.hardwareError,
+        robotStatus: state.robotStatus,
+        connectionMode: state.connectionMode,
+        isActive: state.isActive,
+      });
+      
       // Don't transition to ready if there's a hardware error
       if (state.hardwareError) {
-        console.warn('[Store] ⚠️ Cannot transition to ready: hardware error present');
+        console.warn('[Store] ⚠️ BLOCKED: hardware error present');
         return;
       }
       
       // 🛡️ Guard: Don't transition if stopping (prevents chaos during shutdown)
       if (state.robotStatus === 'stopping') {
-        return; // Silently ignore during shutdown
+        console.warn('[Store] ⚠️ BLOCKED: robotStatus is stopping');
+        return;
       }
       
       // 🛡️ Guard: Don't transition if no connection (prevents crash after resetAll)
       if (!state.connectionMode) {
-        return; // Silently ignore after disconnect
+        console.warn('[Store] ⚠️ BLOCKED: connectionMode is null/undefined');
+        return;
       }
       
       // 🛡️ Guard: Don't log/transition if already ready (prevents flicker)
       if (state.robotStatus === 'ready') {
-        return; // Already ready, skip
+        console.warn('[Store] ⚠️ BLOCKED: already ready');
+        return;
       }
       
+      console.log('[Store] ✅ Transitioning to ready - window should resize now');
       logReady();
       set({
         robotStatus: 'ready',
@@ -221,15 +236,18 @@ export const createRobotSlice = (set, get) => ({
     },
     
     busy: (reason) => {
+      console.log('[Store] 🟣 transitionTo.busy() called', { reason });
       const state = get();
       
       // 🛡️ Guard: Don't transition if stopping (prevents chaos during shutdown)
       if (state.robotStatus === 'stopping') {
+        console.warn('[Store] ⚠️ busy BLOCKED: robotStatus is stopping');
         return; // Silently ignore during shutdown
       }
       
       // 🛡️ Guard: Don't transition if no connection (prevents issues after resetAll)
       if (!state.connectionMode) {
+        console.warn('[Store] ⚠️ busy BLOCKED: connectionMode is null');
         return; // Silently ignore after disconnect
       }
       
@@ -254,6 +272,7 @@ export const createRobotSlice = (set, get) => ({
     },
     
     stopping: () => {
+      console.log('[Store] 🔵 transitionTo.stopping() called');
       set({
         robotStatus: 'stopping',
         busyReason: null,
@@ -268,6 +287,7 @@ export const createRobotSlice = (set, get) => ({
     },
     
     crashed: () => {
+      console.log('[Store] 💀 transitionTo.crashed() called');
       logCrash();
       set({
         robotStatus: 'crashed',
@@ -341,7 +361,13 @@ export const createRobotSlice = (set, get) => ({
   setIsUsbConnected: (value) => {
     const state = get();
     if (!value) {
-      state.transitionTo.disconnected();
+      // 🛡️ Only disconnect if we're in USB mode
+      // WiFi and Simulation modes don't depend on USB detection
+      if (state.connectionMode === 'usb') {
+        state.transitionTo.disconnected();
+      }
+      // If connectionMode is null (not connected yet), just update the flag
+      // Don't disconnect - user might be about to connect via WiFi
     } else if (state.robotStatus === 'disconnected') {
       state.transitionTo.readyToStart();
     }

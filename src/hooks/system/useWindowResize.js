@@ -16,11 +16,13 @@ import { moveWindow, Position } from '@tauri-apps/plugin-positioner';
 async function resizeWindowInstantly(targetWidth, targetHeight) {
   // Mock pour le navigateur
   if (!window.__TAURI__) {
+    console.log('[resizeWindowInstantly] ⚠️ Not in Tauri, skipping');
     return;
   }
 
   try {
     const appWindow = getAppWindow();
+    console.log('[resizeWindowInstantly] 🎯 Got appWindow:', appWindow?.label);
     
     // Obtenir la taille actuelle ET le scale factor pour comparer correctement
     const currentSize = await appWindow.innerSize();
@@ -30,19 +32,31 @@ async function resizeWindowInstantly(targetWidth, targetHeight) {
     const currentLogicalWidth = Math.round(currentSize.width / scaleFactor);
     const currentLogicalHeight = Math.round(currentSize.height / scaleFactor);
 
+    console.log('[resizeWindowInstantly] 📐 Current size:', {
+      physical: { width: currentSize.width, height: currentSize.height },
+      logical: { width: currentLogicalWidth, height: currentLogicalHeight },
+      scaleFactor,
+      target: { width: targetWidth, height: targetHeight },
+    });
+
     // If already at correct size (with 2px tolerance for rounding), do nothing
     const widthMatch = Math.abs(currentLogicalWidth - targetWidth) <= 2;
     const heightMatch = Math.abs(currentLogicalHeight - targetHeight) <= 2;
     
     if (widthMatch && heightMatch) {
+      console.log('[resizeWindowInstantly] ✅ Already at target size, skipping');
       return;
     }
 
     // Apply resize - setSize avec LogicalSize gère automatiquement le scale factor
+    console.log('[resizeWindowInstantly] 🔄 Calling setSize...');
     await appWindow.setSize(new LogicalSize(targetWidth, targetHeight));
+    console.log('[resizeWindowInstantly] ✅ setSize completed');
     
     // Center window on screen
+    console.log('[resizeWindowInstantly] 🔄 Calling moveWindow(Center)...');
     await moveWindow(Position.Center);
+    console.log('[resizeWindowInstantly] ✅ moveWindow completed');
   } catch (error) {
     console.error('❌ Window resize error:', error);
   }
@@ -88,6 +102,12 @@ export function useWindowResize(view) {
     if (previousView.current === view) {
       return;
     }
+
+    // 🔍 DEBUG: Log view change
+    console.log(`[WindowResize] 🎯 View changed: ${previousView.current} → ${view}`, {
+      targetWidth: targetSize.width,
+      targetHeight: targetSize.height,
+    });
 
     previousView.current = view;
 

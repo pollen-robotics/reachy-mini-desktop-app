@@ -150,20 +150,31 @@ function App() {
 
   // Determine current view for automatic resize
   const currentView = useMemo(() => {
+    // 🔍 DEBUG: Log state when computing currentView
+    console.log('[App] 🎯 Computing currentView', {
+      isActive,
+      hardwareError: !!hardwareError,
+      isStopping,
+    });
+    
     // Compact view: ClosingView (stopping)
     if (isStopping) {
+      console.log('[App] → currentView = compact (isStopping)');
       return 'compact';
     }
     
-    // ⚡ Expanded view: daemon active (but NEVER during StartingView)
-    // BLOCK resize as long as isStarting = true (scan in progress)
-    if (!isStarting && isActive && !hardwareError) {
+    // ⚡ Expanded view: daemon active
+    // isActive becomes true when transitionTo.ready() is called
+    // (after scan complete + daemon health check passes)
+    if (isActive && !hardwareError) {
+      console.log('[App] → currentView = expanded (isActive && !hardwareError)');
       return 'expanded';
     }
     
     // Compact view: all others (FindingRobot, Starting, ReadyToStart)
+    console.log('[App] → currentView = compact (default)');
     return 'compact';
-  }, [isActive, hardwareError, isStopping, isStarting]);
+  }, [isActive, hardwareError, isStopping]);
 
   // Hook to automatically resize the window
   useWindowResize(currentView);

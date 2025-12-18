@@ -66,13 +66,13 @@ function HardwareScanView({
   // ✅ Helper to get progressive message based on elapsed time
   const getProgressiveMessage = useCallback(() => {
     if (elapsedSeconds >= MESSAGE_THRESHOLDS.VERY_LONG) {
-      return { text: 'If this persists, check the', bold: 'robot connection', suffix: '' };
+      return { text: "That's unusual.", bold: 'Please check the connection', suffix: '' };
     }
     if (elapsedSeconds >= MESSAGE_THRESHOLDS.LONG_WAIT) {
-      return { text: 'Almost there,', bold: 'please wait', suffix: '...' };
+      return { text: 'Patience is a', bold: 'virtue', suffix: ', they say' };
     }
     if (elapsedSeconds >= MESSAGE_THRESHOLDS.TAKING_TIME) {
-      return { text: 'Installing', bold: 'dependencies', suffix: '...' };
+      return { text: 'Loading robot', bold: 'superpowers', suffix: '...' };
     }
     if (elapsedSeconds >= MESSAGE_THRESHOLDS.FIRST_LAUNCH) {
       return { text: 'First launch may take a bit', bold: 'longer', suffix: '' };
@@ -413,13 +413,16 @@ function HardwareScanView({
   }, [checkDaemonHealth, onScanCompleteCallback, clearAllIntervals, setHardwareError]);
   
   const handleScanComplete = useCallback(() => {
+    console.log('[HardwareScanView] 🔍 handleScanComplete called');
+    
     // ✅ Don't mark scan as complete if there's an error - stay in error state
     const currentState = useAppStore.getState();
     if (currentState.hardwareError || (startupError && typeof startupError === 'object' && startupError.type)) {
-      console.warn('⚠️ Scan visual completed but error detected, not completing scan');
+      console.warn('[HardwareScanView] ⚠️ Scan visual completed but error detected, not completing scan');
       return; // Don't complete scan, stay in error state
     }
     
+    console.log('[HardwareScanView] ✅ Scan visual complete, starting daemon health check');
     setScanProgress(prev => ({ ...prev, current: prev.total }));
     setCurrentPart(null);
     setScanComplete(true);
@@ -485,6 +488,12 @@ function HardwareScanView({
       setCurrentPart(null);
     }
   }, [scanComplete, startupError, scanError]);
+
+  // 🔍 DEBUG: Log when HardwareScanView mounts
+  useEffect(() => {
+    console.log('[HardwareScanView] 🎯 MOUNTED', { isStarting, robotStatus });
+    return () => console.log('[HardwareScanView] 🎯 UNMOUNTED');
+  }, []);
 
   // Cleanup intervals on unmount
   useEffect(() => {
@@ -806,15 +815,15 @@ function HardwareScanView({
               >
                 {waitingForDaemon && daemonStep === 'connecting' ? (
                   <>
-                    <Box component="span" sx={{ fontWeight: 700 }}>Connecting</Box> to daemon
+                    <Box component="span" sx={{ fontWeight: 700 }}>Establishing</Box> connection...
                   </>
                 ) : waitingForDaemon && daemonStep === 'initializing' ? (
                   <>
-                    <Box component="span" sx={{ fontWeight: 700 }}>Initializing</Box> robot control
+                    <Box component="span" sx={{ fontWeight: 700 }}>Preparing</Box> motor control...
                   </>
                 ) : waitingForMovements ? (
                   <>
-                    <Box component="span" sx={{ fontWeight: 700 }}>Detecting</Box> robot movements
+                    <Box component="span" sx={{ fontWeight: 700 }}>Waiting</Box> for robot response...
                   </>
                 ) : currentPart ? (
                   <>

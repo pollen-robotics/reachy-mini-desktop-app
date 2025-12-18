@@ -2,25 +2,28 @@ import React, { useCallback } from 'react';
 import { Box } from '@mui/material';
 import HardwareScanView from './HardwareScanView';
 import useAppStore from '../../store/useAppStore';
-import { DAEMON_CONFIG } from '../../config/daemon';
 
 /**
  * View displayed during daemon startup
  * Wrapper around HardwareScanView that handles the transition logic
  */
 function StartingView({ startupError, startDaemon }) {
-  const { darkMode, transitionTo, setHardwareError, hardwareError } = useAppStore();
+  const { darkMode, transitionTo, setHardwareError } = useAppStore();
+  
+  // 🔍 DEBUG: Log when StartingView mounts
+  React.useEffect(() => {
+    console.log('[StartingView] 🎯 MOUNTED');
+    return () => console.log('[StartingView] 🎯 UNMOUNTED');
+  }, []);
   
   const handleScanComplete = useCallback(() => {
     // ✅ HardwareScanView only calls this callback after successful healthcheck
-    // ⚡ WAIT for pause to see "Starting Software..." message, then go to ActiveRobotView
-    setTimeout(() => {
-      // ✅ Clear any hardware errors when scan completes successfully
-      setHardwareError(null);
-      // ✅ Direct transition to ActiveRobotView (state machine handles isActive/isStarting)
-      // ActiveRobotView handles its own loading state for apps
-      transitionTo.ready();
-    }, DAEMON_CONFIG.ANIMATIONS.SCAN_COMPLETE_PAUSE);
+    // ✅ Clear any hardware errors when scan completes successfully
+    setHardwareError(null);
+    // ✅ Direct transition to ActiveRobotView (state machine handles isActive/isStarting)
+    // ActiveRobotView handles its own loading state for apps
+    // ⚡ IMMEDIATE transition - window resize will happen now, not after delay
+    transitionTo.ready();
   }, [transitionTo, setHardwareError]);
 
   return (
