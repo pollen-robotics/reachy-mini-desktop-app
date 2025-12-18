@@ -441,6 +441,55 @@ fn main() -> ExitCode {
     let mut cmd = if !args.is_empty() && (args[0].contains("python") || args[0].contains("mjpython")) {
         println!("✅ Detected Python executable: {}", args[0]);
         
+        // Fix mjpython on macOS if needed
+        #[cfg(target_os = "macos")]
+        if args[0].contains("mjpython") {
+            // 1. Fix mjpython shebang (points to binaries/.venv instead of target/debug/.venv)
+            let mjpython_path = working_dir.join(&args[0]);
+            if mjpython_path.exists() {
+                if let Ok(content) = fs::read_to_string(&mjpython_path) {
+                    // Check if shebang needs fixing (points to binaries/.venv)
+                    if content.contains("binaries/.venv/bin/python3") {
+                        println!("🔧 Fixing mjpython shebang...");
+                        let python_path = working_dir.join(".venv/bin/python3");
+                        let python_path_str = python_path.to_string_lossy();
+                        
+                        let lines: Vec<&str> = content.lines().collect();
+                        if lines.len() >= 2 {
+                            let mut new_lines: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
+                            new_lines[1] = format!("'''exec' '{}' \"$0\" \"$@\"", python_path_str);
+                            let new_content = new_lines.join("\n");
+                            
+                            if let Err(e) = fs::write(&mjpython_path, new_content) {
+                                eprintln!("⚠️  Failed to fix mjpython shebang: {}", e);
+                            } else {
+                                println!("✅ Fixed mjpython shebang to point to {}", python_path_str);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 2. Create symlink for libpython3.12.dylib at .venv/ level
+            // mjpython looks for it at .venv/libpython3.12.dylib but it's in .venv/lib/
+            let venv_dir = working_dir.join(".venv");
+            let libpython_symlink = venv_dir.join("libpython3.12.dylib");
+            let libpython_target = venv_dir.join("lib/libpython3.12.dylib");
+            
+            if libpython_target.exists() && !libpython_symlink.exists() {
+                println!("🔧 Creating libpython3.12.dylib symlink for mjpython...");
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::symlink;
+                    if let Err(e) = symlink("lib/libpython3.12.dylib", &libpython_symlink) {
+                        eprintln!("⚠️  Failed to create libpython symlink: {}", e);
+                    } else {
+                        println!("✅ Created libpython3.12.dylib symlink");
+                    }
+                }
+            }
+        }
+        
         // Convert Unix-style path to Windows-style if needed
         #[cfg(target_os = "windows")]
         let python_arg = {
