@@ -364,10 +364,11 @@ function URDFRobot({
     // If forceLoad is true, we want robot to move even if isActive is temporarily false
     if (!isActive && !forceLoad) return;
     
-    // 🚀 GAME-CHANGING: Throttle to 10 Hz (check every 6 frames at 60 FPS)
+    // 🚀 GAME-CHANGING: Throttle to 20 Hz (check every 3 frames at 60 FPS)
+    // ⚡ Doubled from 10 Hz for smoother robot visualization
     frameCountRef.current++;
-    if (frameCountRef.current % 6 !== 0) {
-      return; // Skip this frame - only process every 6th frame (~10 Hz)
+    if (frameCountRef.current % 3 !== 0) {
+      return; // Skip this frame - only process every 3rd frame (~20 Hz)
     }
 
     // STEP 1: Apply head joints (yaw_body + stewart_1 to stewart_6)
