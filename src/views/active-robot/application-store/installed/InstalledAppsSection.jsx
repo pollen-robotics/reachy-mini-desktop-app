@@ -230,7 +230,7 @@ function OpenAppButton({ customAppUrl, isStartingOrRunning, isRunning, darkMode,
     customAppUrl,
     isStartingOrRunning && !!customAppUrl && !hasTimedOut,
     handleTimeout,
-    30000 // 30 seconds timeout
+    60000 // 60 seconds timeout (doubled for slow app startups)
   );
 
   // Reset timeout state when app stops/starts
