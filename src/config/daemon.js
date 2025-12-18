@@ -18,7 +18,7 @@ export const DAEMON_CONFIG = {
     APPS_LIST: 5000,        // Available apps list
     APP_INSTALL: 60000,     // Launch installation (increased for system popups)
     APP_REMOVE: 90000,      // Uninstall app (increased for system popups)
-    APP_START: 60000,       // Start app
+    APP_START: 120000,      // Start app (2 minutes)
     APP_STOP: 30000,        // Stop app
     JOB_STATUS: 120000,     // Poll job status (long installations)
     PERMISSION_POPUP_WAIT: 30000, // Max wait for system popup (macOS/Windows)
@@ -26,7 +26,7 @@ export const DAEMON_CONFIG = {
   
   // Polling intervals (in milliseconds)
   INTERVALS: {
-    // ✅ STATUS_CHECK removed - useDaemonHealthCheck handles status checking automatically (every 1.33s)
+    // ✅ STATUS_CHECK removed - useRobotState handles status checking via polling (every 500ms)
     LOGS_FETCH: 1000,         // Logs every 1s
     USB_CHECK: 1000,          // USB every 1s
     VERSION_FETCH: 10000,     // Version every 10s
@@ -113,7 +113,7 @@ export const DAEMON_CONFIG = {
     CHECK_INTERVAL: 500,           // Check every 500ms
     
     // Timeouts (in attempts, multiply by CHECK_INTERVAL for ms)
-    DAEMON_MAX_ATTEMPTS: 120,      // 120 × 500ms = 60s max wait for daemon
+    DAEMON_MAX_ATTEMPTS: 240,      // 240 × 500ms = 120s max wait for daemon
     MOVEMENT_MAX_ATTEMPTS: 60,     // 60 × 500ms = 30s max wait for movements
     
     // Progress bar distribution (percentages)

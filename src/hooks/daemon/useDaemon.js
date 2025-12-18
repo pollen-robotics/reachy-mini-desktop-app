@@ -102,8 +102,8 @@ export const useDaemon = () => {
     };
   }, [eventBus, setHardwareError, transitionTo, clearStartupTimeout, logger]);
 
-  // ✅ checkStatus removed - useDaemonHealthCheck handles all status checking
-  // It polls every 1.33s, updates isActive, and handles crash detection
+  // ✅ checkStatus removed - useRobotState handles all status checking
+  // It polls /api/state/full every 500ms and handles crash detection via timeout counting
   // No need for duplicate functionality
 
   const fetchDaemonVersion = useCallback(async () => {
@@ -119,14 +119,14 @@ export const useDaemon = () => {
         const data = await response.json();
         // API returns an object with the version
         setDaemonVersion(data.version || null);
-        // ✅ No resetTimeouts() here, handled by useDaemonHealthCheck
+        // ✅ No resetTimeouts() here, handled by useRobotState
       }
     } catch (error) {
       // Skip during installation (expected)
       if (error.name === 'SkippedError') {
         return;
       }
-      // ✅ No incrementTimeouts() here, handled by useDaemonHealthCheck
+      // ✅ No incrementTimeouts() here, handled by useRobotState
     }
   }, [setDaemonVersion]);
 
@@ -412,8 +412,8 @@ export const useDaemon = () => {
       }, startupTimeout);
       setStartupTimeout(timeoutId);
       
-      // ✅ useDaemonHealthCheck will detect when daemon is ready automatically
-      // It polls every 1.33s and updates isActive when daemon responds
+      // ✅ HardwareScanView will call transitionTo.ready() when scan completes + daemon responds
+      // useRobotState polls every 500ms for health check (crash detection)
       // No need for manual polling or checkStatus calls
     } catch (e) {
       // ✅ Emit error event instead of handling directly

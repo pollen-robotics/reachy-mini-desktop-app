@@ -6,7 +6,7 @@ import { useActiveRobotContext } from '../context';
  * Uses REAL API fields: control_mode, head_joints, body_yaw, etc.
  * 
  * ⚠️ Now consumes robotStateFull from context instead of making its own API calls
- * ⚠️ Does NOT handle crash detection (delegated to useDaemonHealthCheck)
+ * ⚠️ Does NOT handle crash detection (delegated to useRobotState polling)
  * 
  * Uses ActiveRobotContext for decoupling from global stores
  */

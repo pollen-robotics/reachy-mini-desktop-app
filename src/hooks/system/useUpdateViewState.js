@@ -34,9 +34,11 @@ const updateViewReducer = (state, action) => {
 
     case 'MIN_TIME_ELAPSED':
       // Minimum display time has elapsed
+      // ✅ Mark as completed so we never show again after disconnect
       return {
         ...state,
         minTimeElapsed: true,
+        hasCompletedOnce: true,
       };
 
     case 'ERROR_OCCURRED':
@@ -48,17 +50,21 @@ const updateViewReducer = (state, action) => {
 
     case 'ERROR_GRACE_PERIOD_ELAPSED':
       // Error grace period (min time + 1s) has elapsed
+      // ✅ Mark as completed so we never show again after disconnect
       return {
         ...state,
         minTimeElapsed: true,
+        hasCompletedOnce: true,
       };
 
     case 'RESET':
       // Reset state (when daemon becomes active/starting/stopping)
+      // ✅ PRESERVE hasCompletedOnce - we should never show update view again after first check
       return {
         checkStartTime: null,
         minTimeElapsed: false,
         isDevMode: false,
+        hasCompletedOnce: state.hasCompletedOnce, // Keep this!
       };
 
     default:
@@ -94,6 +100,7 @@ export const useUpdateViewState = ({
     checkStartTime: null,
     minTimeElapsed: false,
     isDevMode: false,
+    hasCompletedOnce: false, // ✅ Tracks if update check was completed at least once
   });
 
   const timerRef = useRef(null);
@@ -121,10 +128,12 @@ export const useUpdateViewState = ({
 
   // DEV MODE: Initialize on mount
   useEffect(() => {
+    // ✅ Don't re-show if we already completed the check once
+    if (state.hasCompletedOnce) return;
     if (isDev && state.checkStartTime === null) {
       dispatch({ type: 'INIT_DEV_MODE' });
     }
-  }, [isDev, state.checkStartTime]);
+  }, [isDev, state.checkStartTime, state.hasCompletedOnce]);
 
   // DEV MODE: Handle minimum display time
   useEffect(() => {
@@ -175,6 +184,9 @@ export const useUpdateViewState = ({
   useEffect(() => {
     if (isDev) return;
     if (state.checkStartTime !== null) return; // Already initialized
+    // ✅ CRITICAL: Don't re-show update view if we already completed the check once
+    // This prevents the bug where disconnecting from robot would show update view again
+    if (state.hasCompletedOnce) return;
     
     // If we're not checking anymore but we should show the view (no update, no error, no download),
     // it means check completed very quickly. Initialize now to ensure minimum time.
@@ -186,7 +198,7 @@ export const useUpdateViewState = ({
         dispatch({ type: 'START_CHECK' });
       }
     }
-  }, [isDev, isChecking, updateAvailable, isDownloading, updateError, isActive, isStarting, isStopping, state.checkStartTime]);
+  }, [isDev, isChecking, updateAvailable, isDownloading, updateError, isActive, isStarting, isStopping, state.checkStartTime, state.hasCompletedOnce]);
 
   // PRODUCTION MODE: Check completed - ensure minimum display time
   useEffect(() => {
@@ -262,6 +274,10 @@ export const useUpdateViewState = ({
 
   // Compute shouldShowUpdateView
   const shouldShowUpdateView = useMemo(() => {
+    // ✅ CRITICAL: Never show again if we already completed the update check once
+    // This prevents the bug where disconnecting from robot would show update view again
+    if (state.hasCompletedOnce) return false;
+    
     // Don't show if daemon is active/starting/stopping
     if (isActive || isStarting || isStopping) return false;
 
@@ -282,6 +298,7 @@ export const useUpdateViewState = ({
     updateError,
     state.checkStartTime,
     state.minTimeElapsed,
+    state.hasCompletedOnce,
   ]);
 
   return shouldShowUpdateView;

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import useAppStore from '../../store/useAppStore';
 import { DAEMON_CONFIG, fetchWithTimeoutSkipInstall, buildApiUrl } from '../../config/daemon';
 import { useDaemonEventBus } from '../daemon/useDaemonEventBus';
@@ -6,31 +6,29 @@ import { useDaemonEventBus } from '../daemon/useDaemonEventBus';
 /**
  * 🎯 Centralized hook for robot state polling
  * 
- * ONE SINGLE place that polls /api/state/full with all parameters every 500ms
- * Updates robotStateFull in the store for all consumers
- * Also handles health check timeouts for crash detection
+ * Responsibilities (SINGLE RESPONSIBILITY):
+ * 1. Poll /api/state/full every 500ms when isActive=true
+ * 2. Poll /api/move/running every 500ms when isActive=true
+ * 3. Health check: count consecutive timeouts → trigger crash if 3+ failures
+ * 
+ * NOT responsible for:
+ * - Transitioning to ready (that's HardwareScanView's job)
+ * - Clearing startup timeout (that's useDaemon's job)
+ * - Clearing hardware errors (that's startConnection's job)
  * 
  * ⚠️ SKIP during installations (daemon may be overloaded)
  */
 export function useRobotState(isActive) {
   const { 
     isDaemonCrashed,
-    hardwareError,
     setRobotStateFull,
     setActiveMoves,
     incrementTimeouts,
     resetTimeouts,
-    transitionTo,
-    clearStartupTimeout,
-    setHardwareError,
   } = useAppStore();
   
   // ✅ Event Bus for centralized event handling
   const eventBus = useDaemonEventBus();
-  
-  // Track consecutive successful responses to clear hardwareError
-  // If daemon responds successfully multiple times, it means the error is resolved
-  const consecutiveSuccessRef = useRef(0);
   
   useEffect(() => {
     if (!isActive) {
@@ -85,41 +83,6 @@ export function useRobotState(isActive) {
             
             // ✅ Emit health success event to bus
             eventBus.emit('daemon:health:success', { data });
-            
-            // ✅ CRITICAL: Don't set isActive to true if there's a hardware error
-            // This prevents transitioning to active view when there's an error
-            const currentState = useAppStore.getState();
-            
-            // ✅ CRITICAL: If daemon is still starting, don't clear hardwareError yet
-            // Wait for startup to complete (isStarting = false) before clearing errors
-            // This prevents clearing errors if daemon responds briefly before crashing
-            const isActive = currentState.robotStatus === 'ready' || currentState.robotStatus === 'busy';
-            if (!currentState.hardwareError && !isActive) {
-              // ✅ Transition to ready (state machine handles everything)
-              transitionTo.ready();
-              // ✅ Clear startup timeout since daemon is now active
-              clearStartupTimeout();
-              consecutiveSuccessRef.current = 0; // Reset counter
-            } else if (!currentState.hardwareError && currentState.isActive) {
-              // Already active, just clear timeout if needed
-              clearStartupTimeout();
-              consecutiveSuccessRef.current = 0;
-            } else if (!currentState.isStarting) {
-              // ✅ Only clear hardwareError if daemon is NOT starting anymore
-              // This means startup completed, so if daemon responds successfully,
-              // the error was resolved. Increment success counter.
-              // After 3 successful responses (~1.5s), clear the error
-              consecutiveSuccessRef.current += 1;
-              if (consecutiveSuccessRef.current >= 3) {
-                console.log('✅ Daemon responding successfully multiple times after startup, clearing hardwareError');
-                setHardwareError(null);
-                transitionTo.ready();
-                clearStartupTimeout();
-                consecutiveSuccessRef.current = 0;
-              }
-            }
-            // If isStarting = true and hardwareError exists, don't clear it yet
-            // Wait for startup to complete (either success or failure)
           } else {
             // Response but not OK → not a timeout, don't increment
             console.warn('⚠️ Daemon responded but not OK:', stateResponse.status);

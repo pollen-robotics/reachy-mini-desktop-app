@@ -13,7 +13,7 @@
 export { useConnection, ConnectionMode } from './useConnection';
 
 // Daemon (internal - prefer useConnection for new code)
-export { useDaemon, useDaemonHealthCheck } from './daemon';
+export { useDaemon } from './daemon';
 
 // Robot (core - used globally)
 export { useRobotCommands, useRobotState } from './robot';

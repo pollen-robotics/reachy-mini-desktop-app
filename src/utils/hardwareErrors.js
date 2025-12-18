@@ -97,15 +97,15 @@ export const HARDWARE_ERROR_CONFIGS = {
     type: 'no_motors',
     patterns: ['No motors detected', 'RuntimeError: No motors detected'],
     message: {
-      text: 'Press the',
-      bold: 'power button',
-      suffix: '',
+      text: 'Power supply',
+      bold: 'not connected',
+      suffix: '— plug in and turn on',
     },
     // No specific mesh to highlight - this is a global power issue
     meshPatterns: null,
     linkName: null,
     cameraPreset: 'scan', // Keep default scan view
-    code: null,
+    code: 'NO_POWER',
   },
   
   CAMERA_ERROR: {

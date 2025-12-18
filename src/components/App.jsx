@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
-import { useDaemon, useDaemonHealthCheck } from '../hooks/daemon';
+import { useDaemon } from '../hooks/daemon';
 import { useUsbDetection, useLogs, useWindowResize, useUpdater, useUpdateViewState, usePermissions, useUsbCheckTiming } from '../hooks/system';
 import { useViewRouter, ViewRouterWrapper } from '../hooks/system/useViewRouter';
 import { useRobotCommands, useRobotState } from '../hooks/robot';
@@ -16,7 +16,7 @@ function App() {
   useEffect(() => {
     setAppStoreInstance(useAppStore);
   }, []);
-  const { daemonVersion, hardwareError, setHardwareError, connectionMode } = useAppStore();
+  const { daemonVersion, hardwareError, connectionMode } = useAppStore();
   const { isActive, isStarting, isStopping, startupError, startDaemon, stopDaemon, fetchDaemonVersion } = useDaemon();
   const { isUsbConnected, usbPortName, checkUsbRobot } = useUsbDetection();
   const { sendCommand, playRecordedMove, isCommandRunning } = useRobotCommands();
@@ -136,10 +136,8 @@ function App() {
   const { shouldShowUsbCheck } = useUsbCheckTiming(shouldShowUpdateView);
   
   // 🎯 Centralized robot state polling (SINGLE place for /api/state/full calls)
+  // Also handles health check (crash detection via timeout counting)
   useRobotState(isActive);
-  
-  // 🏥 Centralized health check (monitors robotStateFull updates for crash detection)
-  useDaemonHealthCheck();
   
   
   // ⚡ Cleanup is handled on Rust side in lib.rs:
@@ -180,21 +178,25 @@ function App() {
   useWindowResize(currentView);
 
   useEffect(() => {
-    // ✅ checkStatus removed - useDaemonHealthCheck handles status checking automatically
-    // It polls every 1.33s and updates isActive, so no need for separate 3s polling
+    // Fetch logs and version on mount
     fetchLogs();
     fetchDaemonVersion();
     
+    // 🔌 USB polling: ONLY when searching for a robot (not connected)
+    // Once connected, the daemon handles everything (healthcheck detects disconnection)
+    // This prevents race conditions where polling could set isUsbConnected=false during startup
+    const shouldPollUsb = !connectionMode;
+    
     // ⚠️ IMPORTANT: Don't check USB until update check is complete
     // This ensures UpdateView is shown FIRST, before USB check
-    if (!shouldShowUpdateView) {
+    if (!shouldShowUpdateView && shouldPollUsb) {
       checkUsbRobot();
     }
     
     const logsInterval = setInterval(fetchLogs, DAEMON_CONFIG.INTERVALS.LOGS_FETCH);
     const usbInterval = setInterval(() => {
-      // Only check USB if update check is complete
-      if (!shouldShowUpdateView) {
+      // Only check USB if update check is complete AND we should poll
+      if (!shouldShowUpdateView && shouldPollUsb) {
         checkUsbRobot();
       }
     }, DAEMON_CONFIG.INTERVALS.USB_CHECK);
@@ -204,22 +206,13 @@ function App() {
       clearInterval(usbInterval);
       clearInterval(versionInterval);
     };
-  }, [fetchLogs, checkUsbRobot, fetchDaemonVersion, shouldShowUpdateView]);
+  }, [fetchLogs, checkUsbRobot, fetchDaemonVersion, shouldShowUpdateView, connectionMode]);
 
-  // Stop daemon automatically if USB robot gets disconnected (USB mode only)
-  // 🌐 WiFi mode doesn't use isUsbConnected, so skip this check
-  useEffect(() => {
-    if (connectionMode === 'usb' && !isUsbConnected && isActive) {
-      stopDaemon();
-    }
-  }, [connectionMode, isUsbConnected, isActive, stopDaemon]);
-
-  // Reset hardware error when returning to ready-to-start view
-  useEffect(() => {
-    if (isUsbConnected && !isActive && !isStarting && hardwareError) {
-      setHardwareError(null);
-    }
-  }, [isUsbConnected, isActive, isStarting, hardwareError, setHardwareError]);
+  // ✅ USB disconnection detection is now handled by:
+  // 1. useRobotState health check (daemon stops responding → crash detection)
+  // 2. USB polling only runs when !connectionMode (searching for robot)
+  // 3. startConnection() sets isUsbConnected atomically, no race condition
+  // 4. hardwareError is reset in startConnection(), no need for separate useEffect
 
   // Determine which view to display based on app state
   const viewConfig = useViewRouter({

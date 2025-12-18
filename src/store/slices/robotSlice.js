@@ -358,21 +358,10 @@ export const createRobotSlice = (set, get) => ({
   setStartupError: (value) => set({ startupError: value }),
   setHardwareError: (value) => set({ hardwareError: value }),
   
-  setIsUsbConnected: (value) => {
-    const state = get();
-    if (!value) {
-      // 🛡️ Only disconnect if we're in USB mode
-      // WiFi and Simulation modes don't depend on USB detection
-      if (state.connectionMode === 'usb') {
-        state.transitionTo.disconnected();
-      }
-      // If connectionMode is null (not connected yet), just update the flag
-      // Don't disconnect - user might be about to connect via WiFi
-    } else if (state.robotStatus === 'disconnected') {
-      state.transitionTo.readyToStart();
-    }
-    set({ isUsbConnected: value });
-  },
+  // ✅ Pure setter - NO side effects
+  // USB polling only runs when !connectionMode (searching for robot)
+  // Once connected, USB detection is not used (daemon health check handles disconnection)
+  setIsUsbConnected: (value) => set({ isUsbConnected: value }),
   
   setUsbPortName: (value) => set({ usbPortName: value }),
   setIsFirstCheck: (value) => set({ isFirstCheck: value }),

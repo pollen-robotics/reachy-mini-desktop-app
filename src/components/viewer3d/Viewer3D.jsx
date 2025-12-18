@@ -327,6 +327,7 @@ export default function RobotViewer3D({
               errorFocusMesh={errorFocusMesh}
               hideEffects={hideEffects}
                    darkMode={darkMode}
+                dataVersion={robotState.dataVersion} // ⚡ OPTIMIZED: Skip comparisons in URDFRobot
             />
       </Canvas>
       
