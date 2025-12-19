@@ -444,20 +444,27 @@ fn main() -> ExitCode {
         // Fix mjpython on macOS if needed
         #[cfg(target_os = "macos")]
         if args[0].contains("mjpython") {
+            println!("🔍 Detected mjpython, checking shebang...");
             // 1. Fix mjpython shebang (points to binaries/.venv instead of target/debug/.venv)
             let mjpython_path = working_dir.join(&args[0]);
+            println!("🔍 mjpython path: {:?}", mjpython_path);
             if mjpython_path.exists() {
+                println!("✅ mjpython exists, reading content...");
                 if let Ok(content) = fs::read_to_string(&mjpython_path) {
-                    // Check if shebang needs fixing (points to binaries/.venv)
-                    if content.contains("binaries/.venv/bin/python3") {
+                    let first_line = content.lines().next().unwrap_or("");
+                    println!("🔍 First line: {}", first_line);
+                    // Check if shebang needs fixing (contains path to binaries/.venv or binaries/cpython)
+                    // This handles both relative and absolute paths
+                    if content.contains("binaries/.venv") || content.contains("binaries/cpython") {
                         println!("🔧 Fixing mjpython shebang...");
                         let python_path = working_dir.join(".venv/bin/python3");
                         let python_path_str = python_path.to_string_lossy();
                         
+                        // Replace shebang line (first line)
                         let lines: Vec<&str> = content.lines().collect();
-                        if lines.len() >= 2 {
+                        if !lines.is_empty() {
                             let mut new_lines: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
-                            new_lines[1] = format!("'''exec' '{}' \"$0\" \"$@\"", python_path_str);
+                            new_lines[0] = format!("#!{}", python_path_str);
                             let new_content = new_lines.join("\n");
                             
                             if let Err(e) = fs::write(&mjpython_path, new_content) {
@@ -466,8 +473,14 @@ fn main() -> ExitCode {
                                 println!("✅ Fixed mjpython shebang to point to {}", python_path_str);
                             }
                         }
+                    } else {
+                        println!("ℹ️  Shebang doesn't need fixing");
                     }
+                } else {
+                    println!("⚠️  Failed to read mjpython");
                 }
+            } else {
+                println!("⚠️  mjpython doesn't exist at path");
             }
             
             // 2. Create symlink for libpython3.12.dylib at .venv/ level
