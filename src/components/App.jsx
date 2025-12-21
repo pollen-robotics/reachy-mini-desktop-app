@@ -4,6 +4,7 @@ import { useDaemon } from '../hooks/daemon';
 import { useUsbDetection, useLogs, useWindowResize, useUpdater, useUpdateViewState, usePermissions, useUsbCheckTiming } from '../hooks/system';
 import { useViewRouter, ViewRouterWrapper } from '../hooks/system/useViewRouter';
 import { useRobotCommands, useRobotState } from '../hooks/robot';
+import { useDaemonOutputLogs } from '../hooks/daemon/useDaemonOutputLogs';
 import { DAEMON_CONFIG, setAppStoreInstance } from '../config/daemon';
 import { isDevMode } from '../utils/devMode';
 import useAppStore from '../store/useAppStore';
@@ -21,6 +22,9 @@ function App() {
   const { isUsbConnected, usbPortName, checkUsbRobot } = useUsbDetection();
   const { sendCommand, playRecordedMove, isCommandRunning } = useRobotCommands();
   const { logs, fetchLogs } = useLogs();
+  
+  // 📋 Capture daemon output logs for diagnostics
+  useDaemonOutputLogs();
   
   // 🔐 Permissions check (macOS only)
   // Blocks the app until camera and microphone permissions are granted

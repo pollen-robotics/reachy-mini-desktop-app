@@ -8,14 +8,16 @@
 // Default max logs (same as DAEMON_CONFIG.LOGS values)
 const MAX_FRONTEND_LOGS = 500;
 const MAX_APP_LOGS = 500;
+const MAX_DAEMON_OUTPUT_LOGS = 1000; // Larger buffer for daemon stdout/stderr
 
 /**
  * Initial state for logs slice
  */
 export const logsInitialState = {
-  logs: [],           // Daemon logs (from Tauri IPC)
-  frontendLogs: [],   // Frontend action logs (API calls, user actions)
-  appLogs: [],        // App logs (from running apps)
+  logs: [],              // Daemon lifecycle logs (from Tauri IPC - startup/stop messages)
+  daemonOutputLogs: [],  // Daemon stdout/stderr logs (real Python output)
+  frontendLogs: [],      // Frontend action logs (API calls, user actions)
+  appLogs: [],           // App logs (from running apps)
 };
 
 /**
@@ -151,6 +153,63 @@ export const createLogsSlice = (set, get) => ({
     }
   },
   
+  // Add daemon output log (stdout/stderr from Python daemon)
+  addDaemonOutputLog: (message, stream = 'stdout') => {
+    if (message == null || message === '') {
+      return;
+    }
+    
+    const sanitizedMessage = String(message).slice(0, 10000);
+    const sanitizedStream = ['stdout', 'stderr'].includes(stream) ? stream : 'stdout';
+    
+    try {
+      const now = Date.now();
+      let formattedTimestamp;
+      try {
+        formattedTimestamp = new Date(now).toLocaleTimeString('en-GB', { 
+          hour: '2-digit', 
+          minute: '2-digit', 
+          second: '2-digit',
+          hour12: false
+        });
+      } catch (e) {
+        formattedTimestamp = new Date(now).toISOString().substring(11, 19);
+      }
+      
+      const newLog = {
+        timestamp: formattedTimestamp,
+        timestampNumeric: now,
+        message: sanitizedMessage,
+        source: 'daemon',
+        stream: sanitizedStream,
+      };
+      
+      set((state) => {
+        // Deduplication (avoid exact same message within 100ms)
+        const lastLog = state.daemonOutputLogs[state.daemonOutputLogs.length - 1];
+        const isDuplicate = lastLog && 
+            lastLog.message === sanitizedMessage && 
+            lastLog.timestampNumeric && 
+            (now - lastLog.timestampNumeric) < 100;
+        
+        if (isDuplicate) {
+          return state;
+        }
+        
+        return {
+          daemonOutputLogs: [
+            ...state.daemonOutputLogs.slice(-MAX_DAEMON_OUTPUT_LOGS),
+            newLog
+          ]
+        };
+      });
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('[addDaemonOutputLog] Error adding log:', error);
+      }
+    }
+  },
+  
   // Clear app logs
   clearAppLogs: (appName) => set((state) => ({
     appLogs: appName 
@@ -158,9 +217,13 @@ export const createLogsSlice = (set, get) => ({
       : []
   })),
   
+  // Clear daemon output logs
+  clearDaemonOutputLogs: () => set({ daemonOutputLogs: [] }),
+  
   // Clear all logs (for reset)
   clearAllLogs: () => set({
     logs: [],
+    daemonOutputLogs: [],
     frontendLogs: [],
     appLogs: [],
   }),

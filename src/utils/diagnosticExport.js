@@ -110,7 +110,8 @@ const getLogs = () => {
   const state = useAppStore.getState();
   
   return {
-    daemonLogs: state.logs || [],
+    daemonLifecycleLogs: state.logs || [], // Tauri lifecycle messages (start/stop)
+    daemonOutputLogs: state.daemonOutputLogs || [], // Real Python daemon stdout/stderr
     frontendLogs: state.frontendLogs || [],
     appLogs: state.appLogs || [],
   };
@@ -155,7 +156,8 @@ export const generateDiagnosticReport = async () => {
   };
   
   console.log('📋 Diagnostic report generated:', {
-    daemonLogs: report.logs.daemonLogs.length,
+    daemonLifecycleLogs: report.logs.daemonLifecycleLogs.length,
+    daemonOutputLogs: report.logs.daemonOutputLogs.length,
     frontendLogs: report.logs.frontendLogs.length,
     appLogs: report.logs.appLogs.length,
   });
@@ -222,7 +224,8 @@ export const formatReportAsText = (report) => {
   // Logs Summary
   lines.push('📜 LOGS SUMMARY');
   lines.push('───────────────────────────────────────────────────────────────────');
-  lines.push(`  Daemon Logs: ${report.logs.daemonLogs.length}`);
+  lines.push(`  Daemon Lifecycle Logs: ${report.logs.daemonLifecycleLogs.length}`);
+  lines.push(`  Daemon Output Logs: ${report.logs.daemonOutputLogs.length} (stdout/stderr)`);
   lines.push(`  Frontend Logs: ${report.logs.frontendLogs.length}`);
   lines.push(`  App Logs: ${report.logs.appLogs.length}`);
   lines.push('');
@@ -236,13 +239,26 @@ export const formatReportAsText = (report) => {
   });
   lines.push('');
   
-  // All Daemon Logs
-  lines.push(`🖥️ DAEMON LOGS (${report.logs.daemonLogs.length} entries)`);
-  lines.push('───────────────────────────────────────────────────────────────────');
-  report.logs.daemonLogs.forEach(log => {
-    lines.push(`  ${log}`);
-  });
-  lines.push('');
+  // Daemon Lifecycle Logs (Tauri start/stop messages)
+  if (report.logs.daemonLifecycleLogs.length > 0) {
+    lines.push(`🔧 DAEMON LIFECYCLE LOGS (${report.logs.daemonLifecycleLogs.length} entries)`);
+    lines.push('───────────────────────────────────────────────────────────────────');
+    report.logs.daemonLifecycleLogs.forEach(log => {
+      lines.push(`  ${log}`);
+    });
+    lines.push('');
+  }
+  
+  // Daemon Output Logs (Python stdout/stderr)
+  if (report.logs.daemonOutputLogs.length > 0) {
+    lines.push(`🖥️ DAEMON OUTPUT LOGS (${report.logs.daemonOutputLogs.length} entries)`);
+    lines.push('───────────────────────────────────────────────────────────────────');
+    report.logs.daemonOutputLogs.forEach(log => {
+      const streamIcon = log.stream === 'stderr' ? '⚠️' : '•';
+      lines.push(`  [${log.timestamp}] ${streamIcon} ${log.message}`);
+    });
+    lines.push('');
+  }
   
   // All App Logs
   if (report.logs.appLogs.length > 0) {
@@ -324,6 +340,40 @@ export const copyDiagnosticToClipboard = async () => {
   }
 };
 
+/**
+ * Auto-download diagnostic report on critical errors
+ * Tracks if we already downloaded to avoid spam
+ */
+let hasAutoDownloaded = false;
+let autoDownloadTimeout = null;
+
+const autoDownloadOnCriticalError = async (errorType = 'crash') => {
+  // Only auto-download once per session
+  if (hasAutoDownloaded) {
+    console.log(`📋 Skipping auto-diagnostic (already downloaded this session)`);
+    return;
+  }
+  
+  // Debounce: wait 2s to see if more errors come (avoid multiple downloads)
+  if (autoDownloadTimeout) {
+    clearTimeout(autoDownloadTimeout);
+  }
+  
+  autoDownloadTimeout = setTimeout(async () => {
+    console.log(`📋 Critical error detected (${errorType}) - Auto-downloading diagnostic...`);
+    hasAutoDownloaded = true;
+    
+    try {
+      const result = await downloadDiagnosticReport('text');
+      if (result.success) {
+        console.log(`📋 Diagnostic auto-downloaded: ${result.filename}`);
+      }
+    } catch (error) {
+      console.error('📋 Failed to auto-download diagnostic:', error);
+    }
+  }, 2000);
+};
+
 // Expose to window for easy access from DevTools
 if (typeof window !== 'undefined') {
   window.reachyDiagnostic = {
@@ -332,7 +382,81 @@ if (typeof window !== 'undefined') {
     downloadText: () => downloadDiagnosticReport('text'),
     downloadJson: () => downloadDiagnosticReport('json'),
     copy: copyDiagnosticToClipboard,
+    autoDownload: autoDownloadOnCriticalError, // Exposed for manual testing
   };
+  
+  // ============================================================================
+  // AUTO-DOWNLOAD ON CRITICAL ERRORS
+  // ============================================================================
+  
+  /**
+   * Listen to Zustand store for critical errors and auto-download diagnostic
+   * This helps with debugging by capturing state right before/during crashes
+   */
+  
+  // Wait for store to be available
+  const checkStoreInterval = setInterval(() => {
+    try {
+      const useAppStore = require('../store/useAppStore').default;
+      if (!useAppStore) return;
+      
+      clearInterval(checkStoreInterval);
+      
+      let lastCrashState = false;
+      let lastHardwareError = null;
+      
+      // Subscribe to store changes
+      useAppStore.subscribe((state) => {
+        // Detect daemon crash
+        if (state.isDaemonCrashed && !lastCrashState) {
+          console.warn('🚨 Daemon crash detected - auto-downloading diagnostic');
+          autoDownloadOnCriticalError('daemon_crash');
+        }
+        lastCrashState = state.isDaemonCrashed;
+        
+        // Detect new hardware errors (not just state changes)
+        if (state.hardwareError && state.hardwareError !== lastHardwareError) {
+          console.warn('🚨 Hardware error detected - auto-downloading diagnostic');
+          autoDownloadOnCriticalError('hardware_error');
+        }
+        lastHardwareError = state.hardwareError;
+      });
+      
+      console.log('📋 Diagnostic auto-download enabled (on crashes/hardware errors)');
+    } catch (error) {
+      // Store not ready yet, will retry
+    }
+  }, 1000);
+  
+  // Clean up interval after 10s if store never loads
+  setTimeout(() => clearInterval(checkStoreInterval), 10000);
+  
+  // ============================================================================
+  // GLOBAL ERROR HANDLERS
+  // ============================================================================
+  
+  /**
+   * Catch unhandled errors and promise rejections
+   * These could indicate frontend crashes
+   */
+  window.addEventListener('error', (event) => {
+    // Only auto-download on critical errors (not minor script errors)
+    if (event.error && event.error.stack) {
+      console.error('🚨 Unhandled error:', event.error);
+      // Uncomment if you want to auto-download on ANY JS error:
+      // autoDownloadOnCriticalError('unhandled_error');
+    }
+  });
+  
+  window.addEventListener('unhandledrejection', (event) => {
+    console.error('🚨 Unhandled promise rejection:', event.reason);
+    // Uncomment if you want to auto-download on promise rejections:
+    // autoDownloadOnCriticalError('unhandled_rejection');
+  });
+  
+  // ============================================================================
+  // KEYBOARD SHORTCUT
+  // ============================================================================
   
   // Secret keyboard shortcut: Ctrl+Shift+D (Cmd+Shift+D on Mac)
   // Downloads diagnostic report as text file
@@ -344,39 +468,119 @@ if (typeof window !== 'undefined') {
       e.preventDefault();
       console.log('📋 Secret diagnostic shortcut triggered!');
       
-      // Show a subtle notification
+      // Detect dark mode from system preference or localStorage
+      const darkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      
+      // Create notification with modern glass-morphism design
       const notification = document.createElement('div');
-      notification.textContent = '📋 Generating diagnostic report...';
+      
+      // Container (for blur and shadow)
       notification.style.cssText = `
         position: fixed;
-        bottom: 20px;
-        right: 20px;
-        background: rgba(0, 0, 0, 0.8);
-        color: white;
-        padding: 12px 20px;
-        border-radius: 8px;
-        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-        font-size: 14px;
-        z-index: 99999;
-        animation: fadeIn 0.3s ease;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 100000;
+        border-radius: 12px;
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        box-shadow: ${darkMode 
+          ? '0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3)'
+          : '0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08)'};
+        cursor: pointer;
+        overflow: hidden;
       `;
+      
+      // Inner content
+      const content = document.createElement('div');
+      content.style.cssText = `
+        position: relative;
+        border-radius: 12px;
+        font-size: 13px;
+        font-weight: 500;
+        letter-spacing: -0.01em;
+        background: ${darkMode ? 'rgba(255, 149, 0, 0.15)' : 'rgba(255, 149, 0, 0.1)'};
+        border: 1px solid ${darkMode ? 'rgba(255, 149, 0, 0.4)' : 'rgba(255, 149, 0, 0.3)'};
+        color: ${darkMode ? '#fbbf24' : '#d97706'};
+        min-width: 240px;
+        max-width: 400px;
+        padding: 16px 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      `;
+      
+      // Progress bar at bottom
+      const progressBar = document.createElement('div');
+      progressBar.style.cssText = `
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        height: 2px;
+        width: 100%;
+        background: ${darkMode ? 'rgba(255, 149, 0, 0.8)' : 'rgba(255, 149, 0, 0.7)'};
+        border-radius: 0 0 12px 12px;
+        transition: width 3.5s linear;
+      `;
+      
+      // Icon
+      const icon = document.createElement('span');
+      icon.textContent = '📋';
+      icon.style.cssText = 'font-size: 18px;';
+      
+      // Message
+      const message = document.createElement('span');
+      message.textContent = 'Generating diagnostic report...';
+      
+      content.appendChild(progressBar);
+      content.appendChild(icon);
+      content.appendChild(message);
+      notification.appendChild(content);
       document.body.appendChild(notification);
+      
+      // Animate progress bar
+      setTimeout(() => {
+        progressBar.style.width = '0%';
+      }, 10);
+      
+      // Allow manual close
+      notification.onclick = () => {
+        notification.style.opacity = '0';
+        notification.style.transition = 'opacity 0.3s ease';
+        setTimeout(() => notification.remove(), 300);
+      };
       
       const result = await downloadDiagnosticReport('text');
       
+      // Update notification based on result
       if (result.success) {
-        notification.textContent = `✅ Downloaded: ${result.filename}`;
-        notification.style.background = 'rgba(34, 197, 94, 0.9)';
+        icon.textContent = '✓';
+        message.textContent = `Downloaded: ${result.filename}`;
+        content.style.background = darkMode ? 'rgba(34, 197, 94, 0.15)' : 'rgba(34, 197, 94, 0.1)';
+        content.style.borderColor = darkMode ? 'rgba(34, 197, 94, 0.4)' : 'rgba(34, 197, 94, 0.3)';
+        content.style.color = darkMode ? '#86efac' : '#16a34a';
+        progressBar.style.background = darkMode ? 'rgba(34, 197, 94, 0.8)' : 'rgba(34, 197, 94, 0.7)';
+        progressBar.style.transition = 'none';
+        progressBar.style.width = '100%';
       } else {
-        notification.textContent = `❌ Failed: ${result.error}`;
-        notification.style.background = 'rgba(239, 68, 68, 0.9)';
+        icon.textContent = '✕';
+        message.textContent = `Failed: ${result.error}`;
+        content.style.background = darkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)';
+        content.style.borderColor = darkMode ? 'rgba(239, 68, 68, 0.4)' : 'rgba(239, 68, 68, 0.3)';
+        content.style.color = darkMode ? '#fca5a5' : '#dc2626';
+        progressBar.style.background = darkMode ? 'rgba(239, 68, 68, 0.8)' : 'rgba(239, 68, 68, 0.7)';
+        progressBar.style.transition = 'none';
+        progressBar.style.width = '100%';
       }
       
+      // Auto-hide after 3.5s
       setTimeout(() => {
         notification.style.opacity = '0';
         notification.style.transition = 'opacity 0.3s ease';
         setTimeout(() => notification.remove(), 300);
-      }, 2000);
+      }, 3500);
     }
   });
 }

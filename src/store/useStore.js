@@ -92,8 +92,9 @@ export const useStore = create(
         
         // Logs reset (optional - can be preserved)
         appLogs: [],
+        daemonOutputLogs: [], // Clear daemon output logs on disconnect
         // frontendLogs: [], // Keep frontend logs for debugging
-        // logs: [], // Keep daemon logs for debugging
+        // logs: [], // Keep daemon lifecycle logs for debugging
       });
     },
     
