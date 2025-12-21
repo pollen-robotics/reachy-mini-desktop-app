@@ -4,6 +4,7 @@
  */
 export { default as PermissionsRequiredView } from './permissions-required';
 export { default as FindingRobotView } from './finding-robot';
+export { default as FirstTimeWifiSetupView } from './first-time-wifi-setup';
 export { default as StartingView } from './starting';
 export { default as ActiveRobotView } from './active-robot/ActiveRobotView';
 export { default as ActiveRobotModule } from './active-robot/ActiveRobotModule';

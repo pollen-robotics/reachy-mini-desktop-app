@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react';
 import { Box } from '@mui/material';
-import { PermissionsRequiredView, FindingRobotView, StartingView, ClosingView, UpdateView, ActiveRobotModule } from '../../views';
+import { PermissionsRequiredView, FindingRobotView, FirstTimeWifiSetupView, StartingView, ClosingView, UpdateView, ActiveRobotModule } from '../../views';
 import AppTopBar from '../../components/AppTopBar';
 import { useActiveRobotAdapter } from '../useActiveRobotAdapter';
+import useAppStore from '../../store/useAppStore';
 
 /**
  * Hook to determine which view to display based on app state
@@ -10,10 +11,11 @@ import { useActiveRobotAdapter } from '../useActiveRobotAdapter';
  * Priority order:
  * 0. Permissions (macOS only) - Blocks app until permissions granted
  * 1. Update view - Always first, before everything else
- * 2. Finding robot view - User selects connection (USB/WiFi/Sim) and clicks Start
- * 3. Starting daemon (visual scan)
- * 4. Stopping daemon - Show spinner
- * 5. Active robot - Full control view (handles its own loading state)
+ * 2. First time WiFi setup - Guided setup for WiFi connection
+ * 3. Finding robot view - User selects connection (USB/WiFi/Sim) and clicks Start
+ * 4. Starting daemon (visual scan)
+ * 5. Stopping daemon - Show spinner
+ * 6. Active robot - Full control view (handles its own loading state)
  * 
  * 🌐 WiFi mode: Also passes through scan view for consistent UX
  * 
@@ -58,6 +60,8 @@ export function useViewRouter({
   daemonVersion,
   usbPortName,
 }) {
+  const { showFirstTimeWifiSetup, setShowFirstTimeWifiSetup } = useAppStore();
+  
   return useMemo(() => {
     // PRIORITY 0: Permissions view
     if (!permissionsGranted || isRestarting) {
@@ -84,7 +88,18 @@ export function useViewRouter({
       };
     }
 
-    // PRIORITY 2: Finding robot view
+    // PRIORITY 2: First time WiFi setup view
+    if (showFirstTimeWifiSetup) {
+      return {
+        viewComponent: FirstTimeWifiSetupView,
+        viewProps: {
+          onBack: () => setShowFirstTimeWifiSetup(false),
+        },
+        showTopBar: false, // FirstTimeWifiSetupView has its own back button
+      };
+    }
+
+    // PRIORITY 3: Finding robot view
     // 🌐 Show FindingRobotView until user selects a connection mode
     // Don't auto-advance when USB is detected - wait for user selection
     // Note: FindingRobotView uses useConnection hook internally (no props needed)
@@ -147,6 +162,8 @@ export function useViewRouter({
     updateAvailable,
     updateError,
     onInstallUpdate,
+    showFirstTimeWifiSetup,
+    setShowFirstTimeWifiSetup,
     shouldShowUsbCheck,
     isUsbConnected,
     connectionMode,

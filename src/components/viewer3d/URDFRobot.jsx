@@ -259,11 +259,11 @@ function URDFRobot({
     // Do NOT force updateMatrixWorld() to avoid conflicts and flickering
     // ⚡ OPTIMIZED: No need to compare - dataVersion change guarantees new data
     if (headJoints && Array.isArray(headJoints) && headJoints.length === 7) {
-      // yaw_body (index 0) - Apply first
-      if (robot.joints['yaw_body']) {
-        robot.setJointValue('yaw_body', headJoints[0]);
-      }
-      
+        // yaw_body (index 0) - Apply first
+        if (robot.joints['yaw_body']) {
+          robot.setJointValue('yaw_body', headJoints[0]);
+        }
+        
       // stewart_1 to stewart_6 (indices 1-6) - Apply directly (no loop overhead)
       if (robot.joints['stewart_1']) robot.setJointValue('stewart_1', headJoints[1]);
       if (robot.joints['stewart_2']) robot.setJointValue('stewart_2', headJoints[2]);

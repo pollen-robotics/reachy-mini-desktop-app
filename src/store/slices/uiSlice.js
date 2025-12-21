@@ -31,6 +31,7 @@ export const uiInitialState = {
   darkMode: getInitialDarkMode(),
   openWindows: [],
   rightPanelView: null, // null | 'controller' | 'expressions'
+  showFirstTimeWifiSetup: false, // true when showing first time WiFi setup view
 };
 
 /**
@@ -61,6 +62,9 @@ export const createUISlice = (set, get) => ({
   
   // Right panel view management
   setRightPanelView: (view) => set({ rightPanelView: view }),
+  
+  // First time WiFi setup view management
+  setShowFirstTimeWifiSetup: (value) => set({ showFirstTimeWifiSetup: value }),
   
   // Dark mode management
   setDarkMode: (value) => {

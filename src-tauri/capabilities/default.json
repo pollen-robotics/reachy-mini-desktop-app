@@ -33,8 +33,9 @@
       "allow": [
         { "url": "http://localhost:*" },
         { "url": "http://127.0.0.1:*" },
-        { "url": "http://192.168.*:*" },
-        { "url": "http://10.*:*" },
+        { "url": "http://192.168.*.*:*" },
+        { "url": "http://10.*.*.*:*" },
+        { "url": "http://10.42.0.1:*" },
         { "url": "http://*.local:*" },
         { "url": "http://*.home:*" },
         { "url": "https://huggingface.co/*" },

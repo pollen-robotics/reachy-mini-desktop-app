@@ -5,6 +5,7 @@ mod permissions;
 mod python;
 mod signing;
 mod usb;
+mod wifi;
 mod window;
 
 use tauri::{State, Manager};
@@ -153,7 +154,9 @@ pub fn run() {
             window::close_window,
             signing::sign_python_binaries,
             permissions::open_camera_settings,
-            permissions::open_microphone_settings
+            permissions::open_microphone_settings,
+            permissions::open_wifi_settings,
+            wifi::scan_local_wifi_networks
         ])
         .on_window_event(|window, event| {
             match event {

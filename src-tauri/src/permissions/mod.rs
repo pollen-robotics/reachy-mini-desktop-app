@@ -68,15 +68,134 @@ pub fn open_microphone_settings() -> Result<(), String> {
     Ok(())
 }
 
-// Non-macOS stubs (no-op)
+/// Open System Settings to Network/WiFi (macOS)
 #[tauri::command]
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "macos")]
+pub fn open_wifi_settings() -> Result<(), String> {
+    use std::process::Command;
+    
+    // Try the new macOS 13+ Network Settings first
+    let output = Command::new("open")
+        .arg("x-apple.systempreferences:com.apple.Network-Settings.extension")
+        .output()
+        .map_err(|e| format!("Failed to open System Settings: {}", e))?;
+    
+    if !output.status.success() {
+        // Fallback to legacy Network preferences (macOS 12 and earlier)
+        let fallback = Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.preference.network")
+            .output()
+            .map_err(|e| format!("Failed to open System Settings: {}", e))?;
+        
+        if !fallback.status.success() {
+            return Err(format!("Failed to open System Settings: {}", 
+                String::from_utf8_lossy(&fallback.stderr)));
+        }
+    }
+    
+    Ok(())
+}
+
+// ============================================================================
+// Windows Implementation
+// ============================================================================
+
+#[tauri::command]
+#[cfg(target_os = "windows")]
+pub fn open_camera_settings() -> Result<(), String> {
+    use std::process::Command;
+    // Open Windows Settings > Privacy > Camera
+    Command::new("cmd")
+        .args(["/C", "start", "ms-settings:privacy-webcam"])
+        .spawn()
+        .map_err(|e| format!("Failed to open Settings: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+#[cfg(target_os = "windows")]
+pub fn open_microphone_settings() -> Result<(), String> {
+    use std::process::Command;
+    // Open Windows Settings > Privacy > Microphone
+    Command::new("cmd")
+        .args(["/C", "start", "ms-settings:privacy-microphone"])
+        .spawn()
+        .map_err(|e| format!("Failed to open Settings: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+#[cfg(target_os = "windows")]
+pub fn open_wifi_settings() -> Result<(), String> {
+    use std::process::Command;
+    // Open Windows Settings > Network & Internet > Wi-Fi
+    Command::new("cmd")
+        .args(["/C", "start", "ms-settings:network-wifi"])
+        .spawn()
+        .map_err(|e| format!("Failed to open Settings: {}", e))?;
+    Ok(())
+}
+
+// ============================================================================
+// Linux Implementation
+// ============================================================================
+
+#[tauri::command]
+#[cfg(target_os = "linux")]
+pub fn open_camera_settings() -> Result<(), String> {
+    // Linux doesn't have a centralized camera settings
+    // Best effort: open GNOME Settings if available
+    use std::process::Command;
+    let _ = Command::new("gnome-control-center")
+        .arg("privacy")
+        .spawn();
+    Ok(())
+}
+
+#[tauri::command]
+#[cfg(target_os = "linux")]
+pub fn open_microphone_settings() -> Result<(), String> {
+    use std::process::Command;
+    // Try GNOME Sound settings
+    let _ = Command::new("gnome-control-center")
+        .arg("sound")
+        .spawn();
+    Ok(())
+}
+
+#[tauri::command]
+#[cfg(target_os = "linux")]
+pub fn open_wifi_settings() -> Result<(), String> {
+    use std::process::Command;
+    // Try GNOME Network settings first, fallback to nm-connection-editor
+    if Command::new("gnome-control-center")
+        .arg("wifi")
+        .spawn()
+        .is_err()
+    {
+        let _ = Command::new("nm-connection-editor").spawn();
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Fallback for other platforms (no-op)
+// ============================================================================
+
+#[tauri::command]
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 pub fn open_camera_settings() -> Result<(), String> {
     Ok(())
 }
 
 #[tauri::command]
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 pub fn open_microphone_settings() -> Result<(), String> {
+    Ok(())
+}
+
+#[tauri::command]
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+pub fn open_wifi_settings() -> Result<(), String> {
     Ok(())
 }

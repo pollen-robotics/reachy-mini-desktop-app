@@ -8,7 +8,7 @@ import CheckRoundedIcon from '@mui/icons-material/CheckRounded';
 import useAppStore from '../../store/useAppStore';
 import { useRobotDiscovery } from '../../hooks/system';
 import { useConnection, ConnectionMode } from '../../hooks/useConnection';
-import idleReachyGif from '../../assets/videos/idle-reachy.gif';
+import reachyBuste from '../../assets/reachy-buste.png';
 
 // LocalStorage key for persisting last connection mode
 const LAST_CONNECTION_MODE_KEY = 'reachy-mini-last-connection-mode';
@@ -211,7 +211,7 @@ function ConnectionCard({
  * Uses useConnection hook for unified connection handling
  */
 export default function FindingRobotView() {
-  const { darkMode } = useAppStore();
+  const { darkMode, setShowFirstTimeWifiSetup } = useAppStore();
   const { isScanning, usbRobot, wifiRobot } = useRobotDiscovery();
   const { connect, isConnecting, isDisconnecting } = useConnection();
   const [selectedMode, setSelectedMode] = useState(null);
@@ -345,19 +345,19 @@ export default function FindingRobotView() {
           px: 4,
         }}
       >
-        {/* Reachy GIF */}
+        {/* Reachy Buste */}
         <Box 
           sx={{ 
-            width: 250,
-            height: 250,
-            mb: 1.5,
+            width: 180,
+            height: 180,
+            mb: 2,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
           <img
-            src={idleReachyGif}
+            src={reachyBuste}
             alt="Reachy Mini"
             style={{
               width: '100%',
@@ -410,7 +410,7 @@ export default function FindingRobotView() {
         >
           <ConnectionCard
             icon={UsbOutlinedIcon}
-            label="USB"
+            label="Reachy Lite"
             subtitle={usbRobot.available ? usbRobot.portName?.split('/').pop() : null}
             fullSubtitle={usbRobot.available ? usbRobot.portName : null}
             available={usbRobot.available}
@@ -422,7 +422,7 @@ export default function FindingRobotView() {
           
           <ConnectionCard
             icon={WifiOutlinedIcon}
-            label="WiFi"
+            label="Reachy WiFi"
             subtitle={wifiRobot.available ? wifiRobot.host : null}
             fullSubtitle={wifiRobot.available ? wifiRobot.host : null}
             available={wifiRobot.available}
@@ -495,6 +495,41 @@ export default function FindingRobotView() {
             >
           {isBusy ? (isDisconnecting ? 'Stopping...' : 'Connecting...') : 'Start'}
         </Button>
+
+        {/* First time WiFi setup link */}
+        <Box
+          sx={{
+            position: 'absolute',
+            bottom: 24,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            textAlign: 'center',
+          }}
+        >
+          <Typography
+            sx={{
+              fontSize: 12,
+              color: darkMode ? '#888' : '#666',
+            }}
+          >
+            First time connecting to your WiFi Reachy?{' '}
+            <Box
+              component="span"
+              onClick={() => setShowFirstTimeWifiSetup(true)}
+              sx={{
+                color: '#FF9500',
+                cursor: 'pointer',
+                fontWeight: 500,
+                textDecoration: 'none',
+                '&:hover': {
+                  textDecoration: 'underline',
+                },
+              }}
+            >
+              Click here
+            </Box>
+          </Typography>
+        </Box>
       </Box>
     </Box>
   );
