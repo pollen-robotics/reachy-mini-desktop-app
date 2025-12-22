@@ -11,6 +11,7 @@ import {
   CircularProgress,
   Alert,
   IconButton,
+  InputAdornment,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import WifiIcon from '@mui/icons-material/Wifi';
@@ -18,6 +19,8 @@ import SignalWifi4BarIcon from '@mui/icons-material/SignalWifi4Bar';
 import SignalWifiOffIcon from '@mui/icons-material/SignalWifiOff';
 import WifiTetheringIcon from '@mui/icons-material/WifiTethering';
 import RouterIcon from '@mui/icons-material/Router';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import { buildApiUrl, fetchWithTimeout, DAEMON_CONFIG } from '../../config/daemon';
 
 // Pattern to detect Reachy hotspot networks
@@ -69,6 +72,8 @@ export default function WiFiConfiguration({
   const [wifiError, setWifiError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   const [isDaemonReachable, setIsDaemonReachable] = useState(null); // null = checking, true/false = result
+  const [manualSSID, setManualSSID] = useState(''); // For manual SSID entry
+  const [showPassword, setShowPassword] = useState(false); // Toggle password visibility
 
 
   // Fetch WiFi status and scan networks
@@ -144,7 +149,8 @@ export default function WiFiConfiguration({
 
   // Connect to WiFi
   const handleConnect = useCallback(async () => {
-    if (!selectedSSID || !wifiPassword) return;
+    const ssidToUse = selectedSSID || manualSSID;
+    if (!ssidToUse || !wifiPassword) return;
     
     if (onConnectStart) {
       onConnectStart();
@@ -155,7 +161,7 @@ export default function WiFiConfiguration({
     setSuccessMessage(null);
     
     const baseUrl = customBaseUrl || buildApiUrl('').replace(/\/$/, '');
-    const connectUrl = `${baseUrl}/wifi/connect?ssid=${encodeURIComponent(selectedSSID)}&password=${encodeURIComponent(wifiPassword)}`;
+    const connectUrl = `${baseUrl}/wifi/connect?ssid=${encodeURIComponent(ssidToUse)}&password=${encodeURIComponent(wifiPassword)}`;
     console.log('[WiFi] → POST', connectUrl);
     
     try {
@@ -167,10 +173,11 @@ export default function WiFiConfiguration({
       );
       
       if (response.ok) {
-        setSuccessMessage(`Successfully connected to ${selectedSSID}`);
-        const connectedSSID = selectedSSID;
+        setSuccessMessage(`Successfully connected to ${ssidToUse}`);
+        const connectedSSID = ssidToUse;
         setWifiPassword('');
         setSelectedSSID('');
+        setManualSSID('');
         
         if (onConnectSuccess) {
           onConnectSuccess(connectedSSID);
@@ -478,46 +485,82 @@ export default function WiFiConfiguration({
           Connect to Network
         </Typography>
         
-        <FormControl size="small" fullWidth sx={inputStyles}>
-          <InputLabel>Network</InputLabel>
-          <Select
-            value={selectedSSID}
-            onChange={(e) => setSelectedSSID(e.target.value)}
-            label="Network"
-            disabled={isLoadingWifi || isConnecting}
-            MenuProps={{
-              sx: {
-                zIndex: 99999, // Above overlay
-              },
-              PaperProps: {
+        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
+          <FormControl size="small" sx={{ ...inputStyles, flex: 1, minWidth: 0 }}>
+            <InputLabel>Select from list</InputLabel>
+            <Select
+              value={selectedSSID}
+              onChange={(e) => {
+                setSelectedSSID(e.target.value);
+                if (e.target.value) {
+                  setManualSSID(''); // Clear manual when selecting from list
+                }
+              }}
+              label="Select from list"
+              disabled={isLoadingWifi || isConnecting}
+              MenuProps={{
                 sx: {
-                  bgcolor: darkMode ? '#1a1a1a' : '#fff',
-                  maxHeight: 300,
+                  zIndex: 99999,
                 },
-              },
-            }}
-          >
-            <MenuItem value="" disabled sx={{ color: textSecondary }}>
-              <em>{availableNetworks.length === 0 ? 'Scanning...' : 'Select network'}</em>
-            </MenuItem>
-            {availableNetworks.map((network, i) => (
-              <MenuItem 
-                key={`${network}-${i}`} 
-                value={network} 
-                sx={{ 
-                  fontSize: compact ? 12 : 13,
-                  color: textPrimary,
-                }}
-              >
-                {network}
+                PaperProps: {
+                  sx: {
+                    bgcolor: darkMode ? '#1a1a1a' : '#fff',
+                    maxHeight: 300,
+                  },
+                },
+              }}
+            >
+              <MenuItem value="" disabled sx={{ color: textSecondary }}>
+                <em>{availableNetworks.length === 0 ? 'Scanning...' : 'Select network'}</em>
               </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+              {availableNetworks.map((network, i) => (
+                <MenuItem 
+                  key={`${network}-${i}`} 
+                  value={network} 
+                  sx={{ 
+                    fontSize: compact ? 12 : 13,
+                    color: textPrimary,
+                  }}
+                >
+                  {network}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          
+          <Typography sx={{ 
+            fontSize: compact ? 11 : 12, 
+            color: textSecondary,
+            alignSelf: 'center',
+            mt: 0.5,
+          }}>
+            or
+          </Typography>
+          
+          <TextField
+            label="Type network name"
+            value={manualSSID}
+            onChange={(e) => {
+              setManualSSID(e.target.value);
+              if (e.target.value) {
+                setSelectedSSID(''); // Clear select when typing manually
+              }
+            }}
+            size="small"
+            sx={{ ...inputStyles, flex: 1, minWidth: 0 }}
+            disabled={isConnecting}
+            placeholder="Enter SSID"
+            onKeyPress={(e) => {
+              if (e.key === 'Enter' && (selectedSSID || manualSSID) && wifiPassword) {
+                handleConnect();
+              }
+            }}
+          />
+        </Box>
 
         <TextField
           label="Password"
-          type="password"
+          type={showPassword ? 'text' : 'password'}
           value={wifiPassword}
           onChange={(e) => setWifiPassword(e.target.value)}
           size="small"
@@ -525,16 +568,39 @@ export default function WiFiConfiguration({
           disabled={isConnecting}
           sx={inputStyles}
           onKeyPress={(e) => {
-            if (e.key === 'Enter' && selectedSSID && wifiPassword) {
+            if (e.key === 'Enter' && (selectedSSID || manualSSID) && wifiPassword) {
               handleConnect();
             }
+          }}
+          InputProps={{
+            endAdornment: (
+              <InputAdornment position="end">
+                <IconButton
+                  onClick={() => setShowPassword(!showPassword)}
+                  edge="end"
+                  size="small"
+                  sx={{
+                    color: textMuted,
+                    '&:hover': {
+                      color: textPrimary,
+                    },
+                  }}
+                >
+                  {showPassword ? (
+                    <VisibilityOffIcon sx={{ fontSize: compact ? 16 : 18 }} />
+                  ) : (
+                    <VisibilityIcon sx={{ fontSize: compact ? 16 : 18 }} />
+                  )}
+                </IconButton>
+              </InputAdornment>
+            ),
           }}
         />
 
         <Button
           variant="contained"
           onClick={handleConnect}
-          disabled={!selectedSSID || !wifiPassword || isConnecting}
+          disabled={(!selectedSSID && !manualSSID) || !wifiPassword || isConnecting}
           fullWidth
           sx={{
             bgcolor: '#FF9500',

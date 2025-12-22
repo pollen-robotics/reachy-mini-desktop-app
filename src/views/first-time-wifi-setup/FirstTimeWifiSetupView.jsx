@@ -49,7 +49,7 @@ const steps = [
  * 5. Success - Connect to Reachy
  */
 export default function FirstTimeWifiSetupView() {
-  const { darkMode, setShowFirstTimeWifiSetup } = useAppStore();
+  const { darkMode, setShowFirstTimeWifiSetup, setShowBluetoothSupportView } = useAppStore();
   const [activeStep, setActiveStep] = useState(0);
   const [configuredNetwork, setConfiguredNetwork] = useState(null);
   
@@ -492,6 +492,27 @@ export default function FirstTimeWifiSetupView() {
             />
           )}
         </Box>
+        
+        {/* Help link */}
+        <Typography
+          onClick={() => {
+            setShowFirstTimeWifiSetup(false);
+            setShowBluetoothSupportView(true);
+          }}
+          sx={{
+            fontSize: 11,
+            color: textSecondary,
+            textAlign: 'center',
+            mt: 2,
+            cursor: 'pointer',
+            textDecoration: 'underline',
+            '&:hover': {
+              color: '#FF9500',
+            },
+          }}
+        >
+          Having trouble detecting Reachy? Click here
+        </Typography>
       </Box>
     </FullscreenOverlay>
   );

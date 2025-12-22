@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Box } from '@mui/material';
-import { PermissionsRequiredView, FindingRobotView, FirstTimeWifiSetupView, StartingView, ClosingView, UpdateView, ActiveRobotModule } from '../../views';
+import { PermissionsRequiredView, FindingRobotView, FirstTimeWifiSetupView, BluetoothSupportView, StartingView, ClosingView, UpdateView, ActiveRobotModule } from '../../views';
 import AppTopBar from '../../components/AppTopBar';
 import { useActiveRobotAdapter } from '../useActiveRobotAdapter';
 import useAppStore from '../../store/useAppStore';
@@ -60,7 +60,7 @@ export function useViewRouter({
   daemonVersion,
   usbPortName,
 }) {
-  const { showFirstTimeWifiSetup, setShowFirstTimeWifiSetup } = useAppStore();
+  const { showFirstTimeWifiSetup, setShowFirstTimeWifiSetup, showBluetoothSupportView, setShowBluetoothSupportView } = useAppStore();
   
   return useMemo(() => {
     // PRIORITY 0: Permissions view
@@ -96,6 +96,17 @@ export function useViewRouter({
           onBack: () => setShowFirstTimeWifiSetup(false),
         },
         showTopBar: false, // FirstTimeWifiSetupView has its own back button
+      };
+    }
+
+    // PRIORITY 2.5: Bluetooth support view
+    if (showBluetoothSupportView) {
+      return {
+        viewComponent: BluetoothSupportView,
+        viewProps: {
+          onBack: () => setShowBluetoothSupportView(false),
+        },
+        showTopBar: false, // BluetoothSupportView has its own close button
       };
     }
 
@@ -164,6 +175,8 @@ export function useViewRouter({
     onInstallUpdate,
     showFirstTimeWifiSetup,
     setShowFirstTimeWifiSetup,
+    showBluetoothSupportView,
+    setShowBluetoothSupportView,
     shouldShowUsbCheck,
     isUsbConnected,
     connectionMode,
