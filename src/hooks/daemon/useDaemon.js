@@ -303,11 +303,11 @@ export const useDaemon = () => {
         console.log(`🌐 WiFi daemon state: ${statusData.state}`);
         
         // ⚠️ ALWAYS wake up the robot in WiFi mode!
-        // - If daemon is not_initialized/starting: use /api/daemon/start?wake_up=true
+        // - If daemon is not_initialized/starting/stopped: use /api/daemon/start?wake_up=true
         // - If daemon is already running: use /api/move/play/wake_up (explicit wake up)
         // This is because stopDaemon sends goto_sleep but daemon keeps running on the Pi
-        if (statusData.state === 'not_initialized' || statusData.state === 'starting') {
-          console.log(`🌐 Daemon not initialized, starting with wake_up...`);
+        if (statusData.state === 'not_initialized' || statusData.state === 'starting' || statusData.state === 'stopped') {
+          console.log(`🌐 Daemon needs restart (state: ${statusData.state}), starting with wake_up...`);
           try {
             await fetchWithTimeout(
               buildApiUrl('/api/daemon/start?wake_up=true'),
