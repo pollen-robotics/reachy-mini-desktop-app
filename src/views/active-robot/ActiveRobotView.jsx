@@ -13,7 +13,7 @@ import { ViewportSwapper } from './layout';
 import LogConsole from '@components/LogConsole';
 import { RightPanel } from './right-panel';
 import RobotHeader from './RobotHeader';
-import { PowerButton } from './controls';
+import { PowerButton, WakeSleepToggle } from './controls';
 import AudioControls from './audio/AudioControls';
 import { useRobotPowerState, useRobotMovementStatus } from './hooks';
 import { useAudioControls } from './audio/hooks';
@@ -422,8 +422,6 @@ function ActiveRobotView({
                 <Viewer3D 
                   isActive={isActive} 
                   forceLoad={true}
-                  useHeadFollowCamera={true}
-                  showCameraToggle={true}
                   showStatusTag={true}
                   isOn={isOn}
                   isMoving={isMoving}
@@ -442,13 +440,16 @@ function ActiveRobotView({
             />
           ), [isActive, isOn, isMoving, robotStatus, busyReason])}
           
-          {/* Power Button - top left corner */}
+          {/* Power Button - top left corner (only enabled when sleeping) */}
           <PowerButton
             onStopDaemon={stopDaemon}
-            isReady={isReadyState}
+            isSleeping={robotStatus === 'sleeping'}
             isStopping={isStopping}
             darkMode={darkMode}
           />
+          
+          {/* Wake/Sleep Toggle - next to power button */}
+          <WakeSleepToggle darkMode={darkMode} />
         </Box>
         
         {/* Robot Header - Title, version, status, mode */}
@@ -472,6 +473,7 @@ function ActiveRobotView({
             onSpeakerMute={handleSpeakerMute}
             onMicrophoneMute={handleMicrophoneMute}
             darkMode={darkMode}
+            disabled={isBusyState}
           />
         </Box>
         

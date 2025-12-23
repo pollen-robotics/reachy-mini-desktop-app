@@ -29,7 +29,6 @@ const EFFECT_MAP = {
  * Displays a curated wheel of 12 emotions, with access to full library
  */
 export default function ExpressionsSection({ 
-  isActive: isActiveProp = false,
   isBusy: isBusyProp = false,
   darkMode = false,
 }) {
@@ -68,7 +67,6 @@ export default function ExpressionsSection({
   // Get state and actions from context
   const { robotState, actions } = useActiveRobotContext();
   const { 
-    isActive: isActiveFromContext,
     robotStatus, 
     isCommandRunning, 
     isAppRunning, 
@@ -77,7 +75,7 @@ export default function ExpressionsSection({
   } = robotState;
   const { setRightPanelView, triggerEffect, stopEffect } = actions;
   
-  const isActive = isActiveFromContext ?? isActiveProp;
+  // Only enabled when robot is ready (not sleeping, not busy)
   const isReady = robotStatus === 'ready';
   
   // Track active action for spinner display
@@ -277,7 +275,7 @@ export default function ExpressionsSection({
               ref={wheelRef}
               onAction={handleWheelAction}
               darkMode={darkMode}
-              disabled={debouncedIsBusy || !isActive}
+              disabled={debouncedIsBusy || !isReady}
               isBusy={debouncedIsBusy}
               activeActionName={activeActionName}
               isExecuting={isCommandRunning || busyReason === 'moving'}
@@ -350,7 +348,7 @@ export default function ExpressionsSection({
             dances={DANCES}
             onAction={handleWheelAction}
             darkMode={darkMode}
-            disabled={debouncedIsBusy || !isActive}
+            disabled={debouncedIsBusy || !isReady}
             activeActionName={activeActionName}
             isExecuting={isCommandRunning || busyReason === 'moving'}
           />

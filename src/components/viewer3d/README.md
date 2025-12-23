@@ -10,7 +10,6 @@ viewer3d/
 ├── Scene.jsx                 # 3D scene (lights, environment, effects)
 ├── URDFRobot.jsx             # URDF model loading and animation
 ├── CinematicCamera.jsx       # Animated camera for scan view
-├── HeadFollowCamera.jsx      # Camera that follows robot head
 ├── SettingsOverlay.jsx       # Settings panel overlay
 ├── effects/                  # Visual effects
 │   ├── ScanEffect.jsx        # Progressive scan effect

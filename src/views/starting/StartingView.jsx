@@ -20,10 +20,10 @@ function StartingView({ startupError, startDaemon }) {
     // ✅ HardwareScanView only calls this callback after successful healthcheck
     // ✅ Clear any hardware errors when scan completes successfully
     setHardwareError(null);
-    // ✅ Direct transition to ActiveRobotView (state machine handles isActive/isStarting)
-    // ActiveRobotView handles its own loading state for apps
+    // ✅ Robot starts in SLEEPING state - user must use toggle to wake up
+    // This separates daemon connection from robot awake state
     // ⚡ IMMEDIATE transition - window resize will happen now, not after delay
-    transitionTo.ready();
+    transitionTo.sleeping();
   }, [transitionTo, setHardwareError]);
 
   return (

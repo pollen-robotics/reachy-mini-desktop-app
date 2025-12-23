@@ -14,13 +14,15 @@ import { useActiveRobotContext } from '../../context';
  */
 export default function ControllerSection({ 
   showToast,
-  isActive = false,
   isBusy = false,
   darkMode = false,
 }) {
   const { robotState, actions } = useActiveRobotContext();
-  const { rightPanelView } = robotState;
+  const { rightPanelView, robotStatus, isActive } = robotState;
   const { setRightPanelView } = actions;
+  
+  // Only enabled when robot is ready (not sleeping, not busy)
+  const isReady = robotStatus === 'ready';
   
   const controllerResetRef = useRef(null);
   const [isAtInitialPosition, setIsAtInitialPosition] = useState(true);
@@ -185,7 +187,7 @@ export default function ControllerSection({
                     controllerResetRef.current();
                   }
                 }}
-                disabled={!isActive || isBusy}
+                disabled={!isReady || isBusy}
                 sx={{ 
                   ml: 0.5,
                   color: darkMode ? '#888' : '#999',

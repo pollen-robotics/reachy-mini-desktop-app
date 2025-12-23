@@ -416,7 +416,7 @@ export default function InstalledAppsSection({
             No apps installed yet...
           </Typography>
 
-          <DiscoverAppsButton onClick={onOpenDiscover} darkMode={darkMode} disabled={isAnyAppActive} />
+          <DiscoverAppsButton onClick={onOpenDiscover} darkMode={darkMode} disabled={isBusy || isAnyAppActive} />
           
           <Typography
             component="button"
@@ -927,7 +927,7 @@ export default function InstalledAppsSection({
               mt: 1,
             }}
           >
-            <DiscoverAppsButton onClick={onOpenDiscover} darkMode={darkMode} disabled={isAppRunning} />
+            <DiscoverAppsButton onClick={onOpenDiscover} darkMode={darkMode} disabled={isBusy} />
             
             <Typography
               component="button"

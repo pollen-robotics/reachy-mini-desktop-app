@@ -24,6 +24,7 @@ function AudioControls({
   onSpeakerMute,
   onMicrophoneMute,
   darkMode,
+  disabled = false,
 }) {
   // Shared styles
   const cardStyle = {
@@ -82,7 +83,7 @@ function AudioControls({
   };
 
   const renderControl = (label, tooltip, device, platform, volume, isActive, onMute, onVolumeChange) => (
-    <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+    <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.75, opacity: disabled ? 0.5 : 1, transition: 'opacity 0.2s ease' }}>
       {/* Label */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
         <Typography sx={{ fontSize: 11, fontWeight: 600, color: darkMode ? '#888' : '#999', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -107,6 +108,7 @@ function AudioControls({
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
             <IconButton
               onClick={onMute}
+              disabled={disabled}
               size="small"
               sx={{
                 width: 20,
@@ -127,7 +129,7 @@ function AudioControls({
               )}
             </IconButton>
             <Box sx={{ width: 60, height: 24, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-              <Slider value={volume} onChange={(e, val) => onVolumeChange(val)} size="small" sx={sliderStyle} />
+              <Slider value={volume} onChange={(e, val) => onVolumeChange(val)} disabled={disabled} size="small" sx={sliderStyle} />
             </Box>
           </Box>
         </Box>

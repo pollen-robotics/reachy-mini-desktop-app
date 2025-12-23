@@ -4,17 +4,21 @@ import PowerSettingsNewOutlinedIcon from '@mui/icons-material/PowerSettingsNewOu
 
 /**
  * Power Button Component - Top left corner power control
+ * 
+ * Only enabled when robot is sleeping (safe to disconnect)
  */
 export default function PowerButton({ 
   onStopDaemon, 
-  isReady, 
+  isSleeping, 
   isStopping, 
   darkMode 
 }) {
+  const canPowerOff = isSleeping && !isStopping;
+  
   return (
     <IconButton
       onClick={onStopDaemon}
-      disabled={!isReady}
+      disabled={!canPowerOff}
       sx={{
         position: 'absolute',
         top: 12,
@@ -26,7 +30,7 @@ export default function PowerButton({
         border: darkMode ? '1px solid rgba(255, 149, 0, 0.5)' : '1px solid rgba(255, 149, 0, 0.4)',
         backdropFilter: 'blur(10px)',
         transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-        opacity: isReady ? 1 : 0.4,
+        opacity: canPowerOff ? 1 : 0.4,
         boxShadow: darkMode 
           ? '0 2px 8px rgba(255, 149, 0, 0.2)' 
           : '0 2px 8px rgba(255, 149, 0, 0.15)',
@@ -34,14 +38,14 @@ export default function PowerButton({
         zIndex: 20,
         '&:hover': {
           bgcolor: darkMode ? 'rgba(255, 149, 0, 0.12)' : 'rgba(255, 149, 0, 0.08)',
-          transform: isReady ? 'scale(1.08)' : 'none',
+          transform: canPowerOff ? 'scale(1.08)' : 'none',
           borderColor: darkMode ? 'rgba(255, 149, 0, 0.7)' : 'rgba(255, 149, 0, 0.6)',
           boxShadow: darkMode 
             ? '0 4px 12px rgba(255, 149, 0, 0.3)' 
             : '0 4px 12px rgba(255, 149, 0, 0.25)',
         },
         '&:active': {
-          transform: isReady ? 'scale(0.95)' : 'none',
+          transform: canPowerOff ? 'scale(0.95)' : 'none',
         },
         '&:disabled': {
           bgcolor: darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.6)',
@@ -49,7 +53,7 @@ export default function PowerButton({
           borderColor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
         },
       }}
-      title={isStopping ? 'Stopping...' : !isReady ? 'Robot is busy...' : 'Power Off'}
+      title={isStopping ? 'Stopping...' : !isSleeping ? 'Put robot to sleep first' : 'Power Off'}
     >
       {isStopping ? (
         <CircularProgress size={16} thickness={4} sx={{ color: darkMode ? '#666' : '#999' }} />

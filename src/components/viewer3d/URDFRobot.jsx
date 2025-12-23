@@ -140,7 +140,7 @@ function URDFRobot({
         onMeshesReady(collectedMeshes);
       }
       
-      // Notify that robot is ready (for HeadFollowCamera)
+      // Notify that robot is ready
       if (onRobotReady) {
         onRobotReady(robotModel);
       }

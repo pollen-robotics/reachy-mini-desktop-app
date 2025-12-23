@@ -46,10 +46,10 @@ export const selectIsDaemonCrashed = (state) =>
 
 /**
  * @param {Object} state - Store state
- * @returns {boolean} True if robot is busy
+ * @returns {boolean} True if robot is busy or sleeping (cannot accept new commands)
  */
 export const selectIsBusy = (state) => 
-  state.robotStatus === 'busy' || state.isCommandRunning || state.isAppRunning || state.isInstalling || state.isStoppingApp;
+  state.robotStatus === 'sleeping' || state.robotStatus === 'busy' || state.isCommandRunning || state.isAppRunning || state.isInstalling || state.isStoppingApp;
 
 /**
  * @param {Object} state - Store state
@@ -181,6 +181,37 @@ export const createRobotSlice = (set, get) => ({
         isStarting: true,
         isStopping: false,
         isDaemonCrashed: false,
+      });
+    },
+    
+    sleeping: () => {
+      const state = get();
+      
+      console.log('[Store] 😴 transitionTo.sleeping() called');
+      
+      // 🛡️ Guard: Don't transition if stopping (prevents chaos during shutdown)
+      if (state.robotStatus === 'stopping') {
+        console.warn('[Store] ⚠️ sleeping BLOCKED: robotStatus is stopping');
+        return;
+      }
+      
+      // 🛡️ Guard: Don't transition if no connection (prevents crash after resetAll)
+      if (!state.connectionMode) {
+        console.warn('[Store] ⚠️ sleeping BLOCKED: connectionMode is null/undefined');
+        return;
+      }
+      
+      set({
+        robotStatus: 'sleeping',
+        busyReason: null,
+        // Derived booleans
+        isActive: true, // Still active (connected), but sleeping
+        isStarting: false,
+        isStopping: false,
+        isDaemonCrashed: false,
+        isCommandRunning: false,
+        isAppRunning: false,
+        isInstalling: false,
       });
     },
     

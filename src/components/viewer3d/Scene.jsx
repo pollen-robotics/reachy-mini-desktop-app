@@ -8,7 +8,6 @@ import PremiumScanEffect from './effects/PremiumScanEffect';
 import ErrorHighlight from './effects/ErrorHighlight';
 // import ParticleEffect from './effects/ParticleEffect'; // TODO: Disabled for now
 import CinematicCamera from './CinematicCamera';
-import HeadFollowCamera from './HeadFollowCamera';
 import useAppStore from '../../store/useAppStore';
 import { DAEMON_CONFIG } from '../../config/daemon';
 // 🚀 GAME-CHANGING: Removed useRobotParts - now using unified WebSocket via props
@@ -35,8 +34,6 @@ function Scene({
   onMeshesReady = null, // Callback when robot meshes are ready
   cameraConfig = {}, // Camera config (target, minDistance, maxDistance)
   useCinematicCamera = false, // Use animated camera instead of OrbitControls
-  useHeadFollowCamera = false, // Camera attached to head that follows its movements
-  lockCameraToHead = false, // Lock camera to head orientation
   errorFocusMesh = null, // Mesh to focus on in case of error
   hideEffects = false, // Hide particle effects
   darkMode = false, // Dark mode to adapt grid
@@ -44,7 +41,7 @@ function Scene({
 }) {
   // State to store meshes to outline
   const [outlineMeshes, setOutlineMeshes] = useState([]);
-  const [robotRef, setRobotRef] = useState(null); // Reference to robot for HeadFollowCamera
+  const [robotRef, setRobotRef] = useState(null); // Reference to robot
   
   // ✅ Forward meshes to parent callback if provided
   useEffect(() => {
@@ -381,36 +378,9 @@ function Scene({
         />
       )}
       
-      {/* Camera: 3 possible modes */}
-      {useHeadFollowCamera ? (
-        <>
-          {/* Mode 1: Camera following head (ActiveRobotView) */}
-          <HeadFollowCamera
-            robot={robotRef}
-            offset={[0, 0, 0.25]}
-            fov={cameraConfig.fov || 50}
-            lookAtOffset={[0, 0, 0]}
-            enabled={true}
-            lockToOrientation={lockCameraToHead}
-          />
-          
-          {/* OrbitControls only in unlocked mode */}
-          {!lockCameraToHead && (
-            <OrbitControls 
-              enablePan={false}
-              enableRotate={true}
-              enableZoom={true} // ✅ Allow zoom
-              enableDamping={true}
-              dampingFactor={0.05}
-              target={cameraConfig.target || [0, 0.2, 0]}
-              minDistance={cameraConfig.minDistance || 0.2} // ✅ Minimum distance (prevents zoom out)
-              maxDistance={cameraConfig.maxDistance || 10} // ✅ Very large maximum distance (allows zoom)
-              // ✅ No angle constraints = free 360° rotation
-            />
-          )}
-        </>
-      ) : useCinematicCamera ? (
-        // Mode 2: Vertically animated camera (StartingView scan)
+      {/* Camera: 2 possible modes */}
+      {useCinematicCamera ? (
+        // Mode 1: Vertically animated camera (StartingView scan)
         <CinematicCamera
           initialPosition={cameraConfig.position || [0, 0.22, 0.35]}
           target={cameraConfig.target || [0, 0.12, 0]}
@@ -419,17 +389,16 @@ function Scene({
           errorFocusMesh={errorFocusMesh}
         />
       ) : (
-        // Mode 3: Manual OrbitControls (default) - Free rotation with zoom but no zoom out
+        // Mode 2: Manual OrbitControls (default) - Free rotation with zoom
         <OrbitControls 
           enablePan={false}
           enableRotate={true}
-          enableZoom={true} // ✅ Allow zoom
+          enableZoom={true}
           enableDamping={true}
           dampingFactor={0.05}
           target={cameraConfig.target || [0, 0.2, 0]}
-          minDistance={cameraConfig.minDistance || 0.2} // ✅ Minimum distance (prevents zoom out)
-          maxDistance={cameraConfig.maxDistance || 10} // ✅ Very large maximum distance (allows zoom)
-          // ✅ No angle constraints = free 360° rotation
+          minDistance={cameraConfig.minDistance || 0.2}
+          maxDistance={cameraConfig.maxDistance || 10}
         />
       )}
       
@@ -459,8 +428,6 @@ export default memo(Scene, (prevProps, nextProps) => {
     prevProps.hideGrid !== nextProps.hideGrid ||
     prevProps.showScanEffect !== nextProps.showScanEffect ||
     prevProps.useCinematicCamera !== nextProps.useCinematicCamera ||
-    prevProps.useHeadFollowCamera !== nextProps.useHeadFollowCamera ||
-    prevProps.lockCameraToHead !== nextProps.lockCameraToHead ||
     prevProps.hideEffects !== nextProps.hideEffects ||
     prevProps.darkMode !== nextProps.darkMode
   ) {

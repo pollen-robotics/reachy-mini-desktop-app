@@ -76,6 +76,7 @@ pub fn build_daemon_args(sim_mode: bool) -> Result<Vec<String>, String> {
         "-m".to_string(),
         "reachy_mini.daemon.app.main".to_string(),
         "--desktop-app-daemon".to_string(),
+        "--no-wake-up-on-start".to_string(), // Robot starts sleeping, toggle controls wake
     ];
     
     if sim_mode {

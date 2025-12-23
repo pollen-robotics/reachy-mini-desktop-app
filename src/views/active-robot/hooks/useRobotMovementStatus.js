@@ -23,6 +23,11 @@ export function useRobotMovementStatus(isActive) {
       return;
     }
 
+    // Don't interfere with sleeping state - wake/sleep toggle manages its own transitions
+    if (robotStatus === 'sleeping') {
+      return;
+    }
+
     const hasActiveMoves = activeMoves.length > 0;
 
     if (hasActiveMoves) {

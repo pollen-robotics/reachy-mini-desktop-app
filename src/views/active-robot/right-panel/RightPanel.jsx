@@ -76,13 +76,11 @@ export default function RightPanel({
       {rightPanelView === 'controller' ? (
         <ControllerSection
           showToast={showToast}
-          isActive={isActive}
           isBusy={isBusy}
           darkMode={darkMode}
         />
       ) : rightPanelView === 'expressions' ? (
         <ExpressionsSection
-          isActive={isActive}
           isBusy={isBusy}
           darkMode={darkMode}
         />
@@ -100,7 +98,6 @@ export default function RightPanel({
 
           {/* Control Buttons - Opens Controller and Expressions in right panel */}
           <ControlButtons
-            isActive={isActive}
             isBusy={isBusy}
             darkMode={darkMode}
           />
