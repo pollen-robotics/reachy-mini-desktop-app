@@ -4,12 +4,12 @@ mod daemon;
 mod permissions;
 mod python;
 mod signing;
+mod update;
 mod usb;
 mod wifi;
 mod window;
 
 use tauri::{State, Manager};
-use tauri_plugin_shell::ShellExt;
 use daemon::{DaemonState, add_log, kill_daemon, cleanup_system_daemons, spawn_and_monitor_sidecar};
 
 #[cfg(not(windows))]
@@ -157,7 +157,9 @@ pub fn run() {
             permissions::open_camera_settings,
             permissions::open_microphone_settings,
             permissions::open_wifi_settings,
-            wifi::scan_local_wifi_networks
+            wifi::scan_local_wifi_networks,
+            update::check_daemon_update,
+            update::update_daemon
         ])
         .on_window_event(|window, event| {
             match event {

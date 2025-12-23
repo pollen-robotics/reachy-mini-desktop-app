@@ -4,8 +4,6 @@ import { IconButton, Switch, Tooltip, Box, Typography } from '@mui/material';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import GridOnIcon from '@mui/icons-material/GridOn';
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
-import ThreeSixtyOutlinedIcon from '@mui/icons-material/ThreeSixtyOutlined';
-import MyLocationOutlinedIcon from '@mui/icons-material/MyLocationOutlined';
 import CircleIcon from '@mui/icons-material/Circle';
 // Leva removed - was never displayed
 import * as THREE from 'three';
@@ -23,7 +21,7 @@ import { FPSMeter } from '../FPSMeter';
 // ✅ Camera presets
 const CAMERA_PRESETS = {
   normal: {
-    position: [0, 0.25, 0.52], // Zoomed out: Z = 0.32 + 0.20
+    position: [-0.25, 0.35, 0.55], // 3/4 view from left, slightly further
     fov: 50,
     target: [0, 0.2, 0],
     minDistance: 0.2,
@@ -52,8 +50,6 @@ export default function RobotViewer3D({
   onMeshesReady = null, // Callback when robot meshes are ready
   cameraPreset = 'normal', // Camera preset ('normal' | 'scan') or custom object
   useCinematicCamera = false, // Use animated camera instead of OrbitControls
-  useHeadFollowCamera = false, // Camera that follows robot head
-  showCameraToggle = false, // Show toggle to switch between Follow and Free
   errorFocusMesh = null, // Mesh to focus on in case of error
   backgroundColor = '#e0e0e0', // Canvas background color
   wireframe = false, // ✅ Wireframe mode
@@ -173,19 +169,6 @@ export default function RobotViewer3D({
     ? (darkMode ? '#1a1a1a' : '#e0e0e0')
     : backgroundColor;
   
-  // 🎥 Camera modes: 'free' | 'locked'
-  // - free: Free camera with OrbitControls
-  // - locked: Follows head position AND orientation (FPV)
-  const [cameraMode, setCameraMode] = useState('free');
-  
-  // Toggle between the 2 modes
-  const toggleCameraMode = () => {
-    setCameraMode(prev => prev === 'free' ? 'locked' : 'free');
-  };
-  
-  // Compute props for Scene
-  const useHeadFollow = cameraMode === 'locked';
-  const lockToOrientation = cameraMode === 'locked';
   
   // ✨ Determine robot status for tag (with state machine)
   const getStatusTag = () => {
@@ -200,6 +183,9 @@ export default function RobotViewer3D({
         
         case 'starting':
           return { label: 'Starting', color: '#3b82f6', animated: true };
+        
+        case 'sleeping':
+          return { label: 'Sleeping', color: '#FF9500' };
         
         case 'ready':
           // If motors on → Ready, if off → Standby
@@ -322,8 +308,6 @@ export default function RobotViewer3D({
                 onMeshesReady={onMeshesReady}
                 cameraConfig={cameraConfig}
                 useCinematicCamera={useCinematicCamera}
-              useHeadFollowCamera={useHeadFollowCamera && useHeadFollow}
-              lockCameraToHead={lockToOrientation}
               errorFocusMesh={errorFocusMesh}
               hideEffects={hideEffects}
                    darkMode={darkMode}
@@ -362,12 +346,13 @@ export default function RobotViewer3D({
                 width: 32,
                 height: 32,
                 transition: 'all 0.2s ease',
-                opacity: 0.7,
-                color: '#666',
+                color: 'primary.main',
+                border: '1px solid',
+                borderColor: 'primary.main',
+                bgcolor: 'transparent',
                 '&:hover': {
-                  opacity: 1,
-                  color: '#FF9500',
-                  bgcolor: 'rgba(255, 149, 0, 0.08)',
+                  borderColor: 'primary.dark',
+                  bgcolor: 'rgba(99, 102, 241, 0.08)',
                 },
               }}
             >
@@ -375,50 +360,6 @@ export default function RobotViewer3D({
             </IconButton>
           </Tooltip>
 
-          {/* Camera Mode Toggle (si showCameraToggle) - COMMENTED */}
-          {/* {showCameraToggle && (
-            <>
-              <Tooltip
-                title={
-                  cameraMode === 'free' 
-                    ? 'Free Camera - Click to lock to head' 
-                    : 'Locked - Click for free camera'
-                }
-                placement="top"
-                arrow
-              >
-                <IconButton
-                  onClick={toggleCameraMode}
-                  size="small"
-                  sx={{
-                    width: 32,
-                    height: 32,
-                    transition: 'all 0.2s ease',
-                    opacity: 0.7,
-                    '&:hover': {
-                      opacity: 1,
-                      bgcolor: 'rgba(0, 0, 0, 0.04)',
-                    },
-                  }}
-                >
-                  {cameraMode === 'free' ? (
-                    <ThreeSixtyOutlinedIcon sx={{ fontSize: 16, color: '#666' }} />
-                  ) : (
-                    <MyLocationOutlinedIcon sx={{ fontSize: 16, color: '#e63946' }} />
-                  )}
-                </IconButton>
-              </Tooltip>
-
-              <Box
-                sx={{
-                  width: '1px',
-                  height: '14px',
-                  bgcolor: 'rgba(0, 0, 0, 0.1)',
-                  mx: 0.5,
-                }}
-              />
-            </>
-          )} */}
 
           {/* View Mode Toggle - COMMENTED */}
           {/* <Tooltip

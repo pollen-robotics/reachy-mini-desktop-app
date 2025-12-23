@@ -14,6 +14,7 @@ import {
   Checkbox,
   FormControlLabel,
   Chip,
+  Snackbar,
 } from '@mui/material';
 import WifiIcon from '@mui/icons-material/Wifi';
 import SignalWifi4BarIcon from '@mui/icons-material/SignalWifi4Bar';
@@ -22,6 +23,8 @@ import SignalWifiOffIcon from '@mui/icons-material/SignalWifiOff';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SystemUpdateAltIcon from '@mui/icons-material/SystemUpdateAlt';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import NewReleasesOutlinedIcon from '@mui/icons-material/NewReleasesOutlined';
 import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined';
 import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined';
@@ -30,6 +33,8 @@ import FullscreenOverlay from '../FullscreenOverlay';
 import useAppStore from '../../store/useAppStore';
 import { buildApiUrl, fetchWithTimeout, DAEMON_CONFIG } from '../../config/daemon';
 import reachyUpdateBoxSvg from '../../assets/reachy-update-box.svg';
+import { invoke } from '@tauri-apps/api/core';
+import { logSuccess } from '../../utils/logging';
 
 /**
  * Section Header Component
@@ -84,7 +89,28 @@ export default function SettingsOverlay({
   const [updateInfo, setUpdateInfo] = useState(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [preRelease, setPreRelease] = useState(false);
+  
+  // Read initial preRelease preference from localStorage
+  const getInitialPreRelease = () => {
+    try {
+      const stored = localStorage.getItem('preReleaseUpdates');
+      return stored ? JSON.parse(stored) : false;
+    } catch {
+      return false;
+    }
+  };
+  
+  const [preRelease, setPreReleaseState] = useState(getInitialPreRelease);
+  
+  // Wrapper to persist preRelease changes
+  const setPreRelease = (value) => {
+    try {
+      localStorage.setItem('preReleaseUpdates', JSON.stringify(value));
+    } catch (e) {
+      console.error('Failed to save preRelease preference:', e);
+    }
+    setPreReleaseState(value);
+  };
   
   // ═══════════════════════════════════════════════════════════════════
   // WIFI STATE
@@ -104,15 +130,61 @@ export default function SettingsOverlay({
   const [showWifiConfirm, setShowWifiConfirm] = useState(false);
 
   // ═══════════════════════════════════════════════════════════════════
+  // TOAST NOTIFICATIONS
+  // ═══════════════════════════════════════════════════════════════════
+  const [toast, setToast] = useState({ open: false, message: '', severity: 'info' });
+  const [toastProgress, setToastProgress] = useState(100);
+  
+  const showToast = useCallback((message, severity = 'info') => {
+    setToast({ open: true, message, severity });
+    setToastProgress(100);
+  }, []);
+  
+  const handleCloseToast = useCallback(() => {
+    setToast(prev => ({ ...prev, open: false }));
+    setToastProgress(100);
+  }, []);
+  
+  // Toast progress bar animation
+  useEffect(() => {
+    if (!toast.open) {
+      setToastProgress(100);
+      return;
+    }
+    
+    setToastProgress(100);
+    const duration = 3500;
+    const startTime = performance.now();
+    
+    const animate = () => {
+      const elapsed = performance.now() - startTime;
+      const progress = Math.max(0, 100 - (elapsed / duration) * 100);
+      
+      setToastProgress(progress);
+      
+      if (progress > 0 && elapsed < duration) {
+        requestAnimationFrame(animate);
+      }
+    };
+    
+    const frameId = requestAnimationFrame(animate);
+    
+    return () => {
+      cancelAnimationFrame(frameId);
+    };
+  }, [toast.open]);
+
+  // ═══════════════════════════════════════════════════════════════════
   // UPDATE FUNCTIONS
   // ═══════════════════════════════════════════════════════════════════
   
   const checkForUpdate = useCallback(async () => {
-    if (!isWifiMode) return;
     setIsCheckingUpdate(true);
     setUpdateInfo(null);
     
     try {
+      if (isWifiMode) {
+        // WiFi mode: Use daemon API
       const response = await fetchWithTimeout(
         buildApiUrl(`/update/available?pre_release=${preRelease}`),
         {},
@@ -123,9 +195,15 @@ export default function SettingsOverlay({
       if (response.ok) {
         const data = await response.json();
         setUpdateInfo(data.update?.reachy_mini || null);
+        }
+      } else {
+        // USB/Simulation mode: Use Tauri command
+        const data = await invoke('check_daemon_update', { preRelease });
+        setUpdateInfo(data);
       }
     } catch (err) {
       console.error('Failed to check for updates:', err);
+      setWifiError('Failed to check for updates');
     } finally {
       setIsCheckingUpdate(false);
     }
@@ -143,6 +221,8 @@ export default function SettingsOverlay({
     setIsUpdating(true);
     
     try {
+      if (isWifiMode) {
+        // WiFi mode: Use daemon API
       const response = await fetchWithTimeout(
         buildApiUrl(`/update/start?pre_release=${preRelease}`),
         { method: 'POST' },
@@ -165,13 +245,34 @@ export default function SettingsOverlay({
         const error = await response.json();
         setWifiError(`Update failed: ${error.detail || 'Unknown error'}`);
         setIsUpdating(false);
+        }
+      } else {
+        // USB/Simulation mode: Use Tauri command
+        await invoke('update_daemon', { preRelease });
+        
+        // Show success toast
+        showToast('Daemon updated successfully! Reconnect to use the new version.', 'success');
+        
+        // Also log for developers
+        logSuccess('Daemon updated successfully! Reconnect to use the new version.');
+        
+        // Give user time to see the toast (2 seconds)
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Close overlay
+        onClose();
+        
+        // Disconnect and return to selection view
+        console.log('Daemon update completed, disconnecting...');
+        useAppStore.getState().resetAll();
       }
     } catch (err) {
       console.error('Failed to start update:', err);
-      setWifiError('Failed to start update');
+      showToast(`Update failed: ${err}`, 'error');
+      setWifiError(`Update failed: ${err}`);
       setIsUpdating(false);
     }
-  }, [preRelease, onClose]);
+  }, [isWifiMode, preRelease, onClose, showToast]);
 
   // ═══════════════════════════════════════════════════════════════════
   // WIFI FUNCTIONS
@@ -261,13 +362,15 @@ export default function SettingsOverlay({
 
   // Initial fetch when overlay opens
   useEffect(() => {
-    if (open && isWifiMode) {
+    if (open) {
       checkForUpdate();
+      if (isWifiMode) {
       fetchWifiStatus();
+      }
     }
   }, [open, isWifiMode, checkForUpdate, fetchWifiStatus]);
 
-  // Auto-refresh WiFi networks every 3 seconds
+  // Auto-refresh WiFi networks every 3 seconds (WiFi mode only)
   useEffect(() => {
     if (!open || !isWifiMode) return;
     
@@ -279,7 +382,7 @@ export default function SettingsOverlay({
   }, [open, isWifiMode, fetchWifiStatus]);
 
   useEffect(() => {
-    if (open && isWifiMode) {
+    if (open) {
       checkForUpdate();
     }
   }, [preRelease]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -505,7 +608,12 @@ export default function SettingsOverlay({
                     </Typography>
                   </Box>
                 ) : updateInfo ? (
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <Box sx={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    gap: 2,
+                    minHeight: 159, // Same as spinner state to avoid flicker
+                  }}>
                     {/* Status badge with refresh */}
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -832,8 +940,170 @@ export default function SettingsOverlay({
         </Box>
         ) : (
           /* ═══════════════════════════════════════════════════════════════════
-              USB/SIMULATION MODE: Single column
+              USB/SIMULATION MODE: Single column with Update
           ═══════════════════════════════════════════════════════════════════ */
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            
+            {/* UPDATE CARD */}
+            <Box sx={cardStyle}>
+              <SectionHeader 
+                title="Daemon Update" 
+                icon={SystemUpdateAltIcon} 
+                darkMode={darkMode}
+                action={
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={preRelease}
+                        onChange={(e) => setPreRelease(e.target.checked)}
+                        size="small"
+                        color="primary"
+                        sx={{
+                          color: darkMode ? '#555' : '#ccc',
+                          p: 0.5,
+                        }}
+                      />
+                    }
+                    label={
+                      <Typography sx={{ fontSize: 10, color: textMuted }}>
+                        beta
+                      </Typography>
+                    }
+                    sx={{ m: 0 }}
+                  />
+                }
+              />
+
+              {/* Update Status */}
+              {isCheckingUpdate ? (
+                <Box sx={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  gap: 1.5,
+                  height: 159,
+                }}>
+                  <CircularProgress size={24} color="primary" />
+                  <Typography sx={{ fontSize: 12, color: textSecondary }}>
+                    Checking for updates...
+                  </Typography>
+                </Box>
+              ) : updateInfo ? (
+                <Box sx={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  gap: 2,
+                  minHeight: 159, // Same as spinner state to avoid flicker
+                }}>
+                  {/* Status badge with refresh */}
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                      {updateInfo.is_available ? (
+                        <NewReleasesOutlinedIcon sx={{ fontSize: 20, color: textSecondary }} />
+                      ) : (
+                        <CheckCircleOutlineIcon sx={{ fontSize: 20, color: textSecondary }} />
+                      )}
+                      <Typography sx={{ 
+                        fontSize: 13, 
+                        fontWeight: 600,
+                        color: textPrimary,
+                      }}>
+                        {updateInfo.is_available ? 'Update available' : 'Up to date'}
+                      </Typography>
+                    </Box>
+                    <IconButton
+                      onClick={checkForUpdate}
+                      size="small"
+                      disabled={isCheckingUpdate}
+                      sx={{ 
+                        color: textMuted,
+                        p: 0.5,
+                        '&:hover': { color: textSecondary },
+                      }}
+                    >
+                      <RefreshIcon sx={{ 
+                        fontSize: 16,
+                        animation: isCheckingUpdate ? 'spin 1s linear infinite' : 'none',
+                        '@keyframes spin': {
+                          '0%': { transform: 'rotate(0deg)' },
+                          '100%': { transform: 'rotate(360deg)' },
+                        },
+                      }} />
+                    </IconButton>
+                  </Box>
+                  
+                  {/* Version info */}
+                  <Box sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center',
+                    gap: 2,
+                    p: 1.5,
+                    borderRadius: '10px',
+                    bgcolor: darkMode ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.03)',
+                  }}>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography sx={{ fontSize: 9, color: textMuted, mb: 0.25, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Current
+                      </Typography>
+                      <Typography sx={{ fontSize: 12, fontFamily: 'monospace', color: textSecondary }}>
+                        {updateInfo.current_version}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ width: '1px', height: 28, bgcolor: darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', flexShrink: 0 }} />
+                    <Box sx={{ flex: 1 }}>
+                      <Typography sx={{ fontSize: 9, color: textMuted, mb: 0.25, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Available
+                      </Typography>
+                      <Typography sx={{ 
+                        fontSize: 12, 
+                        fontFamily: 'monospace', 
+                        color: textSecondary,
+                        fontWeight: updateInfo.is_available ? 600 : 400,
+                      }}>
+                        {updateInfo.available_version}
+                      </Typography>
+                    </Box>
+                  </Box>
+                  
+                  {/* Update button */}
+                  {updateInfo.is_available && (
+                    <Button
+                      variant="outlined"
+                      onClick={handleUpdateClick}
+                      disabled={isUpdating}
+                      fullWidth
+                      sx={{
+                        ...buttonStyle, 
+                        fontSize: 14,
+                        fontWeight: 600,
+                        py: 1.25,
+                        borderRadius: '10px',
+                      }}
+                    >
+                      {isUpdating ? <CircularProgress size={20} color="primary" /> : 'Update Now'}
+                    </Button>
+                  )}
+                </Box>
+              ) : (
+                <Box sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  height: 159,
+                }}>
+                  <Button
+                    variant="outlined"
+                    onClick={checkForUpdate}
+                    sx={{ ...buttonStyle, fontSize: 12 }}
+                  >
+                    Check for updates
+                  </Button>
+                </Box>
+              )}
+            </Box>
+
+            {/* APPEARANCE CARD */}
           <Box sx={cardStyle}>
             <SectionHeader title="Appearance" icon={null} darkMode={darkMode} />
             
@@ -867,6 +1137,7 @@ export default function SettingsOverlay({
             checked={darkMode}
                 color="primary"
           />
+        </Box>
         </Box>
           </Box>
         )}
@@ -926,10 +1197,62 @@ export default function SettingsOverlay({
           >
             Update to <strong style={{ color: darkMode ? '#fff' : '#333' }}>{updateInfo?.available_version}</strong>
             <br /><br />
+            {isWifiMode ? (
+              <>
             The robot will restart and you will be <strong style={{ color: darkMode ? '#fff' : '#333' }}>disconnected</strong>.
             <br />
             Reconnect after ~2 minutes when complete.
+              </>
+            ) : (
+              <>
+                The daemon will restart automatically.
+                <br />
+                This will take <strong style={{ color: darkMode ? '#fff' : '#333' }}>between 30 seconds and 5 minutes</strong>.
+              </>
+            )}
           </Typography>
+          
+          {/* WiFi Mode Warning */}
+          {isWifiMode && (
+            <Box
+              sx={{
+                mb: 4,
+                p: 2,
+                borderRadius: '12px',
+                bgcolor: darkMode ? 'rgba(255, 152, 0, 0.15)' : 'rgba(255, 152, 0, 0.1)',
+                border: `1px solid ${darkMode ? 'rgba(255, 152, 0, 0.3)' : 'rgba(255, 152, 0, 0.2)'}`,
+              }}
+            >
+              <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
+                <Box sx={{ 
+                  fontSize: 20,
+                  flexShrink: 0,
+                  mt: 0.25,
+                }}>
+                  ⚠️
+                </Box>
+                <Box>
+                  <Typography sx={{ 
+                    fontSize: 13, 
+                    fontWeight: 600, 
+                    color: darkMode ? '#FFB74D' : '#F57C00',
+                    mb: 0.5,
+                  }}>
+                    Important
+                  </Typography>
+                  <Typography sx={{ 
+                    fontSize: 12, 
+                    color: darkMode ? '#FFB74D' : '#F57C00',
+                    lineHeight: 1.5,
+                  }}>
+                    Make sure your robot is <strong>plugged into a power outlet</strong> during the update.
+                    <br />
+                    Losing power during update can brick your robot.
+                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+          )}
           
           {/* Actions */}
           <Box sx={{ display: 'flex', gap: 3, justifyContent: 'center', alignItems: 'center' }}>
@@ -1119,6 +1442,118 @@ export default function SettingsOverlay({
           </Box>
         </Box>
       </FullscreenOverlay>
+
+      {/* Toast Notifications */}
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={3500}
+        onClose={handleCloseToast}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        sx={{
+          bottom: '24px !important',
+          left: '50% !important',
+          right: 'auto !important',
+          transform: 'translateX(-50%) !important',
+          display: 'flex !important',
+          justifyContent: 'center !important',
+          alignItems: 'center !important',
+          width: '100%',
+          zIndex: 100001, // Above overlay
+          '& > *': {
+            margin: '0 auto !important',
+          },
+        }}
+      >
+        <Box 
+          onClick={handleCloseToast}
+          sx={{ 
+            position: 'relative', 
+            overflow: 'hidden', 
+            borderRadius: '12px',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            boxShadow: darkMode 
+              ? '0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3)'
+              : '0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08)',
+            zIndex: 100001,
+            cursor: 'pointer',
+          }}
+        >
+          {/* Main content */}
+          <Box
+            sx={{
+              position: 'relative',
+              borderRadius: '12px',
+              fontSize: 13,
+              fontWeight: 500,
+              letterSpacing: '-0.01em',
+              background: darkMode
+                ? (toast.severity === 'success'
+                  ? 'rgba(34, 197, 94, 0.15)'
+                  : 'rgba(239, 68, 68, 0.15)')
+                : (toast.severity === 'success'
+                  ? 'rgba(34, 197, 94, 0.1)'
+                  : 'rgba(239, 68, 68, 0.1)'),
+              border: `1px solid ${toast.severity === 'success'
+                ? darkMode ? 'rgba(34, 197, 94, 0.4)' : 'rgba(34, 197, 94, 0.3)'
+                : darkMode ? 'rgba(239, 68, 68, 0.4)' : 'rgba(239, 68, 68, 0.3)'}`,
+              color: toast.severity === 'success'
+                ? darkMode ? '#86efac' : '#16a34a'
+                : darkMode ? '#fca5a5' : '#dc2626',
+              minWidth: 240,
+              maxWidth: 400,
+              px: 3,
+              py: 2,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 1.5,
+              overflow: 'hidden',
+            }}
+          >
+            {/* Progress bar */}
+            <Box
+              sx={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                height: '2px',
+                width: `${toastProgress}%`,
+                background: toast.severity === 'success' 
+                  ? darkMode ? 'rgba(34, 197, 94, 0.8)' : 'rgba(34, 197, 94, 0.7)'
+                  : darkMode ? 'rgba(239, 68, 68, 0.8)' : 'rgba(239, 68, 68, 0.7)',
+                transition: 'width 0.02s linear',
+                borderRadius: '0 0 12px 12px',
+              }}
+            />
+            
+            {/* Icon */}
+            {toast.severity === 'success' && (
+              <CheckCircleOutlinedIcon 
+                sx={{ 
+                  fontSize: 20, 
+                  flexShrink: 0,
+                  color: 'inherit',
+                }} 
+              />
+            )}
+            {toast.severity === 'error' && (
+              <ErrorOutlineIcon 
+                sx={{ 
+                  fontSize: 20, 
+                  flexShrink: 0,
+                  color: 'inherit',
+                }} 
+              />
+            )}
+            
+            {/* Text */}
+            <Typography sx={{ fontSize: 13, fontWeight: 500 }}>
+              {toast.message}
+            </Typography>
+          </Box>
+        </Box>
+      </Snackbar>
     </FullscreenOverlay>
   );
 }
