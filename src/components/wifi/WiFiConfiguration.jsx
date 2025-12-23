@@ -172,23 +172,126 @@ export default function WiFiConfiguration({
         { label: 'WiFi connect' }
       );
       
-      if (response.ok) {
-        setSuccessMessage(`Successfully connected to ${ssidToUse}`);
-        const connectedSSID = ssidToUse;
-        setWifiPassword('');
-        setSelectedSSID('');
-        setManualSSID('');
-        
-        if (onConnectSuccess) {
-          onConnectSuccess(connectedSSID);
-        }
-        
-        // Refresh status after network change
-        setTimeout(fetchWifiStatus, 5000);
-      } else {
+      if (!response.ok) {
         const error = await response.json();
         setWifiError(error.detail || 'Failed to connect');
+        setIsConnecting(false);
+        return;
       }
+      
+      // Connection request sent, now poll for actual status (like dashboard does)
+      // Dashboard polls every 1 second and checks for mode changes
+      console.log('[WiFi] Connection request sent, polling for status...');
+      
+      let previousMode = null;
+      let attempts = 0;
+      const maxAttempts = 60; // 60 seconds max
+      const pollInterval = 1000; // 1 second (same as dashboard)
+      
+      const checkConnectionStatus = async () => {
+        attempts++;
+        
+        try {
+          // Check for errors first (like dashboard does)
+          const errorResponse = await fetchWithTimeout(
+            `${baseUrl}/wifi/error`,
+            {},
+            2000,
+            { label: 'WiFi error check', silent: true }
+          );
+          
+          if (errorResponse.ok) {
+            const errorData = await errorResponse.json();
+            if (errorData.error) {
+              console.error('[WiFi] Connection error detected:', errorData.error);
+              setWifiError(`Connection failed: ${errorData.error}. Switching back to hotspot mode.`);
+              setIsConnecting(false);
+              // Reset error (like dashboard does)
+              await fetchWithTimeout(
+                `${baseUrl}/wifi/reset_error`,
+                { method: 'POST' },
+                2000,
+                { label: 'Reset WiFi error', silent: true }
+              ).catch(() => {});
+              return false; // Stop polling
+            }
+          }
+          
+          // Check status (like dashboard does)
+          const statusResponse = await fetchWithTimeout(
+            `${baseUrl}/wifi/status`,
+            {},
+            2000,
+            { label: 'WiFi status check', silent: true }
+          );
+          
+          if (statusResponse.ok) {
+            const status = await statusResponse.json();
+            const currentMode = status.mode;
+            
+            // Detect mode change from 'busy' or 'hotspot' to 'wlan' (like dashboard does)
+            if (currentMode === 'wlan' && status.connected_network === ssidToUse) {
+              // Check if we transitioned from another mode (like dashboard does)
+              if (previousMode !== null && previousMode !== 'wlan') {
+                console.log('[WiFi] ✅ Successfully connected to', ssidToUse, '(mode changed from', previousMode, 'to wlan)');
+              } else {
+                console.log('[WiFi] ✅ Connected to', ssidToUse);
+              }
+              
+              setSuccessMessage(`Successfully connected to ${ssidToUse}`);
+              setWifiPassword('');
+              setSelectedSSID('');
+              setManualSSID('');
+              
+              if (onConnectSuccess) {
+                onConnectSuccess(ssidToUse);
+              }
+              
+              setIsConnecting(false);
+              return false; // Stop polling
+            }
+            
+            // Update previous mode for next check
+            previousMode = currentMode;
+            
+            // Handle other modes
+            if (currentMode === 'busy') {
+              console.log('[WiFi] Connection in progress (busy mode)...');
+            } else if (currentMode === 'hotspot' && attempts >= 10) {
+              console.warn('[WiFi] Still in hotspot mode after 10 seconds');
+            }
+          }
+        } catch (err) {
+          console.error('[WiFi] Error checking status:', err);
+          // Continue polling
+        }
+        
+        // Continue polling if we haven't reached max attempts
+        if (attempts >= maxAttempts) {
+          console.error('[WiFi] Connection timeout after', maxAttempts, 'seconds');
+          setWifiError('Connection timeout. The Reachy may still be in hotspot mode. Please check the network name and password.');
+          setIsConnecting(false);
+          return false; // Stop polling
+        }
+        
+        return true; // Continue polling
+      };
+      
+      // Start polling every 1 second (like dashboard does)
+      const pollIntervalId = setInterval(async () => {
+        const shouldContinue = await checkConnectionStatus();
+        if (!shouldContinue) {
+          clearInterval(pollIntervalId);
+        }
+      }, pollInterval);
+      
+      // Also check immediately (after 500ms to let connection start)
+      setTimeout(async () => {
+        const shouldContinue = await checkConnectionStatus();
+        if (!shouldContinue) {
+          clearInterval(pollIntervalId);
+        }
+      }, 500);
     } catch (err) {
       console.error('Failed to connect to WiFi:', err);
       setWifiError('Connection failed');
@@ -598,22 +701,24 @@ export default function WiFiConfiguration({
         />
 
         <Button
-          variant="contained"
+          variant="outlined"
           onClick={handleConnect}
           disabled={(!selectedSSID && !manualSSID) || !wifiPassword || isConnecting}
           fullWidth
           sx={{
-            bgcolor: '#FF9500',
+            borderColor: '#FF9500',
+            color: '#FF9500',
             textTransform: 'none',
             fontSize: compact ? 12 : 13,
             fontWeight: 600,
             minHeight: compact ? 32 : 36,
             borderRadius: compact ? '8px' : '10px',
             '&:hover': {
-              bgcolor: '#e68600',
+              borderColor: '#e68600',
+              bgcolor: 'rgba(255, 149, 0, 0.08)',
             },
             '&:disabled': {
-              bgcolor: darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+              borderColor: darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
               color: darkMode ? '#555' : '#bbb',
             },
           }}

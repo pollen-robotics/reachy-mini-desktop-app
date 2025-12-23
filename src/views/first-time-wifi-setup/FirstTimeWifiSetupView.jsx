@@ -191,6 +191,9 @@ export default function FirstTimeWifiSetupView() {
 
   const handleWifiConfigured = useCallback((ssid) => {
     console.log('[Setup] WiFi configured:', ssid);
+    // Note: onConnectSuccess is only called when WiFiConfiguration verifies
+    // that the Reachy is actually connected (mode === 'wlan' && connected_network === ssid)
+    // So we can trust that the connection is real
     setConfiguredNetwork(ssid);
     setActiveStep(3);
   }, []);
@@ -653,12 +656,18 @@ function Step2ConnectHotspot({
             </Button>
 
             <Button
+              variant="outlined"
               size="small"
               onClick={onSkip}
               sx={{ 
                 fontSize: 11, 
                 textTransform: 'none', 
-                color: textSecondary,
+                borderColor: '#FF9500',
+                color: '#FF9500',
+                '&:hover': {
+                  borderColor: '#e68600',
+                  bgcolor: 'rgba(255, 149, 0, 0.08)',
+                },
               }}
             >
               I'm connected →

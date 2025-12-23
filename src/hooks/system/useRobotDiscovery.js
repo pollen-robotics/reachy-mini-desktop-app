@@ -23,6 +23,9 @@ const WIFI_HOSTS_TO_CHECK = [
 ];
 const WIFI_CHECK_TIMEOUT = 2000; // 2s timeout per host
 
+// Track last logged WiFi host to avoid repetitive logs
+let lastLoggedWifiHost = null;
+
 /**
  * Check if a WiFi robot is available at a single host
  * Uses Tauri HTTP plugin to bypass WebView network restrictions
@@ -60,8 +63,18 @@ async function checkWifiRobot() {
   // Return the first available host
   const available = results.find(r => r.available);
   if (available) {
-    console.log(`🌐 WiFi robot found at ${available.host}`);
+    // Only log when host changes (found new robot or different host)
+    if (lastLoggedWifiHost !== available.host) {
+      console.log(`🌐 WiFi robot found at ${available.host}`);
+      lastLoggedWifiHost = available.host;
+    }
     return { available: true, host: available.host };
+  }
+  
+  // Log when robot is lost (was found before, now gone)
+  if (lastLoggedWifiHost !== null) {
+    console.log('🌐 WiFi robot disconnected');
+    lastLoggedWifiHost = null;
   }
   
   return { available: false, host: null };

@@ -392,15 +392,7 @@ export function isWiFiMode() {
  */
 export function buildApiUrl(endpoint) {
   const baseUrl = getBaseUrl();
-  const fullUrl = `${baseUrl}${endpoint}`;
-  
-  // 🔍 DEBUG: Log URL generation for debugging connection mode issues
-  if (endpoint.includes('set_target') || endpoint.includes('daemon')) {
-    const { connectionMode, remoteHost } = useRobotStore.getState();
-    console.log(`🔗 [buildApiUrl] mode=${connectionMode}, host=${remoteHost}, url=${fullUrl}`);
-  }
-  
-  return fullUrl;
+  return `${baseUrl}${endpoint}`;
 }
 
 /**

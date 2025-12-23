@@ -45,35 +45,16 @@ export default function FullscreenOverlay({
   hidden = false,
   keepMounted = false,
   children,
-  // Debug: pass a name to identify the overlay in logs
-  debugName = 'unknown',
 }) {
   // Track if we've already animated this modal (don't re-animate when coming back from hidden)
   const hasAnimatedRef = useRef(false);
-  const prevOpenRef = useRef(open);
-  const prevHiddenRef = useRef(hidden);
   
-  // DEBUG: Log only when open or hidden changes
+  // Mark as animated on first visible render
   useEffect(() => {
-    const openChanged = prevOpenRef.current !== open;
-    const hiddenChanged = prevHiddenRef.current !== hidden;
-    
-    if (openChanged || hiddenChanged) {
-      console.log(`🔔 [${debugName}] STATE CHANGE`, {
-        open: `${prevOpenRef.current} → ${open}`,
-        hidden: `${prevHiddenRef.current} → ${hidden}`,
-        hasAnimated: hasAnimatedRef.current,
-      });
-    }
-    
     if (open && !hidden && !hasAnimatedRef.current) {
-      console.log(`✨ [${debugName}] FIRST VISIBLE - will animate`);
       hasAnimatedRef.current = true;
     }
-    
-    prevOpenRef.current = open;
-    prevHiddenRef.current = hidden;
-  }, [open, hidden, debugName]);
+  }, [open, hidden]);
   
   // Only animate on first open, not when coming back from hidden state
   const shouldAnimate = open && !hidden && !hasAnimatedRef.current;
