@@ -21,7 +21,8 @@ import { logSuccess } from '../../utils/logging';
 import { 
   SettingsUpdateCard, 
   SettingsWifiCard, 
-  SettingsAppearanceCard 
+  SettingsAppearanceCard,
+  SettingsCacheCard,
 } from './settings';
 
 /**
@@ -510,6 +511,11 @@ export default function SettingsOverlay({
                 buttonStyle={buttonStyle}
               />
               <SettingsAppearanceCard darkMode={darkMode} cardStyle={cardStyle} />
+              <SettingsCacheCard 
+                darkMode={darkMode} 
+                cardStyle={cardStyle} 
+                buttonStyle={buttonStyle}
+              />
           </Box>
           
             {/* RIGHT COLUMN: WiFi */}
