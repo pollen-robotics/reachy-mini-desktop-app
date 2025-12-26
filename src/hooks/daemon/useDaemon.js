@@ -305,7 +305,8 @@ export const useDaemon = () => {
         
         // ✅ Start daemon WITHOUT wake_up - robot stays sleeping
         // The Wake/Sleep toggle in UI will control when robot wakes up
-        if (statusData.state === 'not_initialized' || statusData.state === 'starting' || statusData.state === 'stopped') {
+        // Note: 'stopping' means daemon API is accessible but backend is not running (--no-autostart mode)
+        if (statusData.state === 'not_initialized' || statusData.state === 'starting' || statusData.state === 'stopped' || statusData.state === 'stopping') {
           console.log(`🌐 Daemon needs restart (state: ${statusData.state}), starting WITHOUT wake_up...`);
           try {
             await fetchWithTimeout(

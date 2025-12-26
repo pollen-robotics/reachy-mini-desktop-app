@@ -87,6 +87,18 @@ function ThemeWrapper({ children }) {
           root: {
             // ✅ Assure que les transitions fonctionnent correctement
             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            textTransform: 'none',
+            fontWeight: 600,
+            borderRadius: '10px',
+          },
+          outlined: {
+            // ✅ Style primary outlined par défaut
+            borderColor: '#FF9500',
+            color: '#FF9500',
+            '&:hover': {
+              borderColor: '#E08500',
+              backgroundColor: 'rgba(255, 149, 0, 0.08)',
+            },
           },
         },
       },

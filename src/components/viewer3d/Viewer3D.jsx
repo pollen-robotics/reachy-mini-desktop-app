@@ -340,30 +340,30 @@ export default function RobotViewer3D({
             arrow
           >
             <span>
-              <IconButton
-                onClick={() => setShowSettingsOverlay(true)}
-                size="small"
+            <IconButton
+              onClick={() => setShowSettingsOverlay(true)}
+              size="small"
                 disabled={!!busyReason}
-                sx={{
-                  width: 32,
-                  height: 32,
-                  transition: 'all 0.2s ease',
+              sx={{
+                width: 32,
+                height: 32,
+                transition: 'all 0.2s ease',
                   color: busyReason ? 'text.disabled' : 'primary.main',
                   border: '1px solid',
                   borderColor: busyReason ? 'divider' : 'primary.main',
                   bgcolor: 'transparent',
-                  '&:hover': {
+                '&:hover': {
                     borderColor: busyReason ? 'divider' : 'primary.dark',
                     bgcolor: busyReason ? 'transparent' : 'rgba(99, 102, 241, 0.08)',
                   },
                   '&.Mui-disabled': {
                     color: 'text.disabled',
                     borderColor: 'divider',
-                  },
-                }}
-              >
-                <SettingsOutlinedIcon sx={{ fontSize: 20 }} />
-              </IconButton>
+                },
+              }}
+            >
+              <SettingsOutlinedIcon sx={{ fontSize: 20 }} />
+            </IconButton>
             </span>
           </Tooltip>
 

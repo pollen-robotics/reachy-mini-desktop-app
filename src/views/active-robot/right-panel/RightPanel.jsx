@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Box } from '@mui/material';
 import { ApplicationsSection } from './applications';
 import ControlButtons from './ControlButtons';
@@ -24,9 +24,39 @@ export default function RightPanel({
 }) {
   const { robotState } = useActiveRobotContext();
   const { rightPanelView } = robotState;
+  
+  const scrollRef = useRef(null);
+  const [showTopGradient, setShowTopGradient] = useState(false);
+  const [showBottomGradient, setShowBottomGradient] = useState(false);
+  
+  // Check scroll position to show/hide gradients
+  const updateGradients = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    const scrollThreshold = 10; // Pixels threshold before showing gradient
+    
+    // Show top gradient only if scrolled down
+    setShowTopGradient(scrollTop > scrollThreshold);
+    
+    // Show bottom gradient only if there's more content below
+    const isAtBottom = scrollTop + clientHeight >= scrollHeight - scrollThreshold;
+    setShowBottomGradient(!isAtBottom && scrollHeight > clientHeight);
+  }, []);
+  
+  // Update gradients on mount and when view changes
+  useEffect(() => {
+    updateGradients();
+    // Small delay to ensure content is rendered
+    const timer = setTimeout(updateGradients, 100);
+    return () => clearTimeout(timer);
+  }, [rightPanelView, updateGradients]);
 
   return (
     <Box
+      ref={scrollRef}
+      onScroll={updateGradients}
       sx={{
         width: '100%',
         height: '100%',
@@ -54,7 +84,7 @@ export default function RightPanel({
         },
       }}
     >
-      {/* Top gradient for depth effect on scroll */}
+      {/* Top gradient for depth effect on scroll - only visible when scrolled */}
       <Box
         sx={{
           position: 'sticky',
@@ -69,6 +99,8 @@ export default function RightPanel({
           zIndex: 10,
           flexShrink: 0,
           marginBottom: '-32px', // Overlay on top of content
+          opacity: showTopGradient ? 1 : 0,
+          transition: 'opacity 0.2s ease-out',
         }}
       />
       
@@ -104,7 +136,7 @@ export default function RightPanel({
         </>
       )}
       
-      {/* Bottom gradient for depth effect on scroll */}
+      {/* Bottom gradient for depth effect on scroll - only visible when more content below */}
       <Box
         sx={{
           position: 'sticky',
@@ -119,6 +151,8 @@ export default function RightPanel({
           zIndex: 10,
           flexShrink: 0,
           marginTop: '-32px', // Overlay on top of content
+          opacity: showBottomGradient ? 1 : 0,
+          transition: 'opacity 0.2s ease-out',
         }}
       />
     </Box>

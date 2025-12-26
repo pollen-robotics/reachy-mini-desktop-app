@@ -359,7 +359,7 @@ export default function FirstTimeWifiSetupView() {
             p: 3,
             display: 'flex',
             flexDirection: 'column',
-            alignItems: 'flex-start',
+            alignItems: 'center',
             justifyContent: 'center',
             overflow: 'hidden',
           }}
@@ -531,7 +531,7 @@ function Step1PowerOn({
   onNext,
 }) {
   return (
-    <Box sx={{ width: '100%' }}>
+    <Box sx={{ width: '100%', textAlign: 'center' }}>
       <Typography sx={{ fontSize: 15, fontWeight: 600, color: textPrimary, mb: 1 }}>
         Power On Your Reachy Mini
       </Typography>
@@ -576,7 +576,7 @@ function Step2ConnectHotspot({
   const hotspotName = reachyHotspots[0]?.ssid || 'reachy-mini-ap';
   
   return (
-    <Box sx={{ width: '100%' }}>
+    <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
       {isDaemonReachable ? (
         <>
           <Typography sx={{ fontSize: 15, fontWeight: 600, color: '#22c55e', mb: 1 }}>
@@ -688,7 +688,7 @@ function Step3ConfigureWifi({
   onSuccess,
 }) {
   return (
-    <Box sx={{ width: '100%' }}>
+    <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <WiFiConfiguration 
         darkMode={darkMode}
         compact={true}
@@ -708,7 +708,7 @@ function Step4Reconnecting({
   onSkip,
 }) {
   return (
-    <Box sx={{ width: '100%' }}>
+    <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
       {wifiRobot.available ? (
         <>
           <Typography sx={{ fontSize: 15, fontWeight: 600, color: '#22c55e', mb: 1 }}>
@@ -778,7 +778,7 @@ function Step5Success({
   onConnect,
 }) {
   return (
-    <Box sx={{ width: '100%' }}>
+    <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
       <Typography sx={{ fontSize: 15, fontWeight: 600, color: '#22c55e', mb: 1 }}>
         Setup Complete!
       </Typography>

@@ -55,8 +55,8 @@ function ConnectionCard({
         opacity: isAvailable ? 1 : 0.5,
         transition: 'all 0.2s ease',
         flex: 1,
-        minWidth: 85,
-        minHeight: 88,
+        minWidth: 110,
+        minHeight: 110,
         '&:hover': isClickable && !selected ? {
           borderColor: darkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.15)',
           bgcolor: darkMode ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
@@ -402,9 +402,10 @@ export default function FindingRobotView() {
         <Box
           sx={{
             display: 'flex',
+            justifyContent: 'center',
             gap: 1.5,
             width: '100%',
-            maxWidth: 320,
+            maxWidth: 380,
             mb: 2.5,
           }}
         >
