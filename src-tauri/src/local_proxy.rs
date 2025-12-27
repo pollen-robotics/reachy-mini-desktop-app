@@ -16,7 +16,11 @@ use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
 use futures_util::{StreamExt, SinkExt};
 
 /// Ports to proxy (local -> remote with same port)
-const PROXY_PORTS: &[u16] = &[8000, 8042, 7447];
+/// - 8000: Daemon API (HTTP + WebSocket)
+/// - 8042: Video streams
+/// - 7447: Zenoh (DDS)
+/// - 8443: WebRTC signaling (GStreamer WebRTC)
+const PROXY_PORTS: &[u16] = &[8000, 8042, 7447, 8443];
 
 /// Shared state for the proxy
 pub struct LocalProxyState {

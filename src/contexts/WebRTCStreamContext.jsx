@@ -7,6 +7,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import useAppStore from '../store/useAppStore';
 import { fetchWithTimeout, buildApiUrl } from '../config/daemon';
+import { isWebMode } from '../utils/tauriCompat';
 
 // Import the GStreamer WebRTC API
 import '../lib/gstwebrtc-api';
@@ -134,7 +135,10 @@ export function WebRTCStreamProvider({ children }) {
     setState(StreamState.CONNECTING);
     setError(null);
 
-    const signalingUrl = `ws://${remoteHost}:${SIGNALING_PORT}`;
+    // In Tauri desktop app, use localhost (proxy forwards to remoteHost)
+    // In web mode, connect directly to remoteHost (may fail due to PNA)
+    const signalingHost = isWebMode ? remoteHost : 'localhost';
+    const signalingUrl = `ws://${signalingHost}:${SIGNALING_PORT}`;
 
     try {
       const GstWebRTCAPI = window.GstWebRTCAPI;

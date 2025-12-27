@@ -442,7 +442,7 @@ export default function FindingRobotView() {
           <ConnectionCard
             icon={WifiOutlinedIcon}
             label="Reachy WiFi"
-            subtitle={wifiRobot.available ? wifiRobot.host : null}
+            subtitle={wifiRobot.available ? wifiRobot.hostname || wifiRobot.host : null}
             fullSubtitle={wifiRobot.available ? wifiRobot.host : null}
             available={wifiRobot.available}
             selected={selectedMode === ConnectionMode.WIFI}

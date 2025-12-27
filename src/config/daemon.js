@@ -143,9 +143,9 @@ export const DAEMON_CONFIG = {
 
   // API endpoints
   ENDPOINTS: {
-    // ⚠️ BASE_URL is now dynamic - use getBaseUrl() instead of DAEMON_CONFIG.ENDPOINTS.BASE_URL
+    // ⚠️ BASE_URL is dynamic - use getBaseUrl() instead
+    // WiFi mode uses the IP discovered via mDNS (see useRobotDiscovery.js)
     BASE_URL_LOCAL: 'http://localhost:8000',
-    BASE_URL_DEFAULT_WIFI: 'http://reachy-mini.home:8000',
     STATE_FULL: '/api/state/full',
     DAEMON_STATUS: '/api/daemon/status',
     // 🌐 WiFi daemon control (handshake for remote sessions)
@@ -359,7 +359,8 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions 
 
 /**
  * 🌐 Get the current base URL based on connection mode
- * - WiFi mode: uses remoteHost from store (e.g. 'http://reachy-mini.home:8000')
+ * - WiFi mode: uses remoteHost from store (always an IP, e.g. 'http://192.168.1.42:8000')
+ *   The IP is discovered via mDNS in Rust (see discover_reachy_robot command)
  * - USB/Simulation: uses localhost
  */
 export function getBaseUrl() {
@@ -397,7 +398,7 @@ export function buildApiUrl(endpoint) {
 /**
  * 🌐 Get daemon hostname only (without protocol or port)
  * Used for remapping app URLs to the correct robot host
- * @returns {string} Hostname like 'localhost', 'reachy-mini.home', or '192.168.1.18'
+ * @returns {string} Hostname/IP like 'localhost' or '192.168.1.42'
  */
 export function getDaemonHostname() {
   const { connectionMode, remoteHost } = useStore.getState();

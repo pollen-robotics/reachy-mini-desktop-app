@@ -47,8 +47,8 @@ export const logConnect = (mode, options = {}) => {
   const target = mode === 'wifi' ? remoteHost : portName || 'local';
   log('🔌', 'CONNECT', `mode=${mode} target=${target}`);
 
-  // 📊 Telemetry
-  telemetry.robotConnected({ mode });
+  // 📊 Telemetry - NOTE: robot_connected is now emitted when connection is ESTABLISHED
+  // (in robotSlice.js transitionTo.sleeping/ready), not at connection ATTEMPT
 };
 
 export const logDisconnect = (prevMode, reason = '') => {

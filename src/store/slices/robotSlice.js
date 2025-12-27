@@ -11,6 +11,7 @@
  * All boolean states (isActive, isStarting, etc.) are DERIVED from robotStatus
  */
 import { logConnect, logDisconnect, logReset, logReady, logBusy, logCrash } from '../storeLogger';
+import { telemetry } from '../../utils/telemetry';
 
 // ============================================================================
 // SELECTORS - Derive boolean states from robotStatus
@@ -227,6 +228,12 @@ export const createRobotSlice = (set, get) => ({
         return;
       }
 
+      // 📊 Telemetry - Track successful connection (only when coming from 'starting')
+      // This ensures we only count ACTUAL successful connections, not reconnects
+      if (state.robotStatus === 'starting') {
+        telemetry.robotConnected({ mode: state.connectionMode });
+      }
+
       set({
         robotStatus: 'sleeping',
         busyReason: null,
@@ -268,6 +275,12 @@ export const createRobotSlice = (set, get) => ({
       if (state.robotStatus === 'ready') {
         console.warn('[Store] ⚠️ BLOCKED: already ready');
         return;
+      }
+
+      // 📊 Telemetry - Track successful connection (only when coming from 'starting')
+      // This ensures we only count ACTUAL successful connections, not wake-ups
+      if (state.robotStatus === 'starting') {
+        telemetry.robotConnected({ mode: state.connectionMode });
       }
 
       logReady();

@@ -23,6 +23,7 @@
 	<array>
 		<string>_http._tcp</string>
 		<string>_https._tcp</string>
+		<string>_reachy._tcp</string>
 	</array>
 	
 	<!-- Description for file system access -->

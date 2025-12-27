@@ -9,7 +9,7 @@
  *
  * // Connect to any mode - same API
  * await connect('usb', { portName: '/dev/cu.usbmodem...' });
- * await connect('wifi', { host: 'reachy-mini.home' });
+ * await connect('wifi', { host: '192.168.1.42' });  // Always use IP (from mDNS discovery)
  * await connect('simulation');
  *
  * // Disconnect - same for all modes

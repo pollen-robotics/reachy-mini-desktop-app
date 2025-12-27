@@ -193,6 +193,7 @@ pub fn run() {
             permissions::open_files_settings,
             wifi::scan_local_wifi_networks,
             wifi::get_current_wifi_ssid,
+            wifi::discover_reachy_robot,
             update::check_daemon_update,
             update::update_daemon,
             set_local_proxy_target,

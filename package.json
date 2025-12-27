@@ -41,6 +41,7 @@
     "kill-zombie-apps": "bash ./scripts/utils/kill-zombie-apps.sh",
     "reset-permissions": "bash ./scripts/utils/reset-macos-permissions.sh",
     "clean": "bash ./scripts/utils/clean.sh",
+    "clean:tauri": "rm -rf src-tauri/target/debug/.fingerprint src-tauri/gen/schemas && echo '✅ Tauri cache cleaned'",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write src/",

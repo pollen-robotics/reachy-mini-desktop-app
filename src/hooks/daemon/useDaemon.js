@@ -86,6 +86,8 @@ export const useDaemon = () => {
         const errorObject = createErrorFromConfig(data.errorConfig, data.errorLine);
         setHardwareError(errorObject);
         transitionTo.starting();
+        // 📊 Telemetry - Track known hardware errors (NO_MOTORS, CAMERA_ERROR, etc.)
+        handleDaemonError('hardware', data.errorLine, { code: data.errorConfig.code });
       } else if (data.isGeneric) {
         const currentError = currentState.hardwareError;
         if (!currentError || !currentError.type) {
@@ -348,8 +350,9 @@ export const useDaemon = () => {
         eventBus.emit('daemon:start:success', { existing: true, wifi: true });
       } catch (e) {
         console.error('[Daemon] WiFi connection failed:', e.message);
-        resetAll();
+        // ⚠️ IMPORTANT: Emit error BEFORE resetAll() so telemetry captures the connectionMode
         eventBus.emit('daemon:start:error', new Error(`WiFi daemon error: ${e.message}`));
+        resetAll();
       }
       return;
     }

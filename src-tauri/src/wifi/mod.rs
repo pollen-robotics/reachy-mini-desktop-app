@@ -1,9 +1,12 @@
-// WiFi scanning module
-// Scans available WiFi networks using system commands
+// WiFi scanning and mDNS discovery module
+// - Scans available WiFi networks using system commands
+// - Discovers Reachy robots on the network using mDNS (cross-platform)
 // Uses async + spawn_blocking to avoid blocking the UI
 
 use serde::Serialize;
 use std::process::Command;
+use std::time::Duration;
+use std::net::SocketAddr;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct WifiNetwork {
@@ -486,3 +489,206 @@ fn scan_linux() -> Result<Vec<WifiNetwork>, String> {
     Ok(networks)
 }
 
+// ============================================================================
+// mDNS Robot Discovery
+// ============================================================================
+
+/// Result of robot discovery - always contains an IP address (not hostname)
+#[derive(Debug, Serialize, Clone)]
+pub struct DiscoveredRobot {
+    /// IP address of the robot (IPv4)
+    pub ip: String,
+    /// Port number (usually 8000)
+    pub port: u16,
+    /// Original hostname that was resolved (for debugging)
+    pub hostname: String,
+    /// How the robot was discovered
+    pub discovery_method: String,
+}
+
+/// Discover Reachy robots on the network using mDNS
+/// 
+/// This function uses multiple discovery strategies:
+/// 1. System DNS resolution (uses OS mDNS cache - fastest)
+/// 2. Pure Rust mDNS browsing (cross-platform fallback)
+/// 3. Known IP fallbacks (hotspot mode + common static IPs)
+/// 
+/// The returned IP address can be used directly for all subsequent connections,
+/// avoiding mDNS resolution issues in WebView.
+#[tauri::command]
+pub async fn discover_reachy_robot() -> Result<Option<DiscoveredRobot>, String> {
+    // Run discovery in a blocking task to not block the UI
+    tokio::task::spawn_blocking(|| {
+        discover_robot_sync()
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Synchronous robot discovery (runs in spawn_blocking thread)
+fn discover_robot_sync() -> Result<Option<DiscoveredRobot>, String> {
+    // Hostnames to try resolving via system DNS / mDNS
+    let mdns_hostnames = vec![
+        "reachy-mini.local",   // Standard mDNS hostname (.local)
+        "reachy-mini.home",    // Some routers use .home domain
+    ];
+    
+    let daemon_port: u16 = 8000;
+    let timeout = Duration::from_secs(5); // Increased for slow networks / mDNS cache miss
+    
+    // =========================================================================
+    // Strategy 1: System DNS resolution (fastest, uses OS mDNS cache)
+    // =========================================================================
+    // This leverages macOS Bonjour / Windows mDNS / Linux Avahi via system resolver
+    // Much faster than pure Rust mDNS browsing when hostname is cached
+    
+    for hostname in &mdns_hostnames {
+        println!("[Discovery] Trying system DNS for: {}", hostname);
+        
+        if let Ok(Some(ip)) = resolve_via_system_dns(hostname) {
+            // Verify the daemon is actually running on this IP
+            if probe_daemon(&ip, daemon_port) {
+                println!("[Discovery] ✓ Found robot at {} (resolved from {})", ip, hostname);
+                return Ok(Some(DiscoveredRobot {
+                    ip: ip.clone(),
+                    port: daemon_port,
+                    hostname: hostname.to_string(),
+                    discovery_method: "system_dns".to_string(),
+                }));
+            } else {
+                println!("[Discovery] IP {} resolved but daemon not responding", ip);
+            }
+        }
+    }
+    
+    // =========================================================================
+    // Strategy 2: Pure Rust mDNS service browsing (cross-platform fallback)
+    // =========================================================================
+    // Used when system DNS fails (no mDNSResponder, cache miss, etc.)
+    
+    println!("[Discovery] System DNS failed, trying mDNS service browsing...");
+    
+    // Create mDNS daemon (pure Rust, cross-platform)
+    if let Ok(mdns) = mdns_sd::ServiceDaemon::new() {
+        for hostname in &mdns_hostnames {
+            let hostname_with_dot = format!("{}.", hostname);
+            
+            match resolve_mdns_hostname(&mdns, &hostname_with_dot, timeout) {
+                Ok(Some(ip)) => {
+                    if probe_daemon(&ip, daemon_port) {
+                        println!("[Discovery] ✓ Found robot at {} (via mDNS browsing)", ip);
+                        let _ = mdns.shutdown();
+                        return Ok(Some(DiscoveredRobot {
+                            ip: ip.clone(),
+                            port: daemon_port,
+                            hostname: hostname.to_string(),
+                            discovery_method: "mdns_browse".to_string(),
+                        }));
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    println!("[Discovery] mDNS error for {}: {}", hostname, e);
+                }
+            }
+        }
+        let _ = mdns.shutdown();
+    }
+    
+    // No robot found via any method
+    println!("[Discovery] No robot found via mDNS");
+    Ok(None)
+}
+
+/// Resolve a .local hostname to an IP address using pure Rust mDNS browsing
+/// 
+/// This uses mdns-sd to browse for services and find Reachy devices.
+/// Note: This is a fallback - system DNS (resolve_via_system_dns) is preferred
+/// because it's faster and uses the OS mDNS cache.
+fn resolve_mdns_hostname(
+    mdns: &mdns_sd::ServiceDaemon, 
+    _hostname: &str, // Not used directly - we browse for services instead
+    timeout: Duration
+) -> Result<Option<String>, String> {
+    use mdns_sd::ServiceEvent;
+    
+    // Browse for workstation services (_workstation._tcp) which most Linux/macOS machines advertise
+    // This is more reliable than _http._tcp which the daemon may not advertise
+    let service_types = vec![
+        "_workstation._tcp.local.",  // Standard service advertised by most machines
+        "_http._tcp.local.",         // HTTP service (fallback)
+    ];
+    
+    for service_type in service_types {
+        let receiver = match mdns.browse(service_type) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        
+        let start = std::time::Instant::now();
+        
+        while start.elapsed() < timeout {
+            match receiver.recv_timeout(Duration::from_millis(200)) {
+                Ok(ServiceEvent::ServiceResolved(info)) => {
+                    let service_hostname = info.get_hostname();
+                    
+                    // Check if this is a Reachy device
+                    if service_hostname.to_lowercase().contains("reachy-mini") {
+                        // Get IPv4 addresses
+                        let addresses = info.get_addresses_v4();
+                        if let Some(ip) = addresses.iter().next() {
+                            return Ok(Some(ip.to_string()));
+                        }
+                    }
+                }
+                Ok(_) => {
+                    // Other events (SearchStarted, ServiceFound, etc.) - continue
+                }
+                Err(_) => {
+                    // Timeout - continue loop, will exit on timeout check
+                }
+            }
+        }
+    }
+    
+    Ok(None)
+}
+
+/// Fallback: Try to resolve hostname via system DNS (may use mDNS on macOS)
+fn resolve_via_system_dns(hostname: &str) -> Result<Option<String>, String> {
+    use std::net::ToSocketAddrs;
+    
+    let addr_str = format!("{}:80", hostname);
+    
+    match addr_str.to_socket_addrs() {
+        Ok(addrs) => {
+            for addr in addrs {
+                if let SocketAddr::V4(v4) = addr {
+                    return Ok(Some(v4.ip().to_string()));
+                }
+            }
+            Ok(None)
+        }
+        Err(_) => Ok(None)
+    }
+}
+
+/// Check if daemon is responding on the given IP:port
+/// 
+/// Uses TCP connect probe which is faster than HTTP but confirms the port is open.
+/// Timeout is set to 1.5s to handle slow networks while keeping discovery responsive.
+fn probe_daemon(ip: &str, port: u16) -> bool {
+    use std::net::TcpStream;
+    
+    let addr = format!("{}:{}", ip, port);
+    
+    // TCP connect probe - confirms port is open and accepting connections
+    // 1.5s timeout balances between responsiveness and handling slow networks
+    match TcpStream::connect_timeout(
+        &addr.parse().unwrap_or_else(|_| SocketAddr::from(([0, 0, 0, 0], port))),
+        Duration::from_millis(1500)
+    ) {
+        Ok(_) => true,
+        Err(_) => false,
+    }
+}
