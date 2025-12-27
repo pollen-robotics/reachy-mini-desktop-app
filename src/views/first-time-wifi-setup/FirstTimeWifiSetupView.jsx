@@ -11,11 +11,14 @@ import {
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import CheckIcon from '@mui/icons-material/Check';
 import { invoke } from '@tauri-apps/api/core';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 
 import useAppStore from '../../store/useAppStore';
 import qrCodeImage from '../../assets/reachy-mini-access-point-QR-code.png';
+import powerOnImage from '../../assets/power-on.jpg';
 import { WiFiConfiguration } from '../../components/wifi';
 import { useLocalWifiScan, useRobotDiscovery } from '../../hooks/system';
 import { useConnection, ConnectionMode } from '../../hooks/useConnection';
@@ -111,8 +114,8 @@ export default function FirstTimeWifiSetupView() {
   // Auto-advance when hotspot is detected (Step 1 → Step 2)
   useEffect(() => {
     if (activeStep === 0 && hasReachyHotspot) {
-      // Small delay for UX
-      setTimeout(() => setActiveStep(1), 500);
+      // 2 second delay to let user see the success message
+      setTimeout(() => setActiveStep(1), 2000);
     }
   }, [activeStep, hasReachyHotspot]);
 
@@ -296,12 +299,14 @@ export default function FirstTimeWifiSetupView() {
         }}
       >
         <Typography
+          variant="h1"
           sx={{
-            fontSize: 18,
-            fontWeight: 600,
+            fontSize: 22,
+            fontWeight: 700,
             color: textPrimary,
-            mb: 0.5,
+            mb: 3,
             textAlign: 'center',
+            letterSpacing: '-0.3px',
           }}
         >
           First Time WiFi Setup
@@ -373,39 +378,12 @@ export default function FirstTimeWifiSetupView() {
             alignItems: 'center',
             gap: 0.5,
           }}>
-            {/* Step 1: Hotspot detected */}
-            {activeStep === 0 && hasReachyHotspot && (
-              <>
-                <CheckCircleIcon sx={{ fontSize: 12, color: '#22c55e' }} />
-                <Typography sx={{ fontSize: 9, color: '#22c55e' }}>
-                  {reachyHotspots[0]?.ssid || 'Hotspot'} found
-                </Typography>
-              </>
-            )}
-            {/* Step 1: Scanning */}
-            {activeStep === 0 && isLocalScanning && !hasReachyHotspot && (
-              <>
-                <CircularProgress size={10} sx={{ color: textSecondary }} />
-                <Typography sx={{ fontSize: 9, color: textSecondary }}>
-                  scanning...
-                </Typography>
-              </>
-            )}
             {/* Step 2: Daemon detected */}
             {activeStep === 1 && isDaemonReachable && (
               <>
                 <CheckCircleIcon sx={{ fontSize: 12, color: '#22c55e' }} />
                 <Typography sx={{ fontSize: 9, color: '#22c55e' }}>
                   connected
-                </Typography>
-              </>
-            )}
-            {/* Step 2: Checking daemon */}
-            {activeStep === 1 && isCheckingDaemon && !isDaemonReachable && (
-              <>
-                <CircularProgress size={10} sx={{ color: textSecondary }} />
-                <Typography sx={{ fontSize: 9, color: textSecondary }}>
-                  detecting...
                 </Typography>
               </>
             )}
@@ -437,6 +415,10 @@ export default function FirstTimeWifiSetupView() {
               darkMode={darkMode}
               textPrimary={textPrimary}
               textSecondary={textSecondary}
+              countdown={countdown}
+              hasReachyHotspot={hasReachyHotspot}
+              hotspotName={reachyHotspots[0]?.ssid}
+              isLocalScanning={isLocalScanning}
               onNext={handleManualNext}
             />
           )}
@@ -462,6 +444,8 @@ export default function FirstTimeWifiSetupView() {
           {activeStep === 2 && (
             <Step3ConfigureWifi
               darkMode={darkMode}
+              textPrimary={textPrimary}
+              textSecondary={textSecondary}
               onSuccess={handleWifiConfigured}
             />
           )}
@@ -528,44 +512,104 @@ export default function FirstTimeWifiSetupView() {
 function Step1PowerOn({ 
   textPrimary, 
   textSecondary, 
+  countdown,
+  hasReachyHotspot,
+  hotspotName,
+  isLocalScanning,
   onNext,
+  darkMode,
 }) {
+  const isWaiting = countdown > 0 && !hasReachyHotspot;
+  const timeoutReached = countdown === 0 && !hasReachyHotspot;
+
   return (
     <Box sx={{ width: '100%', textAlign: 'center' }}>
       <Typography sx={{ fontSize: 15, fontWeight: 600, color: textPrimary, mb: 1 }}>
         Power On Your Reachy Mini
       </Typography>
       
-      <Typography sx={{ fontSize: 12, color: textSecondary, mb: 3, lineHeight: 1.6 }}>
-        Turn on your Reachy and wait about 30 seconds.
-        It will create a WiFi hotspot for setup.
-      </Typography>
+      {isWaiting ? (
+        // Waiting for auto-detection
+        <>
+          <Typography sx={{ fontSize: 12, color: textSecondary, mb: 2, lineHeight: 1.6 }}>
+            Turn on your Reachy and wait. We're automatically detecting the WiFi hotspot it creates.
+          </Typography>
+          
+          {/* Power on illustration */}
+          <Box sx={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            mb: 2,
+          }}>
+            <Box
+              component="img"
+              src={powerOnImage}
+              alt="Power on Reachy"
+              sx={{
+                width: 140,
+                height: 'auto',
+                borderRadius: '12px',
+                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}`,
+              }}
+            />
+          </Box>
+          
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+            <CircularProgress size={16} sx={{ color: '#FF9500' }} />
+            <Typography sx={{ fontSize: 11, color: textSecondary }}>
+              Detecting hotspot... ({countdown}s)
+            </Typography>
+          </Box>
+        </>
+      ) : timeoutReached ? (
+        // Timeout - hotspot not detected
+        <>
+          <Typography sx={{ fontSize: 12, color: textSecondary, mb: 2, lineHeight: 1.6 }}>
+            Automatic detection didn't find a Reachy hotspot, but it may still exist on your network.
+            Make sure your Reachy is powered on, then continue to the next step.
+          </Typography>
 
-      <Button
-        variant="outlined"
-        onClick={onNext}
-        sx={{ 
-          fontSize: 13,
-          fontWeight: 600,
-          textTransform: 'none',
-          px: 3,
-          py: 0.75,
-          borderRadius: '8px',
-          borderColor: '#FF9500',
-          color: '#FF9500',
-          '&:hover': {
-            borderColor: '#e68600',
-            bgcolor: 'rgba(255, 149, 0, 0.08)',
-          },
-        }}
-      >
-        Continue
-      </Button>
+          <Button
+            variant="outlined"
+            onClick={onNext}
+            sx={{ 
+              fontSize: 13,
+              fontWeight: 600,
+              textTransform: 'none',
+              px: 3,
+              py: 0.75,
+              borderRadius: '8px',
+              borderColor: '#FF9500',
+              color: '#FF9500',
+              '&:hover': {
+                borderColor: '#e68600',
+                bgcolor: 'rgba(255, 149, 0, 0.08)',
+              },
+            }}
+          >
+            Continue manually →
+          </Button>
+        </>
+      ) : (
+        // Hotspot detected (will auto-advance shortly)
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
+          <CheckCircleIcon sx={{ fontSize: 40, color: '#22c55e' }} />
+          <Box sx={{ textAlign: 'center' }}>
+            <Typography sx={{ fontSize: 14, fontWeight: 600, color: '#22c55e' }}>
+              {hotspotName || 'Hotspot'} detected!
+            </Typography>
+            <Typography sx={{ fontSize: 11, color: textSecondary, mt: 0.5 }}>
+              Moving to next step...
+            </Typography>
+          </Box>
+        </Box>
+      )}
     </Box>
   );
 }
 
 function Step2ConnectHotspot({
+  darkMode,
   textPrimary,
   textSecondary,
   reachyHotspots,
@@ -574,13 +618,58 @@ function Step2ConnectHotspot({
   onSkip,
 }) {
   const hotspotName = reachyHotspots[0]?.ssid || 'reachy-mini-ap';
+  const [copiedField, setCopiedField] = React.useState(null);
+
+  const handleCopy = async (text, field) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 1500);
+    } catch (e) {
+      console.error('Failed to copy:', e);
+    }
+  };
+
+  const CredentialRow = ({ label, value, field }) => (
+    <Box 
+      onClick={() => handleCopy(value, field)}
+      sx={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between',
+        py: 0.75,
+        px: 1.5,
+        borderRadius: '8px',
+        bgcolor: darkMode ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.03)',
+        cursor: 'pointer',
+        transition: 'all 0.15s ease',
+        '&:hover': {
+          bgcolor: darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+        },
+      }}
+    >
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.25 }}>
+        <Typography sx={{ fontSize: 9, color: textSecondary, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          {label}
+        </Typography>
+        <Typography sx={{ fontSize: 13, fontWeight: 600, color: textPrimary, fontFamily: 'monospace' }}>
+          {value}
+        </Typography>
+      </Box>
+      {copiedField === field ? (
+        <CheckIcon sx={{ fontSize: 14, color: '#22c55e' }} />
+      ) : (
+        <ContentCopyIcon sx={{ fontSize: 14, color: textSecondary }} />
+      )}
+    </Box>
+  );
   
   return (
     <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
       {isDaemonReachable ? (
         <>
           <Typography sx={{ fontSize: 15, fontWeight: 600, color: '#22c55e', mb: 1 }}>
-            Connected to Reachy!
+            ✓ Connected to Reachy!
           </Typography>
           <Typography sx={{ fontSize: 12, color: textSecondary }}>
             Moving to WiFi configuration...
@@ -588,91 +677,103 @@ function Step2ConnectHotspot({
         </>
       ) : (
         <>
-          <Typography sx={{ fontSize: 15, fontWeight: 600, color: textPrimary, mb: 1.5 }}>
+          <Typography sx={{ fontSize: 15, fontWeight: 600, color: textPrimary, mb: 2 }}>
             Connect to Reachy's Hotspot
           </Typography>
 
-          {/* QR Code + Credentials */}
+          {/* QR Code + Credentials - Side by side */}
           <Box sx={{ 
             display: 'flex', 
-            alignItems: 'flex-start', 
+            alignItems: 'center', 
             gap: 2,
-            mb: 2,
             width: '100%',
+            mb: 2.5,
           }}>
-            {/* QR Code */}
+            {/* QR Code - 4/10 */}
             <Box sx={{ 
-              bgcolor: '#fff', 
-              p: 1, 
-              borderRadius: '8px',
-              width: 100,
-              height: 100,
+              width: '40%',
               flexShrink: 0,
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
             }}>
-              <img 
-                src={qrCodeImage} 
-                alt="QR Code" 
-                style={{ width: '100%', height: '100%', display: 'block', objectFit: 'contain' }} 
-              />
+              <Box sx={{ 
+                bgcolor: '#fff', 
+                p: 1, 
+                borderRadius: '10px',
+                width: 110,
+                height: 110,
+                boxShadow: darkMode ? '0 4px 12px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.1)',
+              }}>
+                <img 
+                  src={qrCodeImage} 
+                  alt="QR Code" 
+                  style={{ width: '100%', height: '100%', display: 'block', objectFit: 'contain' }} 
+                />
+              </Box>
             </Box>
-            
-            {/* Credentials */}
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              <Typography sx={{ fontSize: 11, color: textSecondary }}>
-                Scan or connect manually:
+
+            {/* Credentials - 6/10 */}
+            <Box sx={{ width: '60%', display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+              <Typography sx={{ fontSize: 10, color: textSecondary, mb: 0.5, textAlign: 'left' }}>
+                Scan QR or connect manually:
               </Typography>
-              <Typography sx={{ fontSize: 12, color: textSecondary }}>
-                Network: <strong style={{ color: textPrimary }}>{hotspotName}</strong>
-              </Typography>
-              <Typography sx={{ fontSize: 12, color: textSecondary }}>
-                Password: <strong style={{ color: textPrimary }}>reachy-mini</strong>
-              </Typography>
+              <CredentialRow label="Network" value={hotspotName} field="network" />
+              <CredentialRow label="Password" value="reachy-mini" field="password" />
             </Box>
           </Box>
 
-          {/* Buttons */}
-          <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
-            <Button
-              variant="outlined"
-              size="small"
-              endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
-              onClick={onOpenWifiSettings}
-              sx={{
-                fontSize: 12,
-                fontWeight: 600,
-                textTransform: 'none',
-                borderColor: '#FF9500',
-                color: '#FF9500',
-                px: 2,
-                py: 0.5,
-                borderRadius: '8px',
-                '&:hover': {
-                  borderColor: '#e68600',
-                  bgcolor: 'rgba(255, 149, 0, 0.08)',
-                },
-              }}
-            >
-              Open WiFi Settings
-            </Button>
+          {/* Primary Button */}
+          <Button
+            variant="outlined"
+            endIcon={<OpenInNewIcon sx={{ fontSize: 16 }} />}
+            onClick={onOpenWifiSettings}
+            fullWidth
+            sx={{
+              fontSize: 13,
+              fontWeight: 600,
+              textTransform: 'none',
+              borderColor: '#FF9500',
+              color: '#FF9500',
+              py: 1,
+              borderRadius: '10px',
+              mb: 2,
+              '&:hover': {
+                borderColor: '#e68600',
+                bgcolor: 'rgba(255, 149, 0, 0.08)',
+              },
+            }}
+          >
+            Open WiFi Settings
+          </Button>
 
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={onSkip}
-              sx={{ 
-                fontSize: 11, 
-                textTransform: 'none', 
-                borderColor: '#FF9500',
-                color: '#FF9500',
-                '&:hover': {
-                  borderColor: '#e68600',
-                  bgcolor: 'rgba(255, 149, 0, 0.08)',
-                },
-              }}
-            >
-              I'm connected →
-            </Button>
+          {/* Detection status */}
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 1,
+            mb: 0.5,
+          }}>
+            <CircularProgress size={12} sx={{ color: '#FF9500' }} />
+            <Typography sx={{ fontSize: 11, color: textSecondary }}>
+              Detecting connection — we'll auto-advance when connected
+            </Typography>
           </Box>
+          
+          {/* Manual fallback */}
+          <Typography
+            onClick={onSkip}
+            sx={{ 
+              fontSize: 11, 
+              color: textSecondary,
+              cursor: 'pointer',
+              '&:hover': {
+                color: '#FF9500',
+              },
+            }}
+          >
+            Not detected? <span style={{ color: '#FF9500' }}>Continue manually →</span>
+          </Typography>
         </>
       )}
     </Box>
@@ -685,17 +786,30 @@ const HOTSPOT_BASE_URL = 'http://10.42.0.1:8000';
 
 function Step3ConfigureWifi({
   darkMode,
+  textPrimary,
+  textSecondary,
   onSuccess,
 }) {
   return (
     <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <WiFiConfiguration 
-        darkMode={darkMode}
-        compact={true}
-        onConnectSuccess={onSuccess}
-        showHotspotDetection={false}
-        customBaseUrl={HOTSPOT_BASE_URL}
-      />
+      {/* Header */}
+      <Typography sx={{ fontSize: 15, fontWeight: 600, color: textPrimary, mb: 0.5 }}>
+        Connect Reachy to Your WiFi
+      </Typography>
+      <Typography sx={{ fontSize: 11, color: textSecondary, mb: 2, textAlign: 'center', lineHeight: 1.5 }}>
+        Select the network you want your Reachy to use.
+      </Typography>
+
+      {/* WiFi Form */}
+      <Box sx={{ width: '100%' }}>
+        <WiFiConfiguration 
+          darkMode={darkMode}
+          compact={true}
+          onConnectSuccess={onSuccess}
+          showHotspotDetection={false}
+          customBaseUrl={HOTSPOT_BASE_URL}
+        />
+      </Box>
     </Box>
   );
 }

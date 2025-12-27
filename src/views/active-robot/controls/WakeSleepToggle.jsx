@@ -3,21 +3,39 @@ import { Box, Switch, CircularProgress, Tooltip } from '@mui/material';
 import BedtimeOutlinedIcon from '@mui/icons-material/BedtimeOutlined';
 import WbSunnyOutlinedIcon from '@mui/icons-material/WbSunnyOutlined';
 import { useWakeSleep } from '../hooks/useWakeSleep';
+import { useActiveRobotContext } from '../context';
 
 /**
  * Wake/Sleep Toggle Component
  * 
  * Pure UI component that displays the wake/sleep toggle.
  * All logic is handled by the useWakeSleep hook.
+ * 
+ * Disabled when:
+ * - Robot is transitioning (waking up or going to sleep)
+ * - Robot is busy (app running, moving, etc.)
+ * - Controller or Expressions view is active (user is interacting with robot)
  */
 export default function WakeSleepToggle({ darkMode }) {
   const { isSleeping, isAwake, isTransitioning, canToggle, toggle } = useWakeSleep();
+  const { robotState } = useActiveRobotContext();
+  const { rightPanelView } = robotState;
   
-  const isDisabled = !canToggle;
+  // Disable when controller or expressions views are active
+  const isControllerOrExpressionsActive = rightPanelView === 'controller' || rightPanelView === 'expressions';
+  const isDisabled = !canToggle || isControllerOrExpressionsActive;
+  
+  // Dynamic tooltip based on state
+  const getTooltipTitle = () => {
+    if (isControllerOrExpressionsActive) {
+      return `Close ${rightPanelView} first`;
+    }
+    return isSleeping ? "Wake up robot" : "Put robot to sleep";
+  };
   
   return (
     <Tooltip 
-      title={isSleeping ? "Wake up robot" : "Put robot to sleep"} 
+      title={getTooltipTitle()} 
       arrow 
       placement="bottom"
     >
