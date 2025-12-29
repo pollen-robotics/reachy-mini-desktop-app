@@ -15,7 +15,6 @@
     "deploy:daemon-v2": "npm run build:web && rm -rf ../reachy_mini/src/reachy_mini/daemon/app/dashboard-v2/* && cp -r dist-web/* ../reachy_mini/src/reachy_mini/daemon/app/dashboard-v2/",
     "tauri": "tauri",
     "tauri:dev": "tauri dev --no-watch",
-    "tauri:dev:sim": "VITE_SIM_MODE=true tauri dev --no-watch",
     "tauri:build": "tauri build",
     "build:sidecar-macos": "bash ./scripts/build/build-sidecar-unix.sh",
     "build:sidecar-linux": "bash ./scripts/build/build-sidecar-unix.sh",

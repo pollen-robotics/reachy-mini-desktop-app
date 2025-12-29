@@ -72,7 +72,7 @@ export function useStartupStages({
     // If scan is complete and we're still in scanning stage, move to next
     if (scanComplete && currentStage.id === 'scanning') {
       const nextStage = isSimMode 
-        ? STARTUP_STAGES.INSTALLING_MUJOCO 
+        ? STARTUP_STAGES.STARTING_SIMULATION 
         : STARTUP_STAGES.CONNECTING;
       setCurrentStage(nextStage);
       setStageAttempts(0);
@@ -174,7 +174,6 @@ export function useStartupStages({
     
     // Helpers
     isScanning: currentStage.id === 'scanning',
-    isInstallingMujoco: currentStage.id === 'installing_mujoco',
     isStartingSimulation: currentStage.id === 'starting_simulation',
     isConnecting: currentStage.id === 'connecting',
     isInitializing: currentStage.id === 'initializing',

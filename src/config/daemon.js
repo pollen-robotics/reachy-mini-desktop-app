@@ -48,7 +48,7 @@ export const DAEMON_CONFIG = {
   // Startup timeouts (in milliseconds)
   STARTUP: {
     TIMEOUT_NORMAL: 30000,     // 30s for normal mode (robot connected)
-    TIMEOUT_SIMULATION: 180000, // 3 minutes for simulation mode (MuJoCo install can take time)
+    TIMEOUT_SIMULATION: 60000, // 1 minute for simulation mode (mockup-sim is fast)
     ACTIVITY_RESET_DELAY: 15000, // Reset timeout when we see activity (logs from sidecar)
   },
   
