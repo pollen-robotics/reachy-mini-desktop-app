@@ -2,15 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Box, 
   Typography, 
-  IconButton, 
   Button,
   CircularProgress,
   Snackbar,
 } from '@mui/material';
-import CloseIcon from '@mui/icons-material/Close';
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import FullscreenOverlay from '../FullscreenOverlay';
+import PulseButton from '../PulseButton';
 import useAppStore from '../../store/useAppStore';
 import { buildApiUrl, fetchWithTimeout, DAEMON_CONFIG } from '../../config/daemon';
 import reachyUpdateBoxSvg from '../../assets/reachy-update-box.svg';
@@ -23,7 +22,9 @@ import {
   SettingsWifiCard, 
   SettingsAppearanceCard,
   SettingsCacheCard,
+  ChangeWifiOverlay,
 } from './settings';
+import { useWakeSleep } from '../../views/active-robot/hooks';
 
 /**
  * Settings Overlay for 3D Viewer Configuration
@@ -33,8 +34,11 @@ export default function SettingsOverlay({
   onClose, 
   darkMode,
 }) {
-  const { connectionMode, remoteHost } = useAppStore();
+  const { connectionMode, remoteHost, robotStatus } = useAppStore();
   const isWifiMode = connectionMode === 'wifi';
+  
+  // Wake/Sleep controls - used to put robot to sleep before update
+  const { goToSleep, isSleeping } = useWakeSleep();
   
   // Text colors
   const textPrimary = darkMode ? '#f5f5f5' : '#333';
@@ -84,7 +88,7 @@ export default function SettingsOverlay({
   // CONFIRMATION DIALOGS
   // ═══════════════════════════════════════════════════════════════════
   const [showUpdateConfirm, setShowUpdateConfirm] = useState(false);
-  const [showWifiConfirm, setShowWifiConfirm] = useState(false);
+  const [showChangeWifiOverlay, setShowChangeWifiOverlay] = useState(false);
 
   // ═══════════════════════════════════════════════════════════════════
   // TOAST NOTIFICATIONS
@@ -178,6 +182,18 @@ export default function SettingsOverlay({
     setIsUpdating(true);
     
     try {
+      // 🛡️ Put robot to sleep before update if not already sleeping
+      // This ensures motors are disabled and robot is in safe position
+      if (!isSleeping) {
+        console.log('🔄 Putting robot to sleep before update...');
+        const sleepSuccess = await goToSleep();
+        if (!sleepSuccess) {
+          console.warn('⚠️ Failed to put robot to sleep, continuing with update anyway');
+        } else {
+          console.log('✅ Robot is now sleeping, proceeding with update');
+        }
+      }
+      
       if (isWifiMode) {
         // WiFi mode: Use daemon API
       const response = await fetchWithTimeout(
@@ -229,7 +245,7 @@ export default function SettingsOverlay({
       setWifiError(`Update failed: ${err}`);
       setIsUpdating(false);
     }
-  }, [isWifiMode, preRelease, onClose, showToast]);
+  }, [isWifiMode, preRelease, onClose, showToast, isSleeping, goToSleep]);
 
   // ═══════════════════════════════════════════════════════════════════
   // WIFI FUNCTIONS
@@ -276,15 +292,9 @@ export default function SettingsOverlay({
     }
   }, [isWifiMode]);
 
-  // Open WiFi confirmation dialog
-  const handleWifiConnectClick = useCallback(() => {
+  // Connect to WiFi (called from Change Network overlay)
+  const handleWifiConnect = useCallback(async () => {
     if (!selectedSSID || !wifiPassword) return;
-    setShowWifiConfirm(true);
-  }, [selectedSSID, wifiPassword]);
-
-  // Actually connect to WiFi after confirmation
-  const confirmWifiConnect = useCallback(async () => {
-    setShowWifiConfirm(false);
     setIsConnecting(true);
     setWifiError(null);
     
@@ -297,6 +307,8 @@ export default function SettingsOverlay({
       );
       
       if (response.ok) {
+        // Close overlay and reset form
+        setShowChangeWifiOverlay(false);
         setWifiPassword('');
         setSelectedSSID('');
         // Refresh status after network change
@@ -414,6 +426,7 @@ export default function SettingsOverlay({
       centeredX={true}
       debugName="Settings"
       centeredY={true}
+      showCloseButton={true}
     >
       <Box
         sx={{
@@ -437,10 +450,9 @@ export default function SettingsOverlay({
         <Box sx={{ 
           display: 'flex', 
           alignItems: 'center', 
-          justifyContent: 'space-between',
+          gap: 1.5,
           pb: 1,
         }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <Typography sx={{ 
               fontSize: 20, 
               fontWeight: 700, 
@@ -473,33 +485,18 @@ export default function SettingsOverlay({
                 {remoteHost}
               </Typography>
             )}
-          </Box>
-        <IconButton
-          onClick={onClose}
-          sx={{
-            color: '#FF9500',
-            bgcolor: darkMode ? 'rgba(255, 255, 255, 0.08)' : '#ffffff',
-            border: '1px solid #FF9500',
-            opacity: 0.7,
-            '&:hover': {
-              opacity: 1,
-              bgcolor: darkMode ? 'rgba(255, 255, 255, 0.12)' : '#ffffff',
-            },
-          }}
-        >
-          <CloseIcon sx={{ fontSize: 20 }} />
-        </IconButton>
         </Box>
 
-        {/* CONTENT */}
-        {isWifiMode ? (
-          // WIFI MODE: Two columns
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            {/* LEFT COLUMN */}
-            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {/* CONTENT - Grid Layout */}
+        <Box sx={{ 
+          display: 'grid',
+          gridTemplateColumns: isWifiMode ? 'repeat(2, 1fr)' : '1fr',
+          gap: 2,
+        }}>
+          {/* Row 1: Update + WiFi (or Update alone) */}
               <SettingsUpdateCard
                   darkMode={darkMode}
-                title="System Update"
+            title={isWifiMode ? "System Update" : "Daemon Update"}
                 updateInfo={updateInfo}
                 isCheckingUpdate={isCheckingUpdate}
                 isUpdating={isUpdating}
@@ -510,54 +507,29 @@ export default function SettingsOverlay({
                 cardStyle={cardStyle}
                 buttonStyle={buttonStyle}
               />
-              <SettingsAppearanceCard darkMode={darkMode} cardStyle={cardStyle} />
-              <SettingsCacheCard 
-                darkMode={darkMode} 
-                cardStyle={cardStyle} 
-                buttonStyle={buttonStyle}
-              />
-          </Box>
           
-            {/* RIGHT COLUMN: WiFi */}
-            <Box sx={{ flex: 1 }}>
+          {isWifiMode && (
               <SettingsWifiCard
                   darkMode={darkMode}
                 wifiStatus={wifiStatus}
-                availableNetworks={availableNetworks}
                 isLoadingWifi={isLoadingWifi}
-                selectedSSID={selectedSSID}
-                wifiPassword={wifiPassword}
-                isConnecting={isConnecting}
-                wifiError={wifiError}
                 onRefresh={fetchWifiStatus}
-                onSSIDChange={setSelectedSSID}
-                onPasswordChange={setWifiPassword}
-                onConnectClick={handleWifiConnectClick}
+              onChangeNetwork={() => setShowChangeWifiOverlay(true)}
                 cardStyle={cardStyle}
-                buttonStyle={buttonStyle}
-                inputStyles={inputStyles}
-              />
-            </Box>
-                  </Box>
-                ) : (
-          // USB/SIMULATION MODE: Single column
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <SettingsUpdateCard
+            />
+          )}
+          
+          {/* Row 2: Appearance + Cache (WiFi) or just Appearance (Lite) */}
+          <SettingsAppearanceCard darkMode={darkMode} cardStyle={cardStyle} />
+          
+          {isWifiMode && (
+            <SettingsCacheCard 
               darkMode={darkMode}
-              title="Daemon Update"
-              updateInfo={updateInfo}
-              isCheckingUpdate={isCheckingUpdate}
-              isUpdating={isUpdating}
-              preRelease={preRelease}
-              onPreReleaseChange={setPreRelease}
-              onCheckUpdate={checkForUpdate}
-              onUpdateClick={handleUpdateClick}
               cardStyle={cardStyle}
               buttonStyle={buttonStyle}
             />
-            <SettingsAppearanceCard darkMode={darkMode} cardStyle={cardStyle} />
-                      </Box>
                     )}
+        </Box>
       </Box>
       
       {/* Update Confirmation Overlay */}
@@ -677,176 +649,38 @@ export default function SettingsOverlay({
             >
               Cancel
             </Button>
-            <Button 
+            <PulseButton
               onClick={confirmUpdate}
-              variant="outlined"
-              color="primary"
-              sx={{ 
-                minWidth: 160,
-                px: 3,
-                py: 1.25,
-                borderRadius: '10px',
-                textTransform: 'none',
-                fontWeight: 600,
-                fontSize: 14,
-                position: 'relative',
-                overflow: 'visible',
-                // Pulse animation
-                animation: 'updatePulse 3s ease-in-out infinite',
-                '@keyframes updatePulse': {
-                  '0%, 100%': {
-                    boxShadow: (theme) => darkMode
-                      ? `0 0 0 0 ${theme.palette.primary.main}66`
-                      : `0 0 0 0 ${theme.palette.primary.main}4D`,
-                  },
-                  '50%': {
-                    boxShadow: (theme) => darkMode
-                      ? `0 0 0 8px ${theme.palette.primary.main}00`
-                      : `0 0 0 8px ${theme.palette.primary.main}00`,
-                  },
-                },
-                transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                '&:hover': {
-                  transform: 'translateY(-2px)',
-                  boxShadow: (theme) => darkMode
-                    ? `0 6px 16px ${theme.palette.primary.main}33`
-                    : `0 6px 16px ${theme.palette.primary.main}26`,
-                  animation: 'none',
-                },
-                '&:active': {
-                  transform: 'translateY(0)',
-                },
-              }}
+              darkMode={darkMode}
+              sx={{ minWidth: 160 }}
             >
               Update now
-            </Button>
+            </PulseButton>
           </Box>
         </Box>
       </FullscreenOverlay>
       
-      {/* WiFi Confirmation Overlay */}
-      <FullscreenOverlay
-        open={showWifiConfirm}
-        onClose={() => setShowWifiConfirm(false)}
+      {/* Change WiFi Network Overlay */}
+      <ChangeWifiOverlay
+        open={showChangeWifiOverlay}
+        onClose={() => {
+          setShowChangeWifiOverlay(false);
+          setSelectedSSID('');
+          setWifiPassword('');
+          setWifiError(null);
+        }}
         darkMode={darkMode}
-        zIndex={10003}
-        backdropOpacity={0.85}
-        debugName="WifiConfirm"
-        backdropBlur={12}
-      >
-        <Box
-          sx={{
-            width: '100%',
-            maxWidth: 380,
-            mx: 'auto',
-            px: 3,
-            textAlign: 'center',
-          }}
-        >
-          {/* Reachy in box illustration */}
-          <Box sx={{ mb: 3 }}>
-            <img
-              src={reachyUpdateBoxSvg}
-              alt="Reachy"
-              style={{
-                width: 140,
-                height: 140,
-              }}
-            />
-          </Box>
-          
-          {/* Title */}
-          <Typography
-            variant="h5"
-            sx={{
-              fontWeight: 600,
-              color: 'text.primary',
-              mb: 2,
-            }}
-          >
-            Connect to WiFi?
-          </Typography>
-          
-          {/* Description */}
-          <Typography
-            sx={{
-              color: 'text.secondary',
-              fontSize: 14,
-              lineHeight: 1.6,
-              mb: 4,
-            }}
-          >
-            Connect Reachy to "<strong style={{ color: darkMode ? '#fff' : '#333' }}>{selectedSSID}</strong>"
-            <br /><br />
-            If this is a different network than your computer, you may <strong style={{ color: darkMode ? '#fff' : '#333' }}>lose connection</strong> to the robot.
-            <br /><br />
-            You may need to <strong style={{ color: darkMode ? '#fff' : '#333' }}>reboot the robot</strong> after the network change.
-          </Typography>
-          
-          {/* Actions */}
-          <Box sx={{ display: 'flex', gap: 3, justifyContent: 'center', alignItems: 'center' }}>
-            <Button 
-              onClick={() => setShowWifiConfirm(false)}
-              variant="text"
-              sx={{ 
-                color: 'text.secondary',
-                textTransform: 'none',
-                textDecoration: 'underline',
-                textUnderlineOffset: '3px',
-                '&:hover': {
-                  bgcolor: 'transparent',
-                  textDecoration: 'underline',
-                },
-              }}
-            >
-              Cancel
-            </Button>
-            <Button 
-              onClick={confirmWifiConnect}
-              variant="outlined"
-              color="primary"
-              sx={{ 
-                minWidth: 160,
-                px: 3,
-                py: 1.25,
-                borderRadius: '10px',
-                textTransform: 'none',
-                fontWeight: 600,
-                fontSize: 14,
-                position: 'relative',
-                overflow: 'visible',
-                // Pulse animation
-                animation: 'wifiPulse 3s ease-in-out infinite',
-                '@keyframes wifiPulse': {
-                  '0%, 100%': {
-                    boxShadow: (theme) => darkMode
-                      ? `0 0 0 0 ${theme.palette.primary.main}66`
-                      : `0 0 0 0 ${theme.palette.primary.main}4D`,
-                  },
-                  '50%': {
-                    boxShadow: (theme) => darkMode
-                      ? `0 0 0 8px ${theme.palette.primary.main}00`
-                      : `0 0 0 8px ${theme.palette.primary.main}00`,
-                  },
-                },
-                transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                '&:hover': {
-                  transform: 'translateY(-2px)',
-                  boxShadow: (theme) => darkMode
-                    ? `0 6px 16px ${theme.palette.primary.main}33`
-                    : `0 6px 16px ${theme.palette.primary.main}26`,
-                  animation: 'none',
-                },
-                '&:active': {
-                  transform: 'translateY(0)',
-                },
-              }}
-            >
-              Connect
-            </Button>
-          </Box>
-        </Box>
-      </FullscreenOverlay>
+        wifiStatus={wifiStatus}
+        availableNetworks={availableNetworks}
+        selectedSSID={selectedSSID}
+        wifiPassword={wifiPassword}
+        isConnecting={isConnecting}
+        wifiError={wifiError}
+        onSSIDChange={setSelectedSSID}
+        onPasswordChange={setWifiPassword}
+        onConnect={handleWifiConnect}
+        onRefresh={fetchWifiStatus}
+      />
 
       {/* Toast Notifications */}
       <Snackbar

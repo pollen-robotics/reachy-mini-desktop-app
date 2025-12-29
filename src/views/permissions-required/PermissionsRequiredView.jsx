@@ -1,6 +1,7 @@
 import React, { useReducer } from 'react';
-import { Box, Typography, Button, Stack } from '@mui/material';
+import { Box, Typography, Stack } from '@mui/material';
 import CameraAltOutlinedIcon from '@mui/icons-material/CameraAltOutlined';
+import PulseButton from '@components/PulseButton';
 import MicNoneOutlinedIcon from '@mui/icons-material/MicNoneOutlined';
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
 import { invoke } from '@tauri-apps/api/core';
@@ -26,50 +27,6 @@ const PermissionCard = ({
   onOpenSettings, 
   darkMode 
 }) => {
-  const buttonStyles = {
-    fontSize: 11,
-    fontWeight: 600,
-    textTransform: 'none',
-    borderRadius: '10px',
-    bgcolor: darkMode ? '#121212' : '#ffffff',
-    color: '#FF9500',
-    border: '1px solid #FF9500',
-    width: '100%',
-    px: 2,
-    py: 0.5,
-    position: 'relative',
-    overflow: 'visible',
-    transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-    animation: 'permissionsPulse 3s ease-in-out infinite',
-    '@keyframes permissionsPulse': {
-      '0%, 100%': {
-        boxShadow: darkMode
-          ? '0 0 0 0 rgba(255, 149, 0, 0.4)'
-          : '0 0 0 0 rgba(255, 149, 0, 0.3)',
-      },
-      '50%': {
-        boxShadow: darkMode
-          ? '0 0 0 8px rgba(255, 149, 0, 0)'
-          : '0 0 0 8px rgba(255, 149, 0, 0)',
-      },
-    },
-    '&:hover': {
-      bgcolor: darkMode ? '#1a1a1a' : '#f5f5f5',
-      borderColor: '#FF9500',
-      transform: 'translateY(-2px)',
-      boxShadow: darkMode
-        ? '0 6px 16px rgba(255, 149, 0, 0.2)'
-        : '0 6px 16px rgba(255, 149, 0, 0.15)',
-      animation: 'none',
-    },
-    '&:active': {
-      transform: 'translateY(0)',
-      boxShadow: darkMode
-        ? '0 2px 8px rgba(255, 149, 0, 0.2)'
-        : '0 2px 8px rgba(255, 149, 0, 0.15)',
-    },
-  };
-
   return (
     <Box
       sx={{
@@ -145,14 +102,14 @@ const PermissionCard = ({
           </Typography>
         </Box>
       ) : (
-        <Button
-          variant="outlined"
-          color="primary"
+        <PulseButton
           onClick={requested ? onOpenSettings : onRequest}
-          sx={buttonStyles}
+          darkMode={darkMode}
+          size="small"
+          fullWidth
         >
           {requested ? 'Open Settings' : 'Ask Access'}
-        </Button>
+        </PulseButton>
       )}
     </Box>
   );

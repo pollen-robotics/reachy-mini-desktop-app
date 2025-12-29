@@ -345,24 +345,36 @@ export default function RobotViewer3D({
               size="small"
                 disabled={!!busyReason}
               sx={{
-                width: 32,
-                height: 32,
+                width: 36,
+                height: 36,
                 transition: 'all 0.2s ease',
-                  color: busyReason ? 'text.disabled' : 'primary.main',
+                color: busyReason ? (darkMode ? '#666' : '#999') : '#FF9500',
+                bgcolor: darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(255, 255, 255, 0.95)',
                   border: '1px solid',
-                  borderColor: busyReason ? 'divider' : 'primary.main',
-                  bgcolor: 'transparent',
+                borderColor: busyReason 
+                  ? (darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)')
+                  : (darkMode ? 'rgba(255, 149, 0, 0.5)' : 'rgba(255, 149, 0, 0.4)'),
+                backdropFilter: 'blur(10px)',
+                boxShadow: darkMode 
+                  ? '0 2px 8px rgba(0, 0, 0, 0.3)' 
+                  : '0 2px 8px rgba(0, 0, 0, 0.08)',
+                opacity: busyReason ? 0.4 : 1,
                 '&:hover': {
-                    borderColor: busyReason ? 'divider' : 'primary.dark',
-                    bgcolor: busyReason ? 'transparent' : 'rgba(99, 102, 241, 0.08)',
+                  bgcolor: darkMode ? 'rgba(255, 149, 0, 0.15)' : 'rgba(255, 149, 0, 0.1)',
+                  borderColor: '#FF9500',
+                  transform: busyReason ? 'none' : 'scale(1.05)',
+                },
+                '&:active': {
+                  transform: busyReason ? 'none' : 'scale(0.95)',
                   },
                   '&.Mui-disabled': {
-                    color: 'text.disabled',
-                    borderColor: 'divider',
+                  bgcolor: darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.6)',
+                  color: darkMode ? '#666' : '#999',
+                  borderColor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
                 },
               }}
             >
-              <SettingsOutlinedIcon sx={{ fontSize: 20 }} />
+              <SettingsOutlinedIcon sx={{ fontSize: 18 }} />
             </IconButton>
             </span>
           </Tooltip>

@@ -1,10 +1,15 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { Box } from '@mui/material';
+import { Box, Typography } from '@mui/material';
+import WbSunnyOutlinedIcon from '@mui/icons-material/WbSunnyOutlined';
+import PulseButton from '@components/PulseButton';
 import { ApplicationsSection } from './applications';
 import ControlButtons from './ControlButtons';
 import { ControllerSection } from './controller';
 import ExpressionsSection from './expressions';
 import { useActiveRobotContext } from '../context';
+import { useWakeSleep } from '../hooks/useWakeSleep';
+import useAppStore from '../../../store/useAppStore';
+import SleepingReachyIcon from '@assets/sleeping-reachy.svg';
 
 /**
  * Right Panel - Assembles Control Buttons and Applications sections
@@ -24,6 +29,9 @@ export default function RightPanel({
 }) {
   const { robotState } = useActiveRobotContext();
   const { rightPanelView } = robotState;
+  const { robotStatus } = useAppStore();
+  const isSleeping = robotStatus === 'sleeping';
+  const { isTransitioning, wakeUp } = useWakeSleep();
   
   const scrollRef = useRef(null);
   const [showTopGradient, setShowTopGradient] = useState(false);
@@ -52,6 +60,13 @@ export default function RightPanel({
     const timer = setTimeout(updateGradients, 100);
     return () => clearTimeout(timer);
   }, [rightPanelView, updateGradients]);
+
+  // When sleeping, signal that loading is complete (ApplicationsSection not rendered)
+  useEffect(() => {
+    if (isSleeping && onLoadingChange) {
+      onLoadingChange(false);
+    }
+  }, [isSleeping, onLoadingChange]);
 
   return (
     <Box
@@ -104,8 +119,62 @@ export default function RightPanel({
         }}
       />
       
-      {/* Conditional rendering based on rightPanelView */}
-      {rightPanelView === 'controller' ? (
+      {/* Conditional rendering based on rightPanelView and sleeping state */}
+      {isSleeping ? (
+        /* Sleeping state - Show centered wake toggle */
+        <Box
+          sx={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 3,
+            px: 4,
+          }}
+        >
+          <Box
+            component="img"
+            src={SleepingReachyIcon}
+            alt="Sleeping Reachy"
+            sx={{
+              width: 120,
+              height: 120,
+              objectFit: 'contain',
+            }}
+          />
+          <Typography
+            sx={{
+              fontSize: 18,
+              fontWeight: 600,
+              color: darkMode ? '#f5f5f5' : '#333',
+              textAlign: 'center',
+            }}
+          >
+            Reachy is sleeping
+          </Typography>
+          <Typography
+            sx={{
+              fontSize: 13,
+              color: darkMode ? '#888' : '#666',
+              textAlign: 'center',
+              maxWidth: 280,
+              lineHeight: 1.5,
+            }}
+          >
+            Wake up the robot to access apps and controls
+          </Typography>
+          <PulseButton
+            onClick={wakeUp}
+            disabled={isTransitioning}
+            startIcon={<WbSunnyOutlinedIcon />}
+            darkMode={darkMode}
+            sx={{ mt: 1 }}
+          >
+            {isTransitioning ? 'Waking up...' : 'Wake Up'}
+          </PulseButton>
+        </Box>
+      ) : rightPanelView === 'controller' ? (
         <ControllerSection
           showToast={showToast}
           isBusy={isBusy}

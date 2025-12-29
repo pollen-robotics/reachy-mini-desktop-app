@@ -2,27 +2,27 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Box, 
   Typography, 
-  Button, 
   Stepper, 
   Step, 
   StepLabel,
-  Alert,
   CircularProgress,
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import CheckIcon from '@mui/icons-material/Check';
 import { invoke } from '@tauri-apps/api/core';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 
 import useAppStore from '../../store/useAppStore';
-import qrCodeImage from '../../assets/reachy-mini-access-point-QR-code.png';
-import powerOnImage from '../../assets/power-on.jpg';
-import { WiFiConfiguration } from '../../components/wifi';
+import { isReachyHotspot } from '../../constants/wifi';
 import { useLocalWifiScan, useRobotDiscovery } from '../../hooks/system';
 import { useConnection, ConnectionMode } from '../../hooks/useConnection';
 import FullscreenOverlay from '../../components/FullscreenOverlay';
+import {
+  Step1PowerOn,
+  Step2ConnectHotspot,
+  Step3ConfigureWifi,
+  Step4Reconnecting,
+  Step5Success,
+} from './steps';
 
 // Hotspot daemon hosts to try (when connected to reachy-mini-ap)
 // mDNS (.local) is the standard, but we also try common IPs as fallback
@@ -84,6 +84,18 @@ export default function FirstTimeWifiSetupView() {
   const textSecondary = darkMode ? '#888' : '#666';
   const bgCard = darkMode ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)';
   const borderColor = darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)';
+
+  // ============================================================================
+  // SKIP TO SUCCESS: If Reachy already available on network
+  // ============================================================================
+  
+  // If Reachy is already accessible on the network, skip directly to success
+  useEffect(() => {
+    if (wifiRobot.available && activeStep === 0) {
+      console.log('[Setup] Reachy already available on network, skipping to success');
+      setActiveStep(4); // Jump to Step 5 (Success)
+    }
+  }, [wifiRobot.available, activeStep]);
 
   // ============================================================================
   // STEP 1: Power On - Countdown + Hotspot Detection
@@ -202,40 +214,89 @@ export default function FirstTimeWifiSetupView() {
   }, []);
 
   // ============================================================================
-  // STEP 4: Reconnecting - Wait for Reachy on local network
+  // STEP 4: Reconnecting - Auto-detect when we leave hotspot + find Reachy
   // ============================================================================
 
-  // Countdown for Step 4
-  useEffect(() => {
-    if (activeStep === 3) {
-      setCountdown(45);
-      countdownInterval.current = setInterval(() => {
-        setCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(countdownInterval.current);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      
-      return () => {
-        if (countdownInterval.current) {
-          clearInterval(countdownInterval.current);
-        }
-      };
-    }
-  }, [activeStep]);
+  const [reconnectStatus, setReconnectStatus] = useState('waiting'); // 'waiting' | 'searching' | 'found' | 'failed'
+  const [foundHost, setFoundHost] = useState(null);
 
-  // Auto-advance when Reachy found on network (Step 4 → Step 5)
+  // Hosts to check for Reachy on normal network (not hotspot IPs)
+  const NORMAL_NETWORK_HOSTS = ['reachy-mini.local', 'reachy-mini.home'];
+  const MIN_RECONNECT_DELAY = 3000; // Minimum 3 seconds in reconnecting state for UX
+
   useEffect(() => {
-    if (activeStep === 3 && wifiRobot.available) {
-      if (countdownInterval.current) {
-        clearInterval(countdownInterval.current);
+    if (activeStep !== 3) return;
+    
+    setReconnectStatus('waiting');
+    setFoundHost(null);
+    let isCancelled = false;
+    let hasLeftHotspot = false;
+    let stepStartTime = Date.now();
+    
+    const checkConnection = async () => {
+      try {
+        // Check if we're still on the Reachy hotspot
+        const currentSsid = await invoke('get_current_wifi_ssid');
+        const stillOnHotspot = isReachyHotspot(currentSsid);
+        
+        if (stillOnHotspot) {
+          // Still on hotspot - Reachy is switching networks, keep waiting
+          return;
+        }
+        
+        // We left the hotspot! Now actively search for Reachy
+        if (!hasLeftHotspot) {
+          hasLeftHotspot = true;
+          stepStartTime = Date.now(); // Reset timer when we start searching
+          if (!isCancelled) {
+            setReconnectStatus('searching');
+          }
+        }
+        
+        // Actively ping the daemon on normal network hosts (not using cached wifiRobot state)
+        for (const host of NORMAL_NETWORK_HOSTS) {
+          try {
+            const response = await tauriFetch(`http://${host}:8000/api/daemon/status`, {
+              method: 'GET',
+              connectTimeout: 3000,
+            });
+            if (response.ok && !isCancelled) {
+              console.log(`[Setup] Reachy found on normal network at: ${host}`);
+              setFoundHost(host);
+              setReconnectStatus('found');
+              
+              // Ensure minimum delay before advancing
+              const elapsed = Date.now() - stepStartTime;
+              const remainingDelay = Math.max(500, MIN_RECONNECT_DELAY - elapsed);
+              setTimeout(() => setActiveStep(4), remainingDelay);
+              return; // Stop checking
+            }
+          } catch (e) {
+            // Host not reachable, try next
+          }
+        }
+      } catch (e) {
+        console.warn('Error checking connection:', e);
       }
-      setTimeout(() => setActiveStep(4), 500);
-    }
-  }, [activeStep, wifiRobot.available]);
+    };
+    
+    // Poll every 2 seconds
+    checkConnection();
+    const interval = setInterval(checkConnection, 2000);
+      
+    // Timeout after 60 seconds
+    const timeout = setTimeout(() => {
+      if (!isCancelled && reconnectStatus !== 'found') {
+        setReconnectStatus('failed');
+      }
+    }, 60000);
+    
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [activeStep]);
 
   // ============================================================================
   // STEP 5: Success - Connect
@@ -434,7 +495,6 @@ export default function FirstTimeWifiSetupView() {
               reachyHotspots={reachyHotspots}
               isDaemonReachable={isDaemonReachable}
               onOpenWifiSettings={openWifiSettings}
-              onSkip={handleManualNext}
             />
           )}
 
@@ -446,7 +506,7 @@ export default function FirstTimeWifiSetupView() {
               darkMode={darkMode}
               textPrimary={textPrimary}
               textSecondary={textSecondary}
-              onSuccess={handleWifiConfigured}
+              onConnectStart={handleWifiConfigured}
             />
           )}
 
@@ -459,8 +519,8 @@ export default function FirstTimeWifiSetupView() {
               textPrimary={textPrimary}
               textSecondary={textSecondary}
               configuredNetwork={configuredNetwork}
-              wifiRobot={wifiRobot}
-              onSkip={handleManualNext}
+              status={reconnectStatus}
+              onRetry={() => setActiveStep(2)}
             />
           )}
 
@@ -505,434 +565,3 @@ export default function FirstTimeWifiSetupView() {
   );
 }
 
-// ============================================================================
-// STEP COMPONENTS
-// ============================================================================
-
-function Step1PowerOn({ 
-  textPrimary, 
-  textSecondary, 
-  countdown,
-  hasReachyHotspot,
-  hotspotName,
-  isLocalScanning,
-  onNext,
-  darkMode,
-}) {
-  const isWaiting = countdown > 0 && !hasReachyHotspot;
-  const timeoutReached = countdown === 0 && !hasReachyHotspot;
-
-  return (
-    <Box sx={{ width: '100%', textAlign: 'center' }}>
-      <Typography sx={{ fontSize: 15, fontWeight: 600, color: textPrimary, mb: 1 }}>
-        Power On Your Reachy Mini
-      </Typography>
-      
-      {isWaiting ? (
-        // Waiting for auto-detection
-        <>
-          <Typography sx={{ fontSize: 12, color: textSecondary, mb: 2, lineHeight: 1.6 }}>
-            Turn on your Reachy and wait. We're automatically detecting the WiFi hotspot it creates.
-          </Typography>
-          
-          {/* Power on illustration */}
-          <Box sx={{ 
-            display: 'flex', 
-            justifyContent: 'center', 
-            mb: 2,
-          }}>
-            <Box
-              component="img"
-              src={powerOnImage}
-              alt="Power on Reachy"
-              sx={{
-                width: 140,
-                height: 'auto',
-                borderRadius: '12px',
-                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}`,
-              }}
-            />
-          </Box>
-          
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
-            <CircularProgress size={16} sx={{ color: '#FF9500' }} />
-            <Typography sx={{ fontSize: 11, color: textSecondary }}>
-              Detecting hotspot... ({countdown}s)
-            </Typography>
-          </Box>
-        </>
-      ) : timeoutReached ? (
-        // Timeout - hotspot not detected
-        <>
-          <Typography sx={{ fontSize: 12, color: textSecondary, mb: 2, lineHeight: 1.6 }}>
-            Automatic detection didn't find a Reachy hotspot, but it may still exist on your network.
-            Make sure your Reachy is powered on, then continue to the next step.
-          </Typography>
-
-          <Button
-            variant="outlined"
-            onClick={onNext}
-            sx={{ 
-              fontSize: 13,
-              fontWeight: 600,
-              textTransform: 'none',
-              px: 3,
-              py: 0.75,
-              borderRadius: '8px',
-              borderColor: '#FF9500',
-              color: '#FF9500',
-              '&:hover': {
-                borderColor: '#e68600',
-                bgcolor: 'rgba(255, 149, 0, 0.08)',
-              },
-            }}
-          >
-            Continue manually →
-          </Button>
-        </>
-      ) : (
-        // Hotspot detected (will auto-advance shortly)
-        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
-          <CheckCircleIcon sx={{ fontSize: 40, color: '#22c55e' }} />
-          <Box sx={{ textAlign: 'center' }}>
-            <Typography sx={{ fontSize: 14, fontWeight: 600, color: '#22c55e' }}>
-              {hotspotName || 'Hotspot'} detected!
-            </Typography>
-            <Typography sx={{ fontSize: 11, color: textSecondary, mt: 0.5 }}>
-              Moving to next step...
-            </Typography>
-          </Box>
-        </Box>
-      )}
-    </Box>
-  );
-}
-
-function Step2ConnectHotspot({
-  darkMode,
-  textPrimary,
-  textSecondary,
-  reachyHotspots,
-  isDaemonReachable,
-  onOpenWifiSettings,
-  onSkip,
-}) {
-  const hotspotName = reachyHotspots[0]?.ssid || 'reachy-mini-ap';
-  const [copiedField, setCopiedField] = React.useState(null);
-
-  const handleCopy = async (text, field) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedField(field);
-      setTimeout(() => setCopiedField(null), 1500);
-    } catch (e) {
-      console.error('Failed to copy:', e);
-    }
-  };
-
-  const CredentialRow = ({ label, value, field }) => (
-    <Box 
-      onClick={() => handleCopy(value, field)}
-      sx={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'space-between',
-        py: 0.75,
-        px: 1.5,
-        borderRadius: '8px',
-        bgcolor: darkMode ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.03)',
-        cursor: 'pointer',
-        transition: 'all 0.15s ease',
-        '&:hover': {
-          bgcolor: darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
-        },
-      }}
-    >
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.25 }}>
-        <Typography sx={{ fontSize: 9, color: textSecondary, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-          {label}
-        </Typography>
-        <Typography sx={{ fontSize: 13, fontWeight: 600, color: textPrimary, fontFamily: 'monospace' }}>
-          {value}
-        </Typography>
-      </Box>
-      {copiedField === field ? (
-        <CheckIcon sx={{ fontSize: 14, color: '#22c55e' }} />
-      ) : (
-        <ContentCopyIcon sx={{ fontSize: 14, color: textSecondary }} />
-      )}
-    </Box>
-  );
-  
-  return (
-    <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-      {isDaemonReachable ? (
-        <>
-          <Typography sx={{ fontSize: 15, fontWeight: 600, color: '#22c55e', mb: 1 }}>
-            ✓ Connected to Reachy!
-          </Typography>
-          <Typography sx={{ fontSize: 12, color: textSecondary }}>
-            Moving to WiFi configuration...
-          </Typography>
-        </>
-      ) : (
-        <>
-          <Typography sx={{ fontSize: 15, fontWeight: 600, color: textPrimary, mb: 2 }}>
-            Connect to Reachy's Hotspot
-          </Typography>
-
-          {/* QR Code + Credentials - Side by side */}
-          <Box sx={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: 2,
-            width: '100%',
-            mb: 2.5,
-          }}>
-            {/* QR Code - 4/10 */}
-            <Box sx={{ 
-              width: '40%',
-              flexShrink: 0,
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}>
-              <Box sx={{ 
-                bgcolor: '#fff', 
-                p: 1, 
-                borderRadius: '10px',
-                width: 110,
-                height: 110,
-                boxShadow: darkMode ? '0 4px 12px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.1)',
-              }}>
-                <img 
-                  src={qrCodeImage} 
-                  alt="QR Code" 
-                  style={{ width: '100%', height: '100%', display: 'block', objectFit: 'contain' }} 
-                />
-              </Box>
-            </Box>
-
-            {/* Credentials - 6/10 */}
-            <Box sx={{ width: '60%', display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-              <Typography sx={{ fontSize: 10, color: textSecondary, mb: 0.5, textAlign: 'left' }}>
-                Scan QR or connect manually:
-              </Typography>
-              <CredentialRow label="Network" value={hotspotName} field="network" />
-              <CredentialRow label="Password" value="reachy-mini" field="password" />
-            </Box>
-          </Box>
-
-          {/* Primary Button */}
-          <Button
-            variant="outlined"
-            endIcon={<OpenInNewIcon sx={{ fontSize: 16 }} />}
-            onClick={onOpenWifiSettings}
-            fullWidth
-            sx={{
-              fontSize: 13,
-              fontWeight: 600,
-              textTransform: 'none',
-              borderColor: '#FF9500',
-              color: '#FF9500',
-              py: 1,
-              borderRadius: '10px',
-              mb: 2,
-              '&:hover': {
-                borderColor: '#e68600',
-                bgcolor: 'rgba(255, 149, 0, 0.08)',
-              },
-            }}
-          >
-            Open WiFi Settings
-          </Button>
-
-          {/* Detection status */}
-          <Box sx={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: 1,
-            mb: 0.5,
-          }}>
-            <CircularProgress size={12} sx={{ color: '#FF9500' }} />
-            <Typography sx={{ fontSize: 11, color: textSecondary }}>
-              Detecting connection — we'll auto-advance when connected
-            </Typography>
-          </Box>
-          
-          {/* Manual fallback */}
-          <Typography
-            onClick={onSkip}
-            sx={{ 
-              fontSize: 11, 
-              color: textSecondary,
-              cursor: 'pointer',
-              '&:hover': {
-                color: '#FF9500',
-              },
-            }}
-          >
-            Not detected? <span style={{ color: '#FF9500' }}>Continue manually →</span>
-          </Typography>
-        </>
-      )}
-    </Box>
-  );
-}
-
-// Base URL for hotspot mode (when connected to reachy-mini-ap)
-// Use IP directly since Tauri's fetch may have issues with mDNS (.local)
-const HOTSPOT_BASE_URL = 'http://10.42.0.1:8000';
-
-function Step3ConfigureWifi({
-  darkMode,
-  textPrimary,
-  textSecondary,
-  onSuccess,
-}) {
-  return (
-    <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      {/* Header */}
-      <Typography sx={{ fontSize: 15, fontWeight: 600, color: textPrimary, mb: 0.5 }}>
-        Connect Reachy to Your WiFi
-      </Typography>
-      <Typography sx={{ fontSize: 11, color: textSecondary, mb: 2, textAlign: 'center', lineHeight: 1.5 }}>
-        Select the network you want your Reachy to use.
-      </Typography>
-
-      {/* WiFi Form */}
-      <Box sx={{ width: '100%' }}>
-        <WiFiConfiguration 
-          darkMode={darkMode}
-          compact={true}
-          onConnectSuccess={onSuccess}
-          showHotspotDetection={false}
-          customBaseUrl={HOTSPOT_BASE_URL}
-        />
-      </Box>
-    </Box>
-  );
-}
-
-function Step4Reconnecting({
-  textPrimary,
-  textSecondary,
-  configuredNetwork,
-  wifiRobot,
-  onSkip,
-}) {
-  return (
-    <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-      {wifiRobot.available ? (
-        <>
-          <Typography sx={{ fontSize: 15, fontWeight: 600, color: '#22c55e', mb: 1 }}>
-            Reachy Found!
-          </Typography>
-          <Typography sx={{ fontSize: 12, color: textSecondary }}>
-            Detected at {wifiRobot.host}
-          </Typography>
-        </>
-      ) : (
-        <>
-          <Typography sx={{ fontSize: 15, fontWeight: 600, color: textPrimary, mb: 1 }}>
-            Reconnect to Your WiFi
-          </Typography>
-          
-          <Typography sx={{ fontSize: 12, color: textSecondary, mb: 2, lineHeight: 1.6 }}>
-            Your Reachy is now connecting to{' '}
-            <strong>{configuredNetwork || 'your network'}</strong>.
-            Reconnect your computer to the same network.
-          </Typography>
-
-          <Alert 
-            severity="info" 
-            sx={{ 
-              fontSize: 11, 
-              py: 0.5,
-              mb: 2,
-              '& .MuiAlert-message': { py: 0 },
-            }}
-          >
-            Make sure you're on <strong>{configuredNetwork || 'your WiFi'}</strong>
-          </Alert>
-
-          <Button
-            variant="outlined"
-            size="small"
-            onClick={onSkip}
-            sx={{ 
-              fontSize: 12, 
-              fontWeight: 600,
-              textTransform: 'none', 
-              borderColor: '#FF9500',
-              color: '#FF9500',
-              px: 2,
-              py: 0.5,
-              borderRadius: '8px',
-              '&:hover': {
-                borderColor: '#e68600',
-                bgcolor: 'rgba(255, 149, 0, 0.08)',
-              },
-            }}
-          >
-            I'm connected, continue →
-          </Button>
-        </>
-      )}
-    </Box>
-  );
-}
-
-function Step5Success({
-  textPrimary,
-  textSecondary,
-  wifiRobot,
-  configuredNetwork,
-  isConnecting,
-  onConnect,
-}) {
-  return (
-    <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-      <Typography sx={{ fontSize: 15, fontWeight: 600, color: '#22c55e', mb: 1 }}>
-        Setup Complete!
-      </Typography>
-      
-      <Typography sx={{ fontSize: 12, color: textSecondary, mb: 2, lineHeight: 1.6 }}>
-        Your Reachy Mini is now connected to{' '}
-        <strong style={{ color: textPrimary }}>{configuredNetwork || 'your network'}</strong>.
-        {wifiRobot.host && (
-          <> Detected at <strong style={{ color: textPrimary }}>{wifiRobot.host}</strong>.</>
-        )}
-      </Typography>
-
-      <Button
-        variant="outlined"
-        onClick={onConnect}
-        disabled={isConnecting}
-        sx={{
-          fontSize: 13,
-          fontWeight: 600,
-          textTransform: 'none',
-          px: 3,
-          py: 0.75,
-          borderRadius: '8px',
-          borderColor: '#22c55e',
-          color: '#22c55e',
-          '&:hover': {
-            borderColor: '#16a34a',
-            bgcolor: 'rgba(34, 197, 94, 0.08)',
-          },
-        }}
-      >
-        {isConnecting ? (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <CircularProgress size={14} sx={{ color: 'inherit' }} />
-            Connecting...
-          </Box>
-        ) : (
-          'Connect Now'
-        )}
-      </Button>
-    </Box>
-  );
-}

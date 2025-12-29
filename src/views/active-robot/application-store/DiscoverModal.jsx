@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
-import { Box, CircularProgress, IconButton, Typography } from '@mui/material';
-import CloseIcon from '@mui/icons-material/Close';
+import { Box, CircularProgress, Typography } from '@mui/material';
 import FullscreenOverlay from '@components/FullscreenOverlay';
 import Header from './discover/components/Header';
 import SearchBar from './discover/components/SearchBar';
@@ -59,10 +58,10 @@ export default function DiscoverModal({
       centeredX={true} // Center horizontally
       centeredY={false} // Don't center vertically
       debugName="DiscoverModal"
+      showCloseButton={true}
     >
       <Box
         sx={{
-          position: 'relative',
           width: '90%',
           maxWidth: '700px',
           display: 'flex',
@@ -71,27 +70,6 @@ export default function DiscoverModal({
           mb: 4,
         }}
       >
-        {/* Close button - top right */}
-        <IconButton
-          onClick={onClose}
-          sx={{
-            position: 'absolute',
-            top: 0,
-            right: 0,
-            color: '#FF9500',
-            bgcolor: darkMode ? 'rgba(255, 255, 255, 0.08)' : '#ffffff',
-            border: '1px solid #FF9500',
-            opacity: 0.7,
-            '&:hover': {
-              opacity: 1,
-              bgcolor: darkMode ? 'rgba(255, 255, 255, 0.12)' : '#ffffff',
-            },
-            zIndex: 1,
-          }}
-        >
-          <CloseIcon sx={{ fontSize: 20 }} />
-        </IconButton>
-
         {/* Header */}
         <Header darkMode={darkMode} />
 

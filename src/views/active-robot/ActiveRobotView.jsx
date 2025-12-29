@@ -2,7 +2,6 @@ import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { Box, Typography, IconButton, Button, CircularProgress, Snackbar, Alert, LinearProgress, ButtonGroup, Switch, Tooltip } from '@mui/material';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import OpenInFullIcon from '@mui/icons-material/OpenInFull';
-import CloseIcon from '@mui/icons-material/Close';
 import FullscreenOverlay from '../../components/FullscreenOverlay';
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
@@ -13,7 +12,7 @@ import { ViewportSwapper } from './layout';
 import LogConsole from '@components/LogConsole';
 import { RightPanel } from './right-panel';
 import RobotHeader from './RobotHeader';
-import { PowerButton, WakeSleepToggle } from './controls';
+import { PowerButton, SleepButton } from './controls';
 import AudioControls from './audio/AudioControls';
 import { useRobotPowerState, useRobotMovementStatus } from './hooks';
 import { useAudioControls } from './audio/hooks';
@@ -103,13 +102,27 @@ function ActiveRobotView({
     setAppsLoading(loading);
   }, []);
   
-  // ✅ Reset state when arriving on view
+  // ✅ Reset state when ARRIVING on view (not on wake/sleep transitions)
+  // Track previous isActive to detect transitions
+  const prevIsActiveRef = useRef(false);
   useEffect(() => {
-    if (isActive) {
+    const wasActive = prevIsActiveRef.current;
+    prevIsActiveRef.current = isActive;
+    
+    // Only act when transitioning TO active (arriving on view)
+    if (isActive && !wasActive) {
+      if (robotStatus === 'sleeping') {
+        // Arriving in sleeping state - no loading needed
+        setAppsLoading(false);
+        hasLoadedOnceRef.current = true;
+      } else {
+        // Arriving in awake state - show loading until apps ready
       setAppsLoading(true);
-      hasLoadedOnceRef.current = false; // Reset on new session
+        hasLoadedOnceRef.current = false;
+      }
     }
-  }, [isActive]);
+    // Don't react to robotStatus changes while already active
+  }, [isActive, robotStatus]);
   
   const showToast = useCallback((message, severity = 'info') => {
     setToast({ open: true, message, severity });
@@ -448,8 +461,10 @@ function ActiveRobotView({
             darkMode={darkMode}
           />
           
-          {/* Wake/Sleep Toggle - next to power button */}
-          <WakeSleepToggle darkMode={darkMode} />
+          {/* Sleep Button - only visible when awake (wake button is in RightPanel) */}
+          {robotStatus !== 'sleeping' && (
+            <SleepButton darkMode={darkMode} />
+          )}
         </Box>
         
         {/* Robot Header - Title, version, status, mode */}
@@ -698,6 +713,7 @@ function ActiveRobotView({
         onClose={() => setLogsFullscreenOpen(false)}
         darkMode={darkMode}
         debugName="LogsFullscreen"
+        showCloseButton={true}
       >
         <Box
           sx={{
@@ -708,28 +724,9 @@ function ActiveRobotView({
             display: 'flex',
             flexDirection: 'column',
             gap: 2,
-            position: 'relative',
             overflow: 'hidden',
           }}
         >
-          {/* Close button */}
-          <IconButton
-            onClick={() => setLogsFullscreenOpen(false)}
-            size="small"
-            sx={{
-              position: 'absolute',
-              top: 0,
-              right: 0,
-              padding: '4px',
-              color: darkMode ? '#888' : '#666',
-              '&:hover': {
-                bgcolor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-              },
-              zIndex: 10,
-            }}
-          >
-            <CloseIcon sx={{ fontSize: 18 }} />
-          </IconButton>
           
           <Typography
             sx={{

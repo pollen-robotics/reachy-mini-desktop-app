@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Typography } from '@mui/material';
+import { getVersion } from '@tauri-apps/api/app';
 import useAppStore from '../../store/useAppStore';
 
 /**
@@ -8,6 +9,11 @@ import useAppStore from '../../store/useAppStore';
  */
 export default function RobotHeader({ daemonVersion, darkMode = false }) {
   const { connectionMode } = useAppStore();
+  const [appVersion, setAppVersion] = useState('');
+
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(() => setAppVersion(null));
+  }, []);
 
   // Get connection type label
   const getConnectionLabel = () => {
@@ -58,17 +64,30 @@ export default function RobotHeader({ daemonVersion, darkMode = false }) {
         )}
       </Box>
       
-      {/* Version Subtitle */}
+      {/* Version Subtitle - App + Daemon */}
       <Typography
         sx={{
-          fontSize: 11,
+          fontSize: 9,
           fontWeight: 500,
-          color: darkMode ? '#888' : '#86868b',
+          color: darkMode ? '#666' : '#999',
           fontFamily: 'SF Mono, Monaco, Menlo, monospace',
           mb: 0.75,
         }}
       >
-        {daemonVersion ? `Daemon v${daemonVersion}` : 'Daemon unknown version'}
+        {appVersion ? `App v${appVersion}` : 'App ?'}
+        <Box
+          component="span"
+          sx={{
+            display: 'inline-block',
+            width: 3,
+            height: 3,
+            borderRadius: '50%',
+            bgcolor: darkMode ? '#555' : '#bbb',
+            mx: 1,
+            verticalAlign: 'middle',
+          }}
+        />
+        {daemonVersion ? `Daemon v${daemonVersion}` : 'Daemon ?'}
       </Typography>
     </Box>
   );

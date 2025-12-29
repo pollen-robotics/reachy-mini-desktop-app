@@ -3,12 +3,129 @@
 // Uses async + spawn_blocking to avoid blocking the UI
 
 use serde::Serialize;
+use std::process::Command;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct WifiNetwork {
     pub ssid: String,
     pub signal_strength: Option<i32>, // dBm or percentage
     pub is_reachy_hotspot: bool,
+}
+
+/// Get the current WiFi SSID the computer is connected to
+/// Returns None if not connected to WiFi
+#[tauri::command]
+pub async fn get_current_wifi_ssid() -> Result<Option<String>, String> {
+    tokio::task::spawn_blocking(|| get_current_ssid_sync())
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Synchronous current SSID detection
+fn get_current_ssid_sync() -> Result<Option<String>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        get_current_ssid_macos()
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        get_current_ssid_windows()
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        get_current_ssid_linux()
+    }
+    
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    {
+        Ok(None)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn get_current_ssid_macos() -> Result<Option<String>, String> {
+    // Use networksetup to get current WiFi network
+    let output = Command::new("networksetup")
+        .args(["-getairportnetwork", "en0"])
+        .output()
+        .map_err(|e| format!("Failed to run networksetup: {}", e))?;
+    
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // Output format: "Current Wi-Fi Network: NetworkName"
+        if let Some(pos) = stdout.find(": ") {
+            let ssid = stdout[pos + 2..].trim().to_string();
+            if !ssid.is_empty() && ssid != "You are not associated with an AirPort network." {
+                return Ok(Some(ssid));
+            }
+        }
+    }
+    Ok(None)
+}
+
+#[cfg(target_os = "windows")]
+fn get_current_ssid_windows() -> Result<Option<String>, String> {
+    let output = Command::new("netsh")
+        .args(["wlan", "show", "interfaces"])
+        .output()
+        .map_err(|e| format!("Failed to run netsh: {}", e))?;
+    
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("SSID") && !trimmed.starts_with("SSID BSSID") {
+                if let Some(pos) = trimmed.find(':') {
+                    let ssid = trimmed[pos + 1..].trim().to_string();
+                    if !ssid.is_empty() {
+                        return Ok(Some(ssid));
+                    }
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+#[cfg(target_os = "linux")]
+fn get_current_ssid_linux() -> Result<Option<String>, String> {
+    // Try nmcli first
+    let output = Command::new("nmcli")
+        .args(["-t", "-f", "active,ssid", "dev", "wifi"])
+        .output();
+    
+    if let Ok(output) = output {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                // Format: "yes:NetworkName" for active connection
+                if line.starts_with("yes:") {
+                    let ssid = line[4..].to_string();
+                    if !ssid.is_empty() {
+                        return Ok(Some(ssid));
+                    }
+                }
+            }
+        }
+    }
+    
+    // Fallback to iwgetid
+    let output = Command::new("iwgetid")
+        .args(["-r"])
+        .output();
+    
+    if let Ok(output) = output {
+        if output.status.success() {
+            let ssid = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !ssid.is_empty() {
+                return Ok(Some(ssid));
+            }
+        }
+    }
+    
+    Ok(None)
 }
 
 /// Scan available WiFi networks on the local machine (async, non-blocking)

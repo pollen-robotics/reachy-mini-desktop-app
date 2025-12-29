@@ -1,9 +1,10 @@
 import React from 'react';
-import { Box, Typography, Button, Chip } from '@mui/material';
+import { Box, Typography, Chip } from '@mui/material';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import CloseIcon from '@mui/icons-material/Close';
 import ExpressionIcon from '@assets/expression.svg';
 import JoystickIcon from '@assets/joystick.svg';
+import PulseButton from '@components/PulseButton';
 import { useActiveRobotContext } from '../context';
 
 /**
@@ -62,72 +63,13 @@ export default function ControlButtons({
     position: 'relative',
   };
 
-  const buttonStyle = {
-    textTransform: 'none',
-    fontWeight: 600,
-    fontSize: 12,
-    borderRadius: '8px',
-    px: 2,
-    py: 0.75,
-    minWidth: 'auto',
-    transition: 'all 0.2s ease',
-  };
-
-  const openButtonStyle = {
-    ...buttonStyle,
-    border: '1px solid #FF9500',
-    color: '#FF9500',
-    bgcolor: 'transparent',
-    position: 'relative',
-    overflow: 'visible',
-    // Pulse animation - same as Discover Apps button
-    animation: 'controlPulse 3s ease-in-out infinite',
-    '@keyframes controlPulse': {
-      '0%, 100%': {
-        boxShadow: darkMode
-          ? '0 0 0 0 rgba(255, 149, 0, 0.4)'
-          : '0 0 0 0 rgba(255, 149, 0, 0.3)',
-      },
-      '50%': {
-        boxShadow: darkMode
-          ? '0 0 0 8px rgba(255, 149, 0, 0)'
-          : '0 0 0 8px rgba(255, 149, 0, 0)',
-      },
-    },
-    '&:hover': {
-      bgcolor: 'rgba(255, 149, 0, 0.1)',
-      border: '1px solid #FF9500',
-      transform: 'translateY(-2px)',
-      boxShadow: darkMode
-        ? '0 6px 16px rgba(255, 149, 0, 0.2)'
-        : '0 6px 16px rgba(255, 149, 0, 0.15)',
-      animation: 'none', // Stop pulse on hover
-    },
-    '&:active': {
-      transform: 'translateY(0)',
-      boxShadow: darkMode
-        ? '0 2px 8px rgba(255, 149, 0, 0.2)'
-        : '0 2px 8px rgba(255, 149, 0, 0.15)',
-    },
-    '&:disabled': {
-      border: `1px solid ${darkMode ? 'rgba(255, 149, 0, 0.3)' : 'rgba(255, 149, 0, 0.4)'}`,
-      color: darkMode ? 'rgba(255, 149, 0, 0.3)' : 'rgba(255, 149, 0, 0.4)',
-      animation: 'none',
-    },
-  };
-
-  const closeButtonStyle = {
-    ...buttonStyle,
+  // Close button has different style (no pulse, neutral colors)
+  const closeButtonOverrides = {
     border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.2)'}`,
     color: darkMode ? '#f5f5f5' : '#333',
-    bgcolor: 'transparent',
-    transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
     '&:hover': {
       bgcolor: darkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)',
-      transform: 'translateY(-2px)',
-    },
-    '&:active': {
-      transform: 'translateY(0)',
+      border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.2)'}`,
     },
   };
 
@@ -214,18 +156,17 @@ export default function ControlButtons({
           >
             Expressions
           </Typography>
-          <Button
+          <PulseButton
             onClick={handleExpressionsClick}
             disabled={isDisabled}
-            variant="outlined"
+            pulse={!isExpressionsOpen}
+            darkMode={darkMode}
+            size="small"
             startIcon={isExpressionsOpen ? <CloseIcon sx={{ fontSize: 14 }} /> : <OpenInNewIcon sx={{ fontSize: 14 }} />}
-            sx={{
-              ...(isExpressionsOpen ? closeButtonStyle : openButtonStyle),
-              width: 'auto',
-            }}
+            sx={isExpressionsOpen ? closeButtonOverrides : {}}
           >
             {isExpressionsOpen ? 'Close' : 'Open'}
-          </Button>
+          </PulseButton>
         </Box>
 
         {/* Controller Card */}
@@ -271,18 +212,17 @@ export default function ControlButtons({
           >
             Controller
           </Typography>
-          <Button
+          <PulseButton
             onClick={handleControllerClick}
             disabled={isDisabled}
-            variant="outlined"
+            pulse={!isControllerOpen}
+            darkMode={darkMode}
+            size="small"
             startIcon={isControllerOpen ? <CloseIcon sx={{ fontSize: 14 }} /> : <OpenInNewIcon sx={{ fontSize: 14 }} />}
-            sx={{
-              ...(isControllerOpen ? closeButtonStyle : openButtonStyle),
-              width: 'auto',
-            }}
+            sx={isControllerOpen ? closeButtonOverrides : {}}
           >
             {isControllerOpen ? 'Close' : 'Open'}
-          </Button>
+          </PulseButton>
         </Box>
       </Box>
     </Box>

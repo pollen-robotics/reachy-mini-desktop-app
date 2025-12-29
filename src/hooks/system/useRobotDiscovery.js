@@ -50,11 +50,37 @@ async function checkSingleHost(host) {
   }
 }
 
+import { isReachyHotspot } from '../../constants/wifi';
+
+/**
+ * Check if the computer is currently connected to a Reachy hotspot
+ * @returns {Promise<boolean>}
+ */
+async function isOnReachyHotspot() {
+  try {
+    const currentSsid = await invoke('get_current_wifi_ssid');
+    return isReachyHotspot(currentSsid);
+  } catch (e) {
+    console.warn('Failed to get current WiFi SSID:', e);
+    return false;
+  }
+}
+
 /**
  * Check multiple WiFi hosts in parallel and return the first one that responds
  * @returns {Promise<{available: boolean, host: string | null}>}
  */
 async function checkWifiRobot() {
+  // First check if we're on the Reachy hotspot - if so, WiFi mode is not available
+  const onHotspot = await isOnReachyHotspot();
+  if (onHotspot) {
+    if (lastLoggedWifiHost !== 'hotspot-blocked') {
+      console.log('🌐 Connected to Reachy hotspot - WiFi mode disabled (use setup flow)');
+      lastLoggedWifiHost = 'hotspot-blocked';
+    }
+    return { available: false, host: null, onHotspot: true };
+  }
+  
   // Check all hosts in parallel
   const results = await Promise.all(
     WIFI_HOSTS_TO_CHECK.map(host => checkSingleHost(host))
@@ -72,7 +98,7 @@ async function checkWifiRobot() {
   }
   
   // Log when robot is lost (was found before, now gone)
-  if (lastLoggedWifiHost !== null) {
+  if (lastLoggedWifiHost !== null && lastLoggedWifiHost !== 'hotspot-blocked') {
     console.log('🌐 WiFi robot disconnected');
     lastLoggedWifiHost = null;
   }

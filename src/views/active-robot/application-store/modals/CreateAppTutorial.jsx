@@ -1,6 +1,5 @@
 import React from 'react';
-import { Box, Typography, IconButton } from '@mui/material';
-import CloseIcon from '@mui/icons-material/Close';
+import { Box, Typography } from '@mui/material';
 import { useActiveRobotContext } from '../../context';
 import FullscreenOverlay from '@components/FullscreenOverlay';
 import HowToCreateApp from '@assets/reachy-how-to-create-app.svg';
@@ -62,10 +61,10 @@ export default function CreateAppTutorialModal({
       debugName="CreateAppTutorial"
       centeredX={true}
       centeredY={true}
+      showCloseButton={true}
     >
       <Box
         sx={{
-          position: 'relative',
           width: '90%',
           maxWidth: '700px',
           display: 'flex',
@@ -73,27 +72,6 @@ export default function CreateAppTutorialModal({
           my: 'auto',
         }}
       >
-        {/* Close button - top right */}
-        <IconButton
-          onClick={onClose}
-          sx={{
-            position: 'absolute',
-            top: 0,
-            right: 0,
-            color: '#FF9500',
-            bgcolor: darkMode ? 'rgba(255, 255, 255, 0.08)' : '#ffffff',
-            border: '1px solid #FF9500',
-            opacity: 0.7,
-            '&:hover': {
-              opacity: 1,
-              bgcolor: darkMode ? 'rgba(255, 255, 255, 0.12)' : '#ffffff',
-            },
-            zIndex: 1,
-          }}
-        >
-          <CloseIcon sx={{ fontSize: 20 }} />
-        </IconButton>
-
         {/* Header */}
         <Box sx={{ mb: 4, textAlign: 'center' }}>
           <Typography

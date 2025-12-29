@@ -16,7 +16,7 @@ import { useActiveRobotContext } from '../context';
  * - Robot is busy (app running, moving, etc.)
  * - Controller or Expressions view is active (user is interacting with robot)
  */
-export default function WakeSleepToggle({ darkMode }) {
+export default function WakeSleepToggle({ darkMode, inline = false }) {
   const { isSleeping, isAwake, isTransitioning, canToggle, toggle } = useWakeSleep();
   const { robotState } = useActiveRobotContext();
   const { rightPanelView } = robotState;
@@ -41,19 +41,22 @@ export default function WakeSleepToggle({ darkMode }) {
     >
       <Box
         sx={{
+          // Positioning: absolute for 3D view, static for inline mode
+          ...(inline ? {} : {
           position: 'absolute',
           top: 12,
           left: 56, // Right of power button (36px + 12px margin + 8px gap)
+            zIndex: 20,
+          }),
           display: 'flex',
           alignItems: 'center',
           gap: 0.75,
-          height: 36, // Same height as power button
+          height: 36,
           bgcolor: darkMode ? 'rgba(26, 26, 26, 0.95)' : 'rgba(255, 255, 255, 0.95)',
           border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)'}`,
           borderRadius: '18px',
           px: 1.25,
           backdropFilter: 'blur(10px)',
-          zIndex: 20,
           opacity: isDisabled ? 0.5 : 1,
           transition: 'opacity 0.2s ease',
           boxShadow: darkMode 
