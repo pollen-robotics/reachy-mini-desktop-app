@@ -29,7 +29,7 @@ export const useLogProcessing = (logs, frontendLogs, appLogs, includeStoreLogs, 
       '🧹 Cleaning up existing daemons...',
       '🧹 Cleaning up existing daemons (simulation mode)...',
       '✓ Daemon started via embedded sidecar',
-      '✓ Daemon started in simulation mode (MuJoCo) via embedded sidecar',
+      '✓ Daemon started in simulation mode (mockup-sim) via embedded sidecar',
       '✓ Daemon stopped',
     ];
     

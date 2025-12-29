@@ -438,157 +438,8 @@ fn main() -> ExitCode {
     // Check if the first argument is a Python executable path (e.g., .venv/bin/python3)
     // If so, execute it directly instead of passing through uv
     println!("🔍 Checking args: {:?}", args);
-    let mut cmd = if !args.is_empty() && (args[0].contains("python") || args[0].contains("mjpython")) {
+    let mut cmd = if !args.is_empty() && args[0].contains("python") {
         println!("✅ Detected Python executable: {}", args[0]);
-        
-        // Fix mjpython on macOS if needed
-        #[cfg(target_os = "macos")]
-        if args[0].contains("mjpython") {
-            println!("🔍 Detected mjpython, checking Python interpreter...");
-            
-            // Find the cpython bundled in the app (this always exists and works)
-            let cpython_python = find_cpython_folder(&working_dir)
-                .ok()
-                .map(|folder| working_dir.join(&folder).join("bin/python3"));
-            
-            let venv_python = working_dir.join(".venv/bin/python3");
-            
-            // Check if .venv/bin/python3 works
-            // It may be a broken binary, symlink, or script with wrong paths
-            println!("🔍 Testing .venv/bin/python3...");
-            let venv_python_works = if venv_python.exists() {
-                let test_result = Command::new(&venv_python)
-                    .arg("--version")
-                    .output();
-                match &test_result {
-                    Ok(output) if output.status.success() => {
-                        println!("   ✅ .venv/bin/python3 works");
-                        true
-                    }
-                    Ok(output) => {
-                        println!("   ❌ .venv/bin/python3 failed with status: {:?}", output.status);
-                        false
-                    }
-                    Err(e) => {
-                        println!("   ❌ .venv/bin/python3 cannot be executed: {}", e);
-                        false
-                    }
-                }
-            } else {
-                println!("   ❌ .venv/bin/python3 does not exist");
-                false
-            };
-            
-            // If .venv/bin/python3 doesn't work, replace it with a symlink to cpython
-            // This preserves the venv configuration (pyvenv.cfg) while using the working cpython
-            if !venv_python_works {
-                if let Some(ref cpython) = cpython_python {
-                    if cpython.exists() {
-                        println!("🔧 Fixing .venv/bin/python3 by creating symlink to cpython...");
-                        
-                        // Remove the broken file if it exists
-                        if venv_python.exists() || venv_python.is_symlink() {
-                            if let Err(e) = fs::remove_file(&venv_python) {
-                                eprintln!("   ⚠️  Failed to remove broken python3: {}", e);
-                            }
-                        }
-                        
-                        // Create symlink to cpython
-                        #[cfg(unix)]
-                        {
-                            use std::os::unix::fs::symlink;
-                            if let Err(e) = symlink(cpython, &venv_python) {
-                                eprintln!("   ⚠️  Failed to create python3 symlink: {}", e);
-                            } else {
-                                println!("   ✅ Created .venv/bin/python3 -> {:?}", cpython);
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Always use .venv/bin/python3 in the shebang because:
-            // - It's now either working or fixed to point to cpython
-            // - The pyvenv.cfg in .venv/ tells Python to use the venv's site-packages
-            let python_path = venv_python.clone();
-            let python_path_str = python_path.to_string_lossy();
-            
-            // Now fix mjpython script
-            let mjpython_path = working_dir.join(&args[0]);
-            println!("🔍 mjpython path: {:?}", mjpython_path);
-            if mjpython_path.exists() {
-                println!("✅ mjpython exists, reading content...");
-                if let Ok(content) = fs::read_to_string(&mjpython_path) {
-                    let lines: Vec<&str> = content.lines().collect();
-                    let first_line = lines.first().unwrap_or(&"");
-                    let second_line = lines.get(1).unwrap_or(&"");
-                    println!("🔍 First line: {}", first_line);
-                    println!("🔍 Second line: {}", second_line);
-                    
-                    // Check if shebang needs fixing:
-                    // - Contains path to binaries/.venv or binaries/cpython (CI build paths)
-                    // - Or contains /Users/runner/ (CI runner path)
-                    let needs_fix = content.contains("binaries/.venv") 
-                        || content.contains("binaries/cpython")
-                        || content.contains("/Users/runner/");
-                    
-                    if needs_fix {
-                        println!("🔧 Fixing mjpython script to use {}...", python_path_str);
-                        
-                        let mut new_lines: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
-                        
-                        // Detect script format:
-                        // - Polyglot: first line is #!/bin/sh, second line contains exec
-                        // - Direct Python: first line is #!/path/to/python
-                        let is_polyglot = first_line.contains("/bin/sh") && second_line.contains("exec");
-                        
-                        if is_polyglot && new_lines.len() >= 2 {
-                            // Polyglot format: fix the exec line (line 2)
-                            // Format: '''exec' '/path/to/python' "$0" "$@"
-                            println!("🔧 Detected polyglot format, fixing exec line...");
-                            new_lines[1] = format!("'''exec' '{}' \"$0\" \"$@\"", python_path_str);
-                        } else if !new_lines.is_empty() {
-                            // Direct Python shebang: fix the first line
-                            println!("🔧 Detected direct Python shebang, fixing first line...");
-                            new_lines[0] = format!("#!{}", python_path_str);
-                        }
-                        
-                        let new_content = new_lines.join("\n");
-                        
-                        if let Err(e) = fs::write(&mjpython_path, new_content) {
-                            eprintln!("⚠️  Failed to fix mjpython: {}", e);
-                        } else {
-                            println!("✅ Fixed mjpython to use {}", python_path_str);
-                        }
-                    } else {
-                        println!("ℹ️  mjpython doesn't need fixing");
-                    }
-                } else {
-                    println!("⚠️  Failed to read mjpython");
-                }
-            } else {
-                println!("⚠️  mjpython doesn't exist at path");
-            }
-            
-            // 2. Create symlink for libpython3.12.dylib at .venv/ level
-            // mjpython looks for it at .venv/libpython3.12.dylib but it's in .venv/lib/
-            let venv_dir = working_dir.join(".venv");
-            let libpython_symlink = venv_dir.join("libpython3.12.dylib");
-            let libpython_target = venv_dir.join("lib/libpython3.12.dylib");
-            
-            if libpython_target.exists() && !libpython_symlink.exists() {
-                println!("🔧 Creating libpython3.12.dylib symlink for mjpython...");
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::symlink;
-                    if let Err(e) = symlink("lib/libpython3.12.dylib", &libpython_symlink) {
-                        eprintln!("⚠️  Failed to create libpython symlink: {}", e);
-                    } else {
-                        println!("✅ Created libpython3.12.dylib symlink");
-                    }
-                }
-            }
-        }
         
         // Convert Unix-style path to Windows-style if needed
         #[cfg(target_os = "windows")]
@@ -612,10 +463,6 @@ fn main() -> ExitCode {
         #[cfg(not(target_os = "windows"))]
         let python_arg = args[0].clone();
         
-        // Check if this is mjpython - we need special handling on macOS
-        // because shebangs don't work with paths containing spaces
-        let is_mjpython = python_arg.contains("mjpython");
-        
         // First argument is a Python executable - execute it directly
         let python_path = if python_arg.starts_with("/") || python_arg.starts_with(".") || 
                           (cfg!(target_os = "windows") && (python_arg.starts_with(".") || python_arg.chars().nth(1) == Some(':'))) {
@@ -633,47 +480,12 @@ fn main() -> ExitCode {
             PathBuf::from(&python_arg)
         };
         
-        // On macOS, binaries are signed at build time via sign-all-binaries.sh
-        // Entitlements handle library validation, no runtime verification needed
-        
-        // On macOS with mjpython, we can't execute it directly because:
-        // 1. Its shebang contains a path with spaces (e.g., "/Applications/Reachy Mini Control.app/...")
-        // 2. Unix shebangs don't support paths with spaces
-        // Solution: Execute python3 directly with mjpython as a script argument
-        #[cfg(target_os = "macos")]
-        let cmd = if is_mjpython {
-            let venv_python = working_dir.join(".venv/bin/python3");
-            println!("🐍 Executing mjpython via python3 (shebang workaround for paths with spaces)");
-            println!("   Python: {:?}", venv_python);
-            println!("   Script: {:?}", python_path);
-            println!("   Args: {:?}", &args[1..]);
-            
-            let mut c = Command::new(&venv_python);
-            c.env("UV_WORKING_DIR", &working_dir)
-             .env("UV_PYTHON_INSTALL_DIR", &working_dir)
-             .arg(&python_path)  // mjpython script as first arg
-             .args(&args[1..]);  // remaining arguments
-            c
-        } else {
-            println!("🐍 Direct Python execution: {:?} with args: {:?}", python_path, &args[1..]);
-            let mut c = Command::new(&python_path);
-            c.env("UV_WORKING_DIR", &working_dir)
-             .env("UV_PYTHON_INSTALL_DIR", &working_dir)
-             .args(&args[1..]); // Pass remaining arguments
-            c
-        };
-        
-        #[cfg(not(target_os = "macos"))]
-        let mut cmd = {
-            println!("🐍 Direct Python execution: {:?} with args: {:?}", python_path, &args[1..]);
-            let mut c = Command::new(&python_path);
-            c.env("UV_WORKING_DIR", &working_dir)
-             .env("UV_PYTHON_INSTALL_DIR", &working_dir)
-             .args(&args[1..]); // Pass remaining arguments
-            c
-        };
-        
-        cmd
+        println!("🐍 Direct Python execution: {:?} with args: {:?}", python_path, &args[1..]);
+        let mut c = Command::new(&python_path);
+        c.env("UV_WORKING_DIR", &working_dir)
+         .env("UV_PYTHON_INSTALL_DIR", &working_dir)
+         .args(&args[1..]); // Pass remaining arguments
+        c
     } else {
         println!("ℹ️  Using normal uv command execution");
         // Normal uv command execution

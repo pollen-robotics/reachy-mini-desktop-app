@@ -35,13 +35,6 @@ import App from './components/App';
 import DevPlayground from './components/DevPlayground';
 import WebApp from './components/WebApp';
 import robotModelCache from './utils/robotModelCache';
-import { disableSimulationMode } from './utils/simulationMode';
-
-// 🧹 Clean up simulation mode from localStorage on normal startup
-// Only keep simMode if VITE_SIM_MODE is explicitly set (env variable takes priority)
-if (import.meta.env?.VITE_SIM_MODE !== 'true') {
-  disableSimulationMode();
-}
 import useAppStore from './store/useAppStore';
 
 // 🚀 Preload robot 3D model (FORCE complete reload)

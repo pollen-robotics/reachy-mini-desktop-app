@@ -40,7 +40,7 @@ export const useDaemon = () => {
       // Daemon started successfully - no action needed here
       // useRobotState will detect when it becomes active
       if (data?.simMode) {
-        logger.info('Daemon started in simulation mode (MuJoCo)');
+        logger.info('Daemon started in simulation mode (mockup-sim)');
       }
     });
     
@@ -383,7 +383,7 @@ export const useDaemon = () => {
       await new Promise(resolve => setTimeout(resolve, DAEMON_CONFIG.ANIMATIONS.BUTTON_SPINNER_DELAY));
       // Note: isStarting already set by startConnection() in FindingRobotView
       
-      // ✅ Set explicit startup timeout - longer for simulation mode (MuJoCo install takes time)
+      // ✅ Set explicit startup timeout - longer for simulation mode
       const startupTimeout = simMode 
         ? DAEMON_CONFIG.STARTUP.TIMEOUT_SIMULATION 
         : DAEMON_CONFIG.STARTUP.TIMEOUT_NORMAL;
