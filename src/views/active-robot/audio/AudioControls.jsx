@@ -6,6 +6,8 @@ import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import VolumeOffIcon from '@mui/icons-material/VolumeOff';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import AudioLevelBars from './AudioLevelBars';
+import DoAIndicator from './DoAIndicator';
+import { useDoA } from '../../../hooks/audio/useDoA';
 
 /**
  * Audio Controls Component - Speaker and Microphone controls
@@ -26,6 +28,9 @@ function AudioControls({
   darkMode,
   disabled = false,
 }) {
+  // Fetch DoA when microphone is active
+  const isMicActive = microphoneVolume > 0 && !disabled;
+  const { angle, isTalking, isAvailable } = useDoA(isMicActive);
   // Shared styles
   const cardStyle = {
     height: 64,
@@ -82,16 +87,20 @@ function AudioControls({
     letterSpacing: '0.02em',
   };
 
-  const renderControl = (label, tooltip, device, platform, volume, isActive, onMute, onVolumeChange) => (
+  const renderControl = (label, tooltip, device, platform, volume, isActive, onMute, onVolumeChange, extraIndicator = null) => (
     <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.75, opacity: disabled ? 0.5 : 1, transition: 'opacity 0.2s ease' }}>
-      {/* Label */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-        <Typography sx={{ fontSize: 11, fontWeight: 600, color: darkMode ? '#888' : '#999', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-          {label}
-        </Typography>
-        <Tooltip title={tooltip} arrow placement="top">
-          <InfoOutlinedIcon sx={{ fontSize: 12, color: darkMode ? '#666' : '#999', opacity: 0.6, cursor: 'help' }} />
-        </Tooltip>
+      {/* Label row with optional indicator on the right */}
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Typography sx={{ fontSize: 11, fontWeight: 600, color: darkMode ? '#888' : '#999', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            {label}
+          </Typography>
+          <Tooltip title={tooltip} arrow placement="top">
+            <InfoOutlinedIcon sx={{ fontSize: 12, color: darkMode ? '#666' : '#999', opacity: 0.6, cursor: 'help' }} />
+          </Tooltip>
+        </Box>
+        {/* Extra indicator (DoA) on the right of label */}
+        {extraIndicator}
       </Box>
 
       {/* Card */}
@@ -168,7 +177,8 @@ function AudioControls({
         microphoneVolume,
         microphoneVolume > 0,
         onMicrophoneMute,
-        onMicrophoneVolumeChange || ((val) => onMicrophoneChange(val > 0))
+        onMicrophoneVolumeChange || ((val) => onMicrophoneChange(val > 0)),
+        <DoAIndicator angle={angle} isTalking={isTalking} isAvailable={isAvailable} darkMode={darkMode} />
       )}
     </Box>
   );
