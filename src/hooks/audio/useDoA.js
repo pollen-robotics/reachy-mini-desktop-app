@@ -53,6 +53,9 @@ export function useDoA(isActive, pollInterval = 100) {
             isAvailable: true,
           });
         }
+      } else {
+        // Route not found (404) or other error - graceful degradation
+        setDoaState(prev => ({ ...prev, isAvailable: false }));
       }
     } catch {
       // Silent error - don't spam logs for polling
