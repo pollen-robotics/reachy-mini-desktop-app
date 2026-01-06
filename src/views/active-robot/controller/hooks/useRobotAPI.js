@@ -57,21 +57,21 @@ export function useRobotAPI(isActive, robotState, isDraggingRef) {
     
     const validBodyYaw = typeof bodyYaw === 'number' ? bodyYaw : (robotState.bodyYaw || 0);
     
-    const requestBody = {
-      target_head_pose: headPose,
-      target_antennas: transformAntennasForAPI(antennas),
-      target_body_yaw: validBodyYaw,
-    };
+            const requestBody = {
+              target_head_pose: headPose,
+              target_antennas: transformAntennasForAPI(antennas),
+              target_body_yaw: validBodyYaw,
+            };
     
     // Fire and forget - direct fetch
-    fetchWithTimeout(
-      buildApiUrl('/api/move/set_target'),
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-      },
-      DAEMON_CONFIG.MOVEMENT.CONTINUOUS_MOVE_TIMEOUT,
+            fetchWithTimeout(
+              buildApiUrl('/api/move/set_target'),
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody),
+              },
+              DAEMON_CONFIG.MOVEMENT.CONTINUOUS_MOVE_TIMEOUT,
       { label: 'Set target', silent: true, fireAndForget: true }
     ).catch(() => {}); // Ignore errors silently
   }, [isActive, robotState.bodyYaw, buildApiUrl, fetchWithTimeout, DAEMON_CONFIG]);

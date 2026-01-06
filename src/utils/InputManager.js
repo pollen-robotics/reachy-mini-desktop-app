@@ -125,7 +125,7 @@ export class InputManager {
 
       if (timeSinceLastActiveInput > this.deviceSwitchThreshold) {
         if (this.debugEnabled) {
-          console.log(`🎮 Device switched: ${this.activeDevice} → ${deviceType}`);
+          
         }
         this.activeDevice = deviceType;
 
@@ -402,14 +402,14 @@ export class InputManager {
   // Gamepad handling
   handleGamepadConnected = (event) => {
     if (this.debugEnabled) {
-      console.log('🎮 Gamepad connected:', event.gamepad.id);
+      
     }
     this.gamepadConnected = true;
   };
 
   handleGamepadDisconnected = (event) => {
     if (this.debugEnabled) {
-      console.log('🎮 Gamepad disconnected');
+      
     }
     this.gamepadConnected = false;
 
@@ -577,7 +577,7 @@ export class InputManager {
         const isPressed = gamepad.buttons[index]?.pressed || false;
         const lastState = this.lastButtonStates[`dpad_${index}`];
         if (isPressed !== lastState) {
-          console.log(`🎮 ${name}: ${isPressed ? 'PRESSED' : 'RELEASED'}`);
+          
           this.lastButtonStates[`dpad_${index}`] = isPressed;
         }
       });
@@ -590,12 +590,7 @@ export class InputManager {
       
       bumpers.forEach(({ index, name }) => {
         const value = gamepad.buttons[index]?.value || 0;
-        const lastValue = this.lastInputValues[`bumper_${index}`] || 0;
-        const threshold = 0.1; // Only log if value changes significantly
-        if (Math.abs(value - lastValue) > threshold) {
-          console.log(`🎮 ${name}: ${(value * 100).toFixed(0)}%`);
           this.lastInputValues[`bumper_${index}`] = value;
-        }
       });
       
       // Check action buttons (only when pressed)
@@ -610,7 +605,7 @@ export class InputManager {
         const isPressed = gamepad.buttons[index]?.pressed || false;
         const lastState = this.lastButtonStates[`action_${index}`];
         if (isPressed && !lastState) {
-          console.log(`🎮 ${name}: PRESSED`);
+          
           this.lastButtonStates[`action_${index}`] = isPressed;
         } else if (!isPressed && lastState) {
           this.lastButtonStates[`action_${index}`] = isPressed;
@@ -633,9 +628,9 @@ export class InputManager {
         if ((magnitude > this.config.deadzone && lastMagnitude <= this.config.deadzone) ||
             (magnitude <= this.config.deadzone && lastMagnitude > this.config.deadzone)) {
           if (magnitude > this.config.deadzone) {
-            console.log(`🎮 ${name}: Active (${x.toFixed(2)}, ${y.toFixed(2)})`);
+            
           } else {
-            console.log(`🎮 ${name}: Centered`);
+            
           }
           this.lastInputValues[`stick_${name}`] = magnitude;
         }
@@ -744,7 +739,7 @@ export class InputManager {
       this.lastButtonStates = {};
       this.lastInputValues = {};
     } else {
-      console.log('🎮 Debug mode enabled - will show button presses and significant input changes');
+      
     }
   }
 
@@ -763,7 +758,7 @@ export class InputManager {
 
   // Method to simulate next position action
   triggerNextPositionAction() {
-    console.log("InputManager: Simulating nextPosition action");
+    
 
     // Reset all inputs first to avoid conflicts
     this.resetInputs();
@@ -780,13 +775,13 @@ export class InputManager {
       this.keyboardInputs.nextPosition = false;
       this.combineInputs();
       this.notifyListeners();
-      console.log("InputManager: nextPosition action completed");
+      
     }, 50);
   }
 
   // Method to simulate interaction action
   triggerInteractAction() {
-    console.log("InputManager: Simulating interact action");
+    
 
     // Reset all inputs first to avoid conflicts
     this.resetInputs();
@@ -803,7 +798,7 @@ export class InputManager {
       this.keyboardInputs.interact = false;
       this.combineInputs();
       this.notifyListeners();
-      console.log("InputManager: interact action completed");
+      
     }, 50);
   }
 
@@ -820,7 +815,7 @@ export class InputManager {
     const gamepad = gamepads[0]; // Use first gamepad
 
     if (!gamepad || !this.gamepadConnected) {
-      console.log('No gamepad available for vibration');
+      
       return null;
     }
 
@@ -829,7 +824,7 @@ export class InputManager {
       gamepad.vibrationActuator &&
       typeof gamepad.vibrationActuator.playEffect === 'function'
     ) {
-      console.log('Vibration via vibrationActuator');
+      
       return gamepad.vibrationActuator.playEffect('dual-rumble', {
         startDelay: 0,
         duration: duration,
@@ -839,10 +834,10 @@ export class InputManager {
     }
     // Alternative: use hapticActuators if available
     else if (gamepad.hapticActuators && gamepad.hapticActuators.length > 0) {
-      console.log('Vibration via hapticActuators');
+      
       return gamepad.hapticActuators[0].pulse(strongMagnitude, duration);
     } else {
-      console.log("This gamepad does not support vibration");
+      
       return null;
     }
   }

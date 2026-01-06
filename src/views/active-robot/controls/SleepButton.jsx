@@ -77,14 +77,14 @@ export default function SleepButton({ darkMode }) {
             sx={{ color: '#FF9500' }} 
           />
         ) : (
-          <BedtimeOutlinedIcon 
-            sx={{ 
-              fontSize: 18, 
-              color: isDisabled 
-                ? (darkMode ? 'rgba(255, 149, 0, 0.3)' : 'rgba(255, 149, 0, 0.4)')
-                : '#FF9500',
-            }} 
-          />
+        <BedtimeOutlinedIcon 
+          sx={{ 
+            fontSize: 18, 
+            color: isDisabled 
+              ? (darkMode ? 'rgba(255, 149, 0, 0.3)' : 'rgba(255, 149, 0, 0.4)')
+              : '#FF9500',
+          }} 
+        />
         )}
       </Box>
     </Tooltip>

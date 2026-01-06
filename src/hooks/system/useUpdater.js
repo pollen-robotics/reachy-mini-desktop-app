@@ -66,7 +66,7 @@ export const useUpdater = ({
 
     // ✅ Try to fetch latest.json directly - if it works, we have internet + we know if there's an update
     // No need for separate healthcheck - the update check itself tells us about connectivity
-    console.log('🔍 Starting update check...', { retryCount, maxRetries });
+    
     logInfo(`🔍 Starting update check... (attempt ${retryCount + 1}/${maxRetries})`);
     isCheckingRef.current = true;
     setIsChecking(true);
@@ -102,7 +102,7 @@ export const useUpdater = ({
         currentVersion: update?.currentVersion || 'unknown',
         updateAvailable: update ? 'YES' : 'NO',
       };
-      console.log('🔍 Update check result:', checkResult);
+      
       logInfo(`🔍 Update check result: ${JSON.stringify(checkResult)}`);
       
       // Reset retry count on success
@@ -112,12 +112,12 @@ export const useUpdater = ({
       setIsChecking(false); // ✅ Ensure isChecking is always set to false on success
       
       if (update) {
-        console.log('✅ Update available:', update.version);
+        
         logSuccess(`✅ Update available: ${update.version} (${update.date || 'no date'})`);
         setUpdateAvailable(update);
         return update;
       } else {
-        console.log('ℹ️ No update available (current version is up to date or newer)');
+        
         logInfo('ℹ️ No update available (current version is up to date or newer)');
         setUpdateAvailable(null);
         return null;
@@ -145,7 +145,7 @@ export const useUpdater = ({
       
       // In dev mode, immediately stop checking if update server is missing (no retries needed)
       if (isDev && isMissingUpdateServer) {
-        console.log('ℹ️ Update server not available (dev mode - this is normal)');
+        
         logInfo('ℹ️ Update server not available (dev mode - this is normal)');
         isCheckingRef.current = false;
         setIsChecking(false);
@@ -183,10 +183,10 @@ export const useUpdater = ({
         retryCountRef.current = retryCount + 1;
         
         if (isTimeout) {
-          console.log(`⏱️ Update check timeout, retrying in ${delay}ms... (${retryCount + 1}/${maxRetries})`);
+          
           logWarning(`⏱️ Update check timeout, retrying in ${delay}ms... (${retryCount + 1}/${maxRetries})`);
         } else {
-          console.log(`🔄 Retrying in ${delay}ms... (${retryCount + 1}/${maxRetries})`);
+          
           logWarning(`🔄 Retrying in ${delay}ms... (${retryCount + 1}/${maxRetries})`);
         }
         
@@ -425,7 +425,7 @@ export const useUpdater = ({
   // Listen for online/offline events to retry when connection is restored
   useEffect(() => {
     const handleOnline = () => {
-      console.log('✅ Internet connection restored');
+      
       // Clear error if we were offline
       setError((prevError) => {
         if (prevError && prevError.includes('No internet connection')) {

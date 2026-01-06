@@ -10,11 +10,6 @@ import useAppStore from '../../store/useAppStore';
 function StartingView({ startupError, startDaemon }) {
   const { darkMode, transitionTo, setHardwareError } = useAppStore();
   
-  // 🔍 DEBUG: Log when StartingView mounts
-  React.useEffect(() => {
-    console.log('[StartingView] 🎯 MOUNTED');
-    return () => console.log('[StartingView] 🎯 UNMOUNTED');
-  }, []);
   
   const handleScanComplete = useCallback(() => {
     // ✅ HardwareScanView only calls this callback after successful healthcheck

@@ -58,7 +58,7 @@ function useUrlAccessibility(url, enabled = false, onTimeout = null, timeoutMs =
           clearTimeout(globalTimeoutId);
           globalTimeoutId = null;
         }
-        console.log(`[OpenAppButton] URL ${url} is now accessible`);
+        
       }
     };
 
@@ -66,7 +66,7 @@ function useUrlAccessibility(url, enabled = false, onTimeout = null, timeoutMs =
       // Check if we've exceeded the timeout
       if (Date.now() - startTime > timeoutMs) {
         if (!cancelled && !succeeded) {
-          console.log(`[OpenAppButton] Timeout reached for ${url}`);
+          
           setIsChecking(false);
           if (onTimeoutRef.current) {
             onTimeoutRef.current();
@@ -100,7 +100,7 @@ function useUrlAccessibility(url, enabled = false, onTimeout = null, timeoutMs =
       } catch (error) {
         // AbortError means timeout - server not responding yet
         // TypeError usually means network error - server not up yet
-        console.log(`[OpenAppButton] Check failed for ${url}:`, error.name);
+        
         
         // Retry if not cancelled and not succeeded
         if (!cancelled && !succeeded) {
@@ -115,7 +115,7 @@ function useUrlAccessibility(url, enabled = false, onTimeout = null, timeoutMs =
     // Global timeout fallback
     globalTimeoutId = setTimeout(() => {
       if (!cancelled && !succeeded) {
-        console.log(`[OpenAppButton] Global timeout reached for ${url}`);
+        
         setIsChecking(false);
         if (onTimeoutRef.current) {
           onTimeoutRef.current();
@@ -164,7 +164,7 @@ function useAppStartingTimeout(isStarting, isRunning, onTimeout, timeoutMs = APP
     // Start timer when app enters "starting" state
     if (isStarting && !startTimeRef.current && !hasTimedOutRef.current) {
       startTimeRef.current = Date.now();
-      console.log('[AppStartingTimeout] Starting timeout timer');
+      
       
       timeoutIdRef.current = setTimeout(() => {
         if (startTimeRef.current && !hasTimedOutRef.current) {

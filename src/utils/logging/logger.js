@@ -80,7 +80,7 @@ export const logInfo = (message, context = {}) => {
  */
 export const logSuccess = (message, context = {}) => {
   if (process.env.NODE_ENV === 'development') {
-    console.log('[logSuccess] Adding log:', message);
+    
   }
   addLog(message, LOG_LEVELS.SUCCESS);
 };

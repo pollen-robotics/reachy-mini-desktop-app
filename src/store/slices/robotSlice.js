@@ -150,7 +150,7 @@ export const createRobotSlice = (set, get) => ({
   
   transitionTo: {
     disconnected: () => {
-      console.log('[Store] 🔴 transitionTo.disconnected() called');
+      
       set({
         robotStatus: 'disconnected',
         busyReason: null,
@@ -168,7 +168,7 @@ export const createRobotSlice = (set, get) => ({
     },
     
     readyToStart: () => {
-      console.log('[Store] 🟡 transitionTo.readyToStart() called');
+      
       set({
         robotStatus: 'ready-to-start',
         busyReason: null,
@@ -183,7 +183,7 @@ export const createRobotSlice = (set, get) => ({
     },
     
     starting: () => {
-      console.log('[Store] 🟠 transitionTo.starting() called');
+      
       set({
         robotStatus: 'starting',
         busyReason: null,
@@ -201,7 +201,7 @@ export const createRobotSlice = (set, get) => ({
       const state = get();
       const { safeToShutdown = false } = options;
       
-      console.log('[Store] 😴 transitionTo.sleeping() called', { safeToShutdown });
+      
       
       // 🛡️ Guard: Don't transition if stopping (prevents chaos during shutdown)
       if (state.robotStatus === 'stopping') {
@@ -234,14 +234,6 @@ export const createRobotSlice = (set, get) => ({
     ready: () => {
       const state = get();
       
-      // 🔍 DEBUG: Log state when transitionTo.ready() is called
-      console.log('[Store] 🎯 transitionTo.ready() called', {
-        hardwareError: state.hardwareError,
-        robotStatus: state.robotStatus,
-        connectionMode: state.connectionMode,
-        isActive: state.isActive,
-      });
-      
       // Don't transition to ready if there's a hardware error
       if (state.hardwareError) {
         console.warn('[Store] ⚠️ BLOCKED: hardware error present');
@@ -266,7 +258,7 @@ export const createRobotSlice = (set, get) => ({
         return;
       }
       
-      console.log('[Store] ✅ Transitioning to ready - window should resize now');
+      
       logReady();
       set({
         robotStatus: 'ready',
@@ -285,7 +277,7 @@ export const createRobotSlice = (set, get) => ({
     },
     
     busy: (reason) => {
-      console.log('[Store] 🟣 transitionTo.busy() called', { reason });
+      
       const state = get();
       
       // 🛡️ Guard: Don't transition if stopping (prevents chaos during shutdown)
@@ -323,7 +315,7 @@ export const createRobotSlice = (set, get) => ({
     },
     
     stopping: () => {
-      console.log('[Store] 🔵 transitionTo.stopping() called');
+      
       set({
         robotStatus: 'stopping',
         busyReason: null,
@@ -340,7 +332,7 @@ export const createRobotSlice = (set, get) => ({
     },
     
     crashed: () => {
-      console.log('[Store] 💀 transitionTo.crashed() called');
+      
       logCrash();
       set({
         robotStatus: 'crashed',
@@ -579,7 +571,7 @@ export const createRobotSlice = (set, get) => ({
         [host]: expiryTime,
       },
     }));
-    console.log(`🚫 Blacklisted ${host} until ${new Date(expiryTime).toLocaleTimeString()}`);
+    
   },
   
   /**

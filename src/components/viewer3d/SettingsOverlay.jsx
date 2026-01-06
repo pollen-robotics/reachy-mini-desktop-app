@@ -160,12 +160,12 @@ export default function SettingsOverlay({
   // Connect to update job WebSocket (WiFi mode)
   const connectUpdateWebSocket = useCallback((jobId) => {
     const wsUrl = `${getWsBaseUrl()}/update/ws/logs?job_id=${jobId}`;
-    console.log('[UpdateWS] Connecting to:', wsUrl);
+    
     
     const ws = new WebSocket(wsUrl);
     
     ws.onopen = () => {
-      console.log('[UpdateWS] Connected');
+      
     };
     
     ws.onmessage = (event) => {
@@ -174,7 +174,7 @@ export default function SettingsOverlay({
         const data = JSON.parse(event.data);
         
         if (data.status) {
-          console.log('[UpdateWS] Status update:', data.status);
+          
           setUpdateJobStatus(data.status);
           
           // Add new logs if present
@@ -184,20 +184,20 @@ export default function SettingsOverlay({
           
           // Job is done
           if (data.status === 'done' || data.status === 'failed') {
-            console.log('[UpdateWS] Job finished:', data.status);
+            
             ws.close();
             
               if (data.status === 'done') {
               // ✅ Update successful - daemon will restart
               // Keep overlay visible and show "restarting" status
-              console.log('[UpdateWS] Update successful, daemon will restart...');
+              
               setUpdateJobStatus('restarting');
                 logSuccess('Update completed successfully!');
               
               // Wait for daemon restart (takes ~5-10 seconds typically)
               // Then reset to force reconnection
               setTimeout(() => {
-                console.log('[UpdateWS] Resetting app to reconnect...');
+                
                 setIsUpdating(false);
                 showToast('Update completed! Please reconnect to the robot.', 'success');
                 useAppStore.getState().resetAll();
@@ -215,7 +215,7 @@ export default function SettingsOverlay({
         // Not JSON, probably a log line
         const logLine = event.data.trim();
         if (logLine) {
-          console.log('[UpdateWS] Log:', logLine);
+          
           setUpdateLogs(prev => [...prev, logLine]);
         }
       }
@@ -226,7 +226,7 @@ export default function SettingsOverlay({
     };
     
     ws.onclose = (event) => {
-      console.log('[UpdateWS] Closed:', event.code, event.reason);
+      
       updatePollingRef.current = null;
     };
     
@@ -265,12 +265,12 @@ export default function SettingsOverlay({
       // 🛡️ Put robot to sleep before update if not already sleeping
       // This ensures motors are disabled and robot is in safe position
       if (!isSleeping) {
-        console.log('🔄 Putting robot to sleep before update...');
+        
         const sleepSuccess = await goToSleep();
         if (!sleepSuccess) {
           console.warn('⚠️ Failed to put robot to sleep, continuing with update anyway');
         } else {
-          console.log('✅ Robot is now sleeping, proceeding with update');
+          
         }
       }
       
@@ -285,7 +285,7 @@ export default function SettingsOverlay({
       
       if (response.ok) {
         const data = await response.json();
-        console.log('Update started:', data.job_id);
+        
         
           // Start tracking the update job
           setUpdateJobId(data.job_id);
@@ -319,7 +319,7 @@ export default function SettingsOverlay({
         onClose();
         
         // Disconnect and return to selection view
-        console.log('Daemon update completed, disconnecting...');
+        
         useAppStore.getState().resetAll();
       }
     } catch (err) {
@@ -348,7 +348,7 @@ export default function SettingsOverlay({
 
   const fetchWifiStatus = useCallback(async () => {
     if (!isWifiMode) return;
-    console.log('[WiFi] Fetching WiFi status...');
+    
     setIsLoadingWifi(true);
     setWifiError(null);
     
@@ -374,7 +374,7 @@ export default function SettingsOverlay({
       
       if (networksResponse.ok) {
         const networks = await networksResponse.json();
-        console.log('[WiFi] Scanned networks:', networks);
+        
         setAvailableNetworks(Array.isArray(networks) ? networks : []);
       } else {
         console.warn('[WiFi] Scan failed:', networksResponse.status);
@@ -402,7 +402,7 @@ export default function SettingsOverlay({
       if (response.ok) {
         // Blacklist current robot for 10 seconds to prevent immediate rediscovery
         if (remoteHost) {
-          console.log(`🚫 Blacklisting ${remoteHost} for 10 seconds after clearing networks`);
+          
           blacklistRobot(remoteHost, 10000);
         }
         

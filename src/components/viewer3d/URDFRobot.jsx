@@ -175,7 +175,7 @@ function URDFRobot({
         
         if (hasValidInitialJoints) {
           // ✅ Use ACTUAL robot position from daemon
-          console.log('🎯 Applying initial robot position from store:', initialJoints.map(v => v.toFixed(3)).join(', '));
+          
           
           // Apply yaw_body from first joint value
           if (robotModel.joints['yaw_body']) {
@@ -201,7 +201,7 @@ function URDFRobot({
           }
         } else {
           // ✅ Fallback: Initialize all joints to zero
-          console.log('⚠️ No initial robot position in store, using zeros');
+          
           
         // Initialize yaw_body to 0
         if (robotModel.joints['yaw_body']) {

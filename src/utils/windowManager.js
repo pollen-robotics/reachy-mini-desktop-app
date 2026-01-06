@@ -162,7 +162,7 @@ async function sendInitialStateToWindow(windowLabel) {
     const sendState = async () => {
       try {
         await emit('store-update', initialState);
-        console.log(`📤 Sent initial state to window '${windowLabel}':`, {
+        
           isActive: initialState.isActive,
           robotStatus: initialState.robotStatus,
           hasRobotStateFull: !!initialState.robotStateFull?.data,
@@ -188,7 +188,7 @@ async function sendInitialStateToWindow(windowLabel) {
 function setupWindowListeners(window, windowLabel) {
   // Track window creation
   window.once('tauri://created', async () => {
-    console.log(`✅ Window '${windowLabel}' created`);
+    
     windowStates.set(windowLabel, 'created');
     
     try {
@@ -218,7 +218,7 @@ function setupWindowListeners(window, windowLabel) {
 
   // Track window destruction
   window.once('tauri://destroyed', () => {
-    console.log(`🔴 Window '${windowLabel}' destroyed`);
+    
     cleanupWindowState(windowLabel);
   });
 

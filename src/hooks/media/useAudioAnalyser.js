@@ -116,7 +116,7 @@ export default function useAudioAnalyser(audioTrack, options = {}) {
       dataArrayRef.current = dataArray;
 
       setIsActive(true);
-      console.log('[useAudioAnalyser] Audio analysis started, buffer length:', bufferLength);
+      
 
       // Animation loop for reading audio levels
       const analyze = (currentTime) => {

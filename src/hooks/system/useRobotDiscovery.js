@@ -76,7 +76,7 @@ async function checkWifiRobot(isRobotBlacklisted) {
   const onHotspot = await isOnReachyHotspot();
   if (onHotspot) {
     if (lastLoggedWifiHost !== 'hotspot-blocked') {
-      console.log('🌐 Connected to Reachy hotspot - WiFi mode disabled (use setup flow)');
+      
       lastLoggedWifiHost = 'hotspot-blocked';
     }
     return { available: false, host: null, onHotspot: true };
@@ -92,7 +92,7 @@ async function checkWifiRobot(isRobotBlacklisted) {
   if (available) {
     // Only log when host changes (found new robot or different host)
     if (lastLoggedWifiHost !== available.host) {
-      console.log(`🌐 WiFi robot found at ${available.host}`);
+      
       lastLoggedWifiHost = available.host;
     }
     return { available: true, host: available.host };
@@ -101,13 +101,13 @@ async function checkWifiRobot(isRobotBlacklisted) {
   // Check if all available hosts are blacklisted
   const hasBlacklistedRobots = results.some(r => r.available && isRobotBlacklisted(r.host));
   if (hasBlacklistedRobots && lastLoggedWifiHost !== 'blacklisted') {
-    console.log('🚫 WiFi robot(s) found but temporarily blacklisted');
+    
     lastLoggedWifiHost = 'blacklisted';
   }
   
   // Log when robot is lost (was found before, now gone)
   if (lastLoggedWifiHost && lastLoggedWifiHost !== 'hotspot-blocked' && lastLoggedWifiHost !== 'blacklisted' && !hasBlacklistedRobots) {
-    console.log('🌐 WiFi robot disconnected');
+    
     lastLoggedWifiHost = null;
   }
   

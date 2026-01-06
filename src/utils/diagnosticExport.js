@@ -140,7 +140,7 @@ const getAppsState = () => {
  * Generate the full diagnostic report
  */
 export const generateDiagnosticReport = async () => {
-  console.log('📋 Generating diagnostic report...');
+  
   
   const report = {
     _meta: {
@@ -153,12 +153,6 @@ export const generateDiagnosticReport = async () => {
     apps: getAppsState(),
     logs: getLogs(),
   };
-  
-  console.log('📋 Diagnostic report generated:', {
-    daemonLogs: report.logs.daemonLogs.length,
-    frontendLogs: report.logs.frontendLogs.length,
-    appLogs: report.logs.appLogs.length,
-  });
   
   return report;
 };
@@ -299,7 +293,7 @@ export const downloadDiagnosticReport = async (format = 'json') => {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     
-    console.log(`📋 Diagnostic report downloaded: ${filename}`);
+    
     return { success: true, filename };
   } catch (error) {
     console.error('📋 Failed to generate diagnostic report:', error);
@@ -316,7 +310,7 @@ export const copyDiagnosticToClipboard = async () => {
     const content = JSON.stringify(report, null, 2);
     
     await navigator.clipboard.writeText(content);
-    console.log('📋 Diagnostic report copied to clipboard');
+    
     return { success: true };
   } catch (error) {
     console.error('📋 Failed to copy diagnostic report:', error);
@@ -342,7 +336,7 @@ if (typeof window !== 'undefined') {
     
     if (modifierKey && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'd') {
       e.preventDefault();
-      console.log('📋 Secret diagnostic shortcut triggered!');
+      
       
       // Show a subtle notification
       const notification = document.createElement('div');

@@ -98,11 +98,11 @@ export default function useWebRTCStream(robotHost, autoConnect = false) {
     setError(null);
 
     const signalingUrl = `ws://${robotHost}:${SIGNALING_PORT}`;
-    console.log(`[WebRTC] Connecting to signaling server: ${signalingUrl}`);
+    
 
     try {
       const GstWebRTCAPI = window.GstWebRTCAPI;
-      console.log('[WebRTC] GstWebRTCAPI available:', !!GstWebRTCAPI);
+      
       if (!GstWebRTCAPI) {
         throw new Error('GstWebRTCAPI not loaded');
       }
@@ -127,17 +127,17 @@ export default function useWebRTCStream(robotHost, autoConnect = false) {
       connectionListenerRef.current = {
         connected: (clientId) => {
           if (!mountedRef.current) return;
-          console.log('[WebRTC] Connected to signaling server, client ID:', clientId);
+          
         },
         disconnected: () => {
           if (!mountedRef.current) return;
-          console.log('[WebRTC] Disconnected from signaling server');
+          
           setState(StreamState.DISCONNECTED);
           setStream(null);
           
           // Schedule reconnect
           if (mountedRef.current && !reconnectTimeoutRef.current) {
-            console.log(`[WebRTC] Scheduling reconnect in ${RECONNECT_DELAY}ms`);
+            
             reconnectTimeoutRef.current = setTimeout(() => {
               reconnectTimeoutRef.current = null;
               if (mountedRef.current) {
@@ -154,15 +154,15 @@ export default function useWebRTCStream(robotHost, autoConnect = false) {
       producersListenerRef.current = {
         producerAdded: (producer) => {
           if (!mountedRef.current) return;
-          console.log('[WebRTC] Producer found:', producer.id, producer.meta);
+          
           
           // If we already have a session, don't create another one
           if (sessionRef.current) {
-            console.log('[WebRTC] Already have a session, ignoring producer');
+            
             return;
           }
           
-          console.log('[WebRTC] Creating consumer session for producer:', producer.id);
+          
           
           const session = api.createConsumerSession(producer.id);
           if (!session) {
@@ -181,7 +181,7 @@ export default function useWebRTCStream(robotHost, autoConnect = false) {
           
           session.addEventListener('closed', () => {
             if (!mountedRef.current) return;
-            console.log('[WebRTC] Session closed');
+            
             sessionRef.current = null;
             setStream(null);
             
@@ -192,7 +192,7 @@ export default function useWebRTCStream(robotHost, autoConnect = false) {
           session.addEventListener('streamsChanged', () => {
             if (!mountedRef.current) return;
             const streams = session.streams;
-            console.log('[WebRTC] Streams changed:', streams?.length || 0);
+            
             
             if (streams && streams.length > 0) {
               setStream(streams[0]);
@@ -206,7 +206,7 @@ export default function useWebRTCStream(robotHost, autoConnect = false) {
         
         producerRemoved: (producer) => {
           if (!mountedRef.current) return;
-          console.log('[WebRTC] Producer removed:', producer.id);
+          
           
           // If our session was with this producer, close it
           if (sessionRef.current) {
@@ -231,7 +231,7 @@ export default function useWebRTCStream(robotHost, autoConnect = false) {
    * Disconnect from the stream
    */
   const disconnect = useCallback(() => {
-    console.log('[WebRTC] Disconnecting...');
+    
     cleanup();
     setState(StreamState.DISCONNECTED);
   }, [cleanup]);

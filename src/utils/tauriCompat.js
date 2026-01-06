@@ -26,7 +26,7 @@ export const invoke = async (command, args = {}) => {
   }
 
   // Web mode: map Tauri commands to REST API calls
-  console.log(`[WebMode] invoke: ${command}`, args);
+  
   
   // Map common Tauri commands to REST endpoints
   const commandMap = {
@@ -54,7 +54,7 @@ export const invoke = async (command, args = {}) => {
   }
   
   if (mapping.noop) {
-    console.log(`[WebMode] No-op command: ${command}`);
+    
     return { success: true };
   }
 
@@ -92,7 +92,7 @@ export const listen = async (event, callback) => {
     return tauriListen(event, callback);
   }
 
-  console.log(`[WebMode] listen: ${event} - using polling fallback`);
+  
   
   // Web mode: use polling for sidecar events
   // For sidecar-stdout/stderr, we don't have real-time events in web mode
@@ -118,7 +118,7 @@ export const emit = async (event, payload) => {
     return tauriEmit(event, payload);
   }
   
-  console.log(`[WebMode] emit: ${event}`, payload);
+  
   // No-op in web mode
 };
 

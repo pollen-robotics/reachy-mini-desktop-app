@@ -32,7 +32,7 @@ const formatMode = (mode, host) => {
  */
 const log = (emoji, action, details = '') => {
   const detailStr = details ? ` → ${details}` : '';
-  console.log(`[Store] ${emoji} ${action}${detailStr}`);
+  
 };
 
 /**

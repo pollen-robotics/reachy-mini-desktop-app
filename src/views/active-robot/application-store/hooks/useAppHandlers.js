@@ -136,7 +136,7 @@ export function useAppHandlers({
       (currentApp.state === 'starting' || currentApp.state === 'running');
     
     if (isPollingConfirmed) {
-      console.log(`[AppHandlers] Polling confirmed ${startingApp} is ${currentApp.state}, clearing local spinner`);
+      
       setStartingApp(null);
       waitingForPollingRef.current = false;
     }

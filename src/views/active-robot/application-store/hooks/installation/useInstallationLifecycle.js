@@ -181,17 +181,6 @@ export function useInstallationLifecycle({
     // Find job in activeJobs
     const job = findJobByAppName(activeJobs, installingAppName);
     
-    // 🔍 DEBUG: Log job state for debugging
-    console.log('[InstallLifecycle] Checking job:', {
-      installingAppName,
-      jobFound: !!job,
-      jobStatus: job?.status,
-      jobSeenOnce,
-      installStartTime: !!installStartTime,
-      activeJobsSize: activeJobs?.size,
-      isLoading,
-    });
-    
     // Mark job as seen if found
     if (job && !jobSeenOnce) {
       markJobAsSeen();
@@ -210,18 +199,8 @@ export function useInstallationLifecycle({
     // (user can see the error while apps list refreshes in background)
     const jobIsFailed = isJobFailed(job);
     
-    // ✅ CRITICAL FIX: Wait for apps to finish loading before closing
-    // This prevents closing the modal while fetchAvailableApps is still in progress
+    // Wait for apps to finish loading before closing
     const shouldWaitForLoading = jobWasRemovedResult && isLoading;
-    
-    // 🔍 DEBUG: Log decision
-    console.log('[InstallLifecycle] Decision:', {
-      jobWasRemoved: jobWasRemovedResult,
-      jobIsFailed,
-      isLoading,
-      shouldWaitForLoading,
-      willClose: (jobWasRemovedResult || jobIsFailed) && !shouldWaitForLoading,
-    });
     
     // Early return: job still in progress or refreshing
     // Note: We deliberately ignore 'completed' status here - we wait for removal

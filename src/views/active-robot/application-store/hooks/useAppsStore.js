@@ -103,7 +103,7 @@ export function useAppsStore(isActive) {
   const fetchAvailableApps = useCallback(async (forceRefresh = false) => {
     // Prevent duplicate fetches
     if (isFetchingRef.current) {
-      console.log('⏭️ Fetch already in progress, skipping...');
+      
       return useAppStore.getState().availableApps;
     }
     
@@ -122,7 +122,7 @@ export function useAppsStore(isActive) {
     // Use cache if valid and not forcing refresh
     if (!forceRefresh && isCacheFresh && currentAvailableApps.length > 0) {
       const remainingTime = Math.round((CACHE_DURATION - (Date.now() - currentLastFetch)) / 1000 / 60 / 60);
-      console.log(`✅ Using cached apps (valid for ~${remainingTime}h, ${currentAvailableApps.length} apps, ${currentInstalledApps.length} installed)`);
+      
       
       // Re-check network status
       if (!navigator.onLine && currentInstalledApps.length > 0) {
@@ -138,7 +138,7 @@ export function useAppsStore(isActive) {
     
     // Force refresh if cache is empty
     if (!forceRefresh && isCacheFresh && currentAvailableApps.length === 0) {
-      console.log('⚠️ Cache marked valid but empty, forcing refresh to fetch apps');
+      
     }
     
     try {
@@ -149,7 +149,7 @@ export function useAppsStore(isActive) {
       // ========================================
       // STEP 1: Fetch ALL apps (official + community) in parallel
       // ========================================
-      console.log(`🔄 Fetching ALL apps (official + community)...`);
+      
       
       let officialApps = [];
       let communityApps = [];
@@ -163,7 +163,7 @@ export function useAppsStore(isActive) {
       
       if (officialResult.status === 'fulfilled') {
         officialApps = officialResult.value || [];
-        console.log(`✅ Fetched ${officialApps.length} official apps`);
+        
       } else {
         fetchError = officialResult.reason;
         console.error(`❌ Failed to fetch official apps:`, officialResult.reason);
@@ -171,7 +171,7 @@ export function useAppsStore(isActive) {
       
       if (communityResult.status === 'fulfilled') {
         communityApps = communityResult.value || [];
-        console.log(`✅ Fetched ${communityApps.length} community apps`);
+        
       } else {
         console.warn(`⚠️ Failed to fetch community apps:`, communityResult.reason);
       }
@@ -182,7 +182,7 @@ export function useAppsStore(isActive) {
       
       // Merge all apps (official first, then community)
       let availableAppsFromSource = [...officialApps, ...communityApps];
-      console.log(`✅ Total: ${availableAppsFromSource.length} apps (${officialApps.length} official + ${communityApps.length} community)`);
+      
       
       // ========================================
       // STEP 2: Fetch installed apps from daemon
@@ -193,7 +193,7 @@ export function useAppsStore(isActive) {
       if (installedResult.error) {
         console.warn(`⚠️ Error fetching installed apps: ${installedResult.error}`);
       }
-      console.log(`✅ Fetched ${installedAppsFromDaemon.length} installed apps from daemon`);
+      
       
       // Check for network issues
       const hasNetworkIssue = availableAppsFromSource.length === 0 && (fetchError || !navigator.onLine);
@@ -239,7 +239,7 @@ export function useAppsStore(isActive) {
         }));
       
       if (localOnlyApps.length > 0) {
-        console.log(`➕ Adding ${localOnlyApps.length} locally installed apps not in store`);
+        
         availableAppsFromSource = [...availableAppsFromSource, ...localOnlyApps];
       }
       
@@ -263,7 +263,7 @@ export function useAppsStore(isActive) {
       setInstalledApps(installed);
       setAppsLoading(false);
       
-      console.log(`✅ Apps fetched & cached: ${enrichedAppsWithFlag.length} total, ${installed.length} installed`);
+      
       
       return enrichedAppsWithFlag;
     } catch (err) {
@@ -359,7 +359,7 @@ export function useAppsStore(isActive) {
               logMessage = `⚠️ ${appName} stopped (${appState})`;
             }
             
-            console.warn(`⚠️ App ${appName} state changed to ${appState}${hasError ? ` with error: ${status.error}` : ''}`);
+            
             logger.info(logMessage);
             store.unlockApp();
           }
@@ -370,7 +370,7 @@ export function useAppsStore(isActive) {
         
         if (store.isAppRunning && store.busyReason === 'app-running') {
           const lastAppName = store.currentAppName || 'unknown';
-          console.warn(`⚠️ App crash detected: currentApp is null but store thinks "${lastAppName}" is running`);
+          
           logger.warning(`App ${lastAppName} stopped unexpectedly`);
           store.unlockApp();
         }

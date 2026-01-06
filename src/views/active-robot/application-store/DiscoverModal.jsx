@@ -36,7 +36,7 @@ export default function DiscoverModal({
 }) {
   // ✅ Debug: Log filteredApps changes
   useEffect(() => {
-    console.log('📱 DiscoverModal: filteredApps changed', {
+    
       count: filteredApps.length,
       selectedCategory,
       searchQuery,

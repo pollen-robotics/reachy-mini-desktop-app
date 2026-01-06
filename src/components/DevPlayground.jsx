@@ -51,7 +51,7 @@ export default function DevPlayground() {
   }, []);
   
   const handleActionClick = useCallback((action) => {
-    console.log('Action clicked:', action);
+    
   }, []);
 
   // Get error configuration

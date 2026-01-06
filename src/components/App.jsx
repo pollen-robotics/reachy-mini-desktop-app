@@ -113,9 +113,9 @@ function App() {
   // 🔍 DEBUG: Force update check in dev mode for testing
   useEffect(() => {
     if (isDev) {
-      console.log('🔍 DEV MODE: Update check disabled by default');
-      console.log('   To test update check, call checkForUpdates() manually in DevTools console');
-      console.log('   Or temporarily set autoCheck: true in useUpdater hook');
+      
+      
+      
     }
   }, [isDev, checkForUpdates]);
   
@@ -157,29 +157,17 @@ function App() {
 
   // Determine current view for automatic resize
   const currentView = useMemo(() => {
-    // 🔍 DEBUG: Log state when computing currentView
-    console.log('[App] 🎯 Computing currentView', {
-      isActive,
-      hardwareError: !!hardwareError,
-      isStopping,
-    });
-    
     // Compact view: ClosingView (stopping)
     if (isStopping) {
-      console.log('[App] → currentView = compact (isStopping)');
       return 'compact';
     }
     
-    // ⚡ Expanded view: daemon active
-    // isActive becomes true when transitionTo.ready() is called
-    // (after scan complete + daemon health check passes)
+    // Expanded view: daemon active
     if (isActive && !hardwareError) {
-      console.log('[App] → currentView = expanded (isActive && !hardwareError)');
       return 'expanded';
     }
     
     // Compact view: all others (FindingRobot, Starting, ReadyToStart)
-    console.log('[App] → currentView = compact (default)');
     return 'compact';
   }, [isActive, hardwareError, isStopping]);
 

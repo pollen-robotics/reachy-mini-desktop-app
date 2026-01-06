@@ -116,7 +116,7 @@ export function useAppFiltering(availableApps, searchQuery, selectedCategory, of
         }
       });
       const afterCount = apps.length;
-      console.log(`🔍 Category filter "${selectedCategory}": ${beforeCount} → ${afterCount} apps`);
+      
     }
     
     // Filter by search query AFTER category filter

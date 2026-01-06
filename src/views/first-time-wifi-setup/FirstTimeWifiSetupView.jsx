@@ -98,7 +98,7 @@ export default function FirstTimeWifiSetupView() {
   // BUT: Don't interfere if we're already in the WiFi setup flow (Step 2-4)
   useEffect(() => {
     if (wifiRobot.available && activeStep === 0) {
-      console.log('[Setup] 🚀 Reachy already available on network, skipping to success');
+      
       setActiveStep(4); // Jump to Step 5 (Success)
     }
   }, [wifiRobot.available, activeStep]);
@@ -132,7 +132,7 @@ export default function FirstTimeWifiSetupView() {
   // Auto-advance when hotspot is detected (Step 1 → Step 2)
   useEffect(() => {
     if (activeStep === 0 && hasReachyHotspot) {
-      console.log('[Setup] 📡 Hotspot detected, advancing to Step 2');
+      
       // 2 second delay to let user see the success message
       setTimeout(() => setActiveStep(1), 2000);
     }
@@ -166,14 +166,14 @@ export default function FirstTimeWifiSetupView() {
       const reachableHost = results.find(h => h !== null);
       
       if (reachableHost) {
-        console.log('[Setup] Daemon reachable on hotspot via:', reachableHost);
+        
         setIsDaemonReachable(true);
         return true;
       } else {
-        console.log('[Setup] Daemon not reachable on any host');
+        
       }
     } catch (e) {
-      console.log('[Setup] Daemon check error:', e.message);
+      
     } finally {
       setIsCheckingDaemon(false);
     }
@@ -200,7 +200,7 @@ export default function FirstTimeWifiSetupView() {
   // Auto-advance when daemon is reachable (Step 2 → Step 3)
   useEffect(() => {
     if (activeStep === 1 && isDaemonReachable) {
-      console.log('[Setup] ✅ Daemon reachable, advancing to Step 3');
+      
       if (daemonCheckInterval.current) {
         clearInterval(daemonCheckInterval.current);
       }
@@ -213,7 +213,7 @@ export default function FirstTimeWifiSetupView() {
   // ============================================================================
 
   const handleWifiConfigured = useCallback((ssid) => {
-    console.log('[Setup] 📶 WiFi configured:', ssid, '→ Advancing to Step 4');
+    
     // Note: onConnectSuccess is only called when WiFiConfiguration verifies
     // that the Reachy is actually connected (mode === 'wlan' && connected_network === ssid)
     // So we can trust that the connection is real
@@ -242,7 +242,7 @@ export default function FirstTimeWifiSetupView() {
   useEffect(() => {
     if (activeStep !== 3) return;
     
-    console.log('[Setup] 🔍 Step 4 mounted - Verifying robot on normal network...');
+    
     setReconnectStatus('searching');
     setFoundHost(null);
     let isCancelled = false;
@@ -252,13 +252,13 @@ export default function FirstTimeWifiSetupView() {
     const checkNormalNetwork = async () => {
       if (isCancelled) return false;
       
-      console.log('[Setup] 🔎 Checking if robot is on normal network...');
+      
       
       // Only check NORMAL network hosts (not hotspot)
         for (const host of NORMAL_NETWORK_HOSTS) {
         if (isCancelled) return false;
         
-        console.log(`[Setup] 🔎 Trying: ${host}`);
+        
           try {
             const response = await tauriFetch(`http://${host}:8000/api/daemon/status`, {
               method: 'GET',
@@ -266,13 +266,13 @@ export default function FirstTimeWifiSetupView() {
             });
           
             if (response.ok && !isCancelled) {
-            console.log(`[Setup] ✅ Robot found at: ${host}`);
+            
               setFoundHost(host);
               setReconnectStatus('found');
             return true; // Success
           }
         } catch (e) {
-          console.log(`[Setup] 🔎 ${host} not reachable:`, e.message || 'timeout');
+          
         }
       }
       
@@ -310,7 +310,7 @@ export default function FirstTimeWifiSetupView() {
     }, 15000);
     
     return () => {
-      console.log('[Setup] 🧹 Step 4 cleanup triggered');
+      
       isCancelled = true;
       
       if (intervalId) {
@@ -551,8 +551,8 @@ export default function FirstTimeWifiSetupView() {
               configuredNetwork={configuredNetwork}
               status={reconnectStatus}
               onRetry={() => {
-                console.log('[Setup] 🔄 Retry clicked → Going back to Step 2 (hotspot check)');
-                console.log('[Setup] 💡 User must reconnect to Reachy hotspot manually');
+                
+                
                 
                 // Reset ALL state
                 setWifiConfigKey(prev => prev + 1);

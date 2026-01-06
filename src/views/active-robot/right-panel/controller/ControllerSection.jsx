@@ -34,18 +34,6 @@ export default function ControllerSection({
   const hasWindowFocus = useWindowFocus();
   const prevGamepadConnectedRef = useRef(isGamepadConnected);
   
-  // Debug: log gamepad state
-  React.useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[ControllerSection] Gamepad state:', {
-        isGamepadConnected,
-        activeDevice,
-        hasWindowFocus,
-        shouldBePrimary: isGamepadConnected && activeDevice === 'gamepad',
-      });
-    }
-  }, [isGamepadConnected, activeDevice, hasWindowFocus]);
-
   // Toast notifications for gamepad connection/disconnection
   useEffect(() => {
     // Skip on initial mount (prevGamepadConnectedRef.current will be the initial value)

@@ -44,7 +44,7 @@ async function loadWasm() {
       const wasm = await import('./reachy_mini_kinematics_wasm.js');
       await wasm.default(); // Initialize WASM
       wasmModule = wasm;
-      console.log('🦀 WASM Kinematics loaded successfully');
+      
       return wasm;
     } catch (err) {
       console.error('❌ Failed to load WASM Kinematics:', err);

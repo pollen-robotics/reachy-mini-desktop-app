@@ -22,7 +22,7 @@ export function isSimulationMode() {
 export function enableSimulationMode() {
   if (typeof window !== 'undefined') {
     localStorage.setItem('simMode', 'true');
-    console.log('🎭 Simulation mode enabled');
+    
   }
 }
 
@@ -32,7 +32,7 @@ export function enableSimulationMode() {
 export function disableSimulationMode() {
   if (typeof window !== 'undefined') {
     localStorage.removeItem('simMode');
-    console.log('🎭 Simulation mode disabled');
+    
   }
 }
 

@@ -329,7 +329,7 @@ function HardwareScanView({
       
       if (result.ready && !daemonReady) {
         // ✅ Daemon is ready AND robot has control_mode
-        console.log(`✅ Robot ready (with control_mode) after ${attemptCount} attempts`);
+        
         daemonReady = true;
         setDaemonStep('initializing');
         
@@ -356,14 +356,14 @@ function HardwareScanView({
           
           if (result.hasMovements) {
             // ✅ Movements detected, now pre-fetch apps before transition
-            console.log(`✅ Robot movements detected after ${movementAttemptCount} attempts`);
+            
             setWaitingForMovements(false);
             clearAllIntervals();
             
             // ✅ NEW: Pre-fetch apps before transitioning to ActiveRobotView
             setWaitingForApps(true);
             setDaemonStep('loading_apps');
-            console.log('📱 Pre-fetching apps before transition...');
+            
             
             try {
               setAppsLoading(true);
@@ -423,7 +423,7 @@ function HardwareScanView({
               setAvailableApps(enrichedAppsWithFlag);
               setInstalledApps(installed);
               
-              console.log(`✅ Apps pre-fetched: ${enrichedAppsWithFlag.length} total, ${installed.length} installed`);
+              
             } catch (err) {
               console.warn('⚠️ Failed to pre-fetch apps (will retry in ActiveRobotView):', err.message);
             } finally {
@@ -492,7 +492,7 @@ function HardwareScanView({
   }, [checkDaemonHealth, onScanCompleteCallback, clearAllIntervals, setHardwareError, fetchOfficialApps, fetchAllAppsFromDaemon, fetchInstalledApps, enrichApps, setAvailableApps, setInstalledApps, setAppsLoading]);
   
   const handleScanComplete = useCallback(() => {
-    console.log('[HardwareScanView] 🔍 handleScanComplete called');
+    
     
     // ✅ Don't mark scan as complete if there's an error - stay in error state
     const currentState = useAppStore.getState();
@@ -501,7 +501,7 @@ function HardwareScanView({
       return; // Don't complete scan, stay in error state
     }
     
-    console.log('[HardwareScanView] ✅ Scan visual complete, starting daemon health check');
+    
     setScanProgress(prev => ({ ...prev, current: prev.total }));
     setCurrentPart(null);
     setScanComplete(true);
@@ -567,12 +567,6 @@ function HardwareScanView({
       setCurrentPart(null);
     }
   }, [scanComplete, startupError, scanError]);
-
-  // 🔍 DEBUG: Log when HardwareScanView mounts
-  useEffect(() => {
-    console.log('[HardwareScanView] 🎯 MOUNTED', { isStarting, robotStatus });
-    return () => console.log('[HardwareScanView] 🎯 UNMOUNTED');
-  }, []);
 
   // Cleanup intervals on unmount
   useEffect(() => {

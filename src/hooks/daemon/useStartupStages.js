@@ -101,7 +101,7 @@ export function useStartupStages({
             const currentIndex = stages.findIndex(s => s.id === currentStage.id);
             
             if (detectedIndex > currentIndex) {
-              console.log(`🚀 Stage detected from log: ${detected.label}`);
+              
               setCurrentStage(detected);
               setStageAttempts(0);
               setDetectedFromLog(true);

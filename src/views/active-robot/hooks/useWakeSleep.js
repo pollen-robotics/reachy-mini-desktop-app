@@ -60,7 +60,7 @@ export function useWakeSleep() {
       { label: 'Check motor status' }
     );
     const status = await statusResponse.json();
-    console.log('🔧 Motor status:', status);
+    
     
     return status;
   }, []);
@@ -97,7 +97,7 @@ export function useWakeSleep() {
     }
     
     const data = await response.json();
-    console.log('✅ Wake up animation started, UUID:', data.uuid);
+    
     return data;
   }, []);
   
@@ -117,7 +117,7 @@ export function useWakeSleep() {
     }
     
     const data = await response.json();
-    console.log('✅ Goto sleep animation started, UUID:', data.uuid);
+    
     return data;
   }, []);
   
@@ -152,7 +152,7 @@ export function useWakeSleep() {
     setError(null);
     
     try {
-      console.log('🌅 Waking up robot...');
+      
       
       // 1. Enable motors
       await enableMotors();
@@ -168,7 +168,7 @@ export function useWakeSleep() {
       
       // 5. Transition to ready
       transitionTo.ready();
-      console.log('✅ Robot is now awake');
+      
       
       return true;
     } catch (err) {
@@ -203,7 +203,7 @@ export function useWakeSleep() {
     setError(null);
     
     try {
-      console.log('😴 Sending robot to sleep...');
+      
       
       // 1. Transition immediately to sleeping (blocks all actions, but NOT safe to shutdown yet)
       transitionTo.sleeping({ safeToShutdown: false });
@@ -220,7 +220,7 @@ export function useWakeSleep() {
       // 5. NOW it's safe to shutdown (animation done + motors disabled)
       transitionTo.sleeping({ safeToShutdown: true });
       
-      console.log('✅ Robot is now sleeping and safe to shutdown');
+      
       return true;
     } catch (err) {
       console.error('Go to sleep error:', err);

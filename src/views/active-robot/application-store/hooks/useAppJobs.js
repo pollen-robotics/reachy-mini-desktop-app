@@ -209,7 +209,7 @@ export function useAppJobs(setActiveJobs, fetchAvailableApps) {
               // Don't await - let it run in background to avoid UI freeze
               invoke('sign_python_binaries')
                 .then((result) => {
-                  console.log('[AppJobs] Python binaries re-signed:', result);
+                  
                   // Don't log to frontend to avoid noise, but log to console for debugging
                 })
                 .catch((err) => {

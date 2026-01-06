@@ -75,7 +75,6 @@ export function WebRTCStreamProvider({ children }) {
           setCheckFailed(true);
         }
       } catch (e) {
-        console.warn('[WebRTCContext] Failed to check wireless version:', e);
         setCheckFailed(true);
       }
     };
@@ -99,7 +98,7 @@ export function WebRTCStreamProvider({ children }) {
       try {
         sessionRef.current.close();
       } catch (e) {
-        console.warn('[WebRTCContext] Error closing session:', e);
+        // Ignore cleanup errors
       }
       sessionRef.current = null;
     }
@@ -115,7 +114,7 @@ export function WebRTCStreamProvider({ children }) {
           connectionListenerRef.current = null;
         }
       } catch (e) {
-        console.warn('[WebRTCContext] Error cleaning up API:', e);
+        // Ignore cleanup errors
       }
       apiRef.current = null;
     }
@@ -134,14 +133,11 @@ export function WebRTCStreamProvider({ children }) {
       return;
     }
 
-    // Clean up any existing connection first
     cleanup();
-
     setState(StreamState.CONNECTING);
     setError(null);
 
     const signalingUrl = `ws://${remoteHost}:${SIGNALING_PORT}`;
-    console.log(`[WebRTCContext] Connecting to signaling server: ${signalingUrl}`);
 
     try {
       const GstWebRTCAPI = window.GstWebRTCAPI;
@@ -167,17 +163,14 @@ export function WebRTCStreamProvider({ children }) {
       connectionListenerRef.current = {
         connected: (clientId) => {
           if (!mountedRef.current) return;
-          console.log('[WebRTCContext] Connected to signaling server, client ID:', clientId);
         },
         disconnected: () => {
           if (!mountedRef.current) return;
-          console.log('[WebRTCContext] Disconnected from signaling server');
           setState(StreamState.DISCONNECTED);
           setStream(null);
 
           // Schedule reconnect if still should connect
           if (mountedRef.current && !reconnectTimeoutRef.current) {
-            console.log(`[WebRTCContext] Scheduling reconnect in ${RECONNECT_DELAY}ms`);
             reconnectTimeoutRef.current = setTimeout(() => {
               reconnectTimeoutRef.current = null;
               if (mountedRef.current) {
@@ -194,18 +187,14 @@ export function WebRTCStreamProvider({ children }) {
       producersListenerRef.current = {
         producerAdded: (producer) => {
           if (!mountedRef.current) return;
-          console.log('[WebRTCContext] Producer found:', producer.id, producer.meta);
 
           if (sessionRef.current) {
-            console.log('[WebRTCContext] Already have a session, ignoring producer');
             return;
           }
 
-          console.log('[WebRTCContext] Creating consumer session for producer:', producer.id);
-
           const session = api.createConsumerSession(producer.id);
           if (!session) {
-            console.error('[WebRTCContext] Failed to create consumer session');
+            console.error('[WebRTC] Failed to create consumer session');
             return;
           }
 
@@ -213,25 +202,13 @@ export function WebRTCStreamProvider({ children }) {
 
           session.addEventListener('error', (e) => {
             if (!mountedRef.current) return;
-            // Log the full error details to understand ICE failures
-            console.error('[WebRTCContext] Session error:', e.message);
-            console.error('[WebRTCContext] Error details:', e.error);
-            console.error('[WebRTCContext] Full event:', e);
-            // Also log RTCPeerConnection state if available
-            if (session.rtcPeerConnection) {
-              const pc = session.rtcPeerConnection;
-              console.error('[WebRTCContext] ICE state:', pc.iceConnectionState);
-              console.error('[WebRTCContext] ICE gathering:', pc.iceGatheringState);
-              console.error('[WebRTCContext] Signaling state:', pc.signalingState);
-              console.error('[WebRTCContext] Connection state:', pc.connectionState);
-            }
+            console.error('[WebRTC] Session error:', e.message);
             setError(e.message || 'Stream error');
             setState(StreamState.ERROR);
           });
 
           session.addEventListener('closed', () => {
             if (!mountedRef.current) return;
-            console.log('[WebRTCContext] Session closed');
             sessionRef.current = null;
             setStream(null);
             setState((prev) => prev === StreamState.CONNECTED ? StreamState.DISCONNECTED : prev);
@@ -240,7 +217,6 @@ export function WebRTCStreamProvider({ children }) {
           session.addEventListener('streamsChanged', () => {
             if (!mountedRef.current) return;
             const streams = session.streams;
-            console.log('[WebRTCContext] Streams changed:', streams?.length || 0);
 
             if (streams && streams.length > 0) {
               const mediaStream = streams[0];
@@ -250,10 +226,8 @@ export function WebRTCStreamProvider({ children }) {
               // Extract audio track from stream (robot microphone)
               const audioTracks = mediaStream.getAudioTracks();
               if (audioTracks.length > 0) {
-                console.log('[WebRTCContext] Audio track found:', audioTracks[0].label);
                 setAudioTrack(audioTracks[0]);
               } else {
-                console.log('[WebRTCContext] No audio tracks in stream');
                 setAudioTrack(null);
               }
             }
@@ -264,7 +238,6 @@ export function WebRTCStreamProvider({ children }) {
 
         producerRemoved: (producer) => {
           if (!mountedRef.current) return;
-          console.log('[WebRTCContext] Producer removed:', producer.id);
 
           if (sessionRef.current) {
             sessionRef.current.close();
@@ -278,7 +251,7 @@ export function WebRTCStreamProvider({ children }) {
       api.registerProducersListener(producersListenerRef.current);
 
     } catch (e) {
-      console.error('[WebRTCContext] Connection error:', e);
+      console.error('[WebRTC] Connection error:', e.message);
       setError(e.message);
       setState(StreamState.ERROR);
     }
@@ -288,7 +261,6 @@ export function WebRTCStreamProvider({ children }) {
    * Disconnect from the stream
    */
   const disconnect = useCallback(() => {
-    console.log('[WebRTCContext] Disconnecting...');
     cleanup();
     setState(StreamState.DISCONNECTED);
   }, [cleanup]);
@@ -313,12 +285,12 @@ export function WebRTCStreamProvider({ children }) {
     // State
     state,
     stream,
-    audioTrack, // Robot microphone audio track
+    audioTrack,
     error,
     isConnected: state === StreamState.CONNECTED,
     isConnecting: state === StreamState.CONNECTING,
     
-    // Derived state (for CameraFeed placeholders)
+    // Derived state
     isWifiMode,
     isWirelessVersion,
     checkFailed,
@@ -349,4 +321,3 @@ export function useWebRTCStreamContext() {
 }
 
 export default WebRTCStreamContext;
-

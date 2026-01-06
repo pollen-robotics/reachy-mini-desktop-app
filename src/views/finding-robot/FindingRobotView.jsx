@@ -245,7 +245,7 @@ export default function FindingRobotView() {
           savedMode === ConnectionMode.SIMULATION;
         
         if (isAvailable) {
-          console.log(`🔌 Restored last connection mode: ${savedMode}`);
+          
           setSelectedMode(savedMode);
           hasRestoredFromStorage.current = true;
         }
@@ -275,11 +275,11 @@ export default function FindingRobotView() {
     if (isBusy) return; // Don't deselect during connection
     
     if (selectedMode === ConnectionMode.USB && !usbRobot.available) {
-      console.log('🔌 USB became unavailable, deselecting');
+      
       setSelectedMode(null);
     }
     if (selectedMode === ConnectionMode.WIFI && !wifiRobot.available) {
-      console.log('🔌 WiFi became unavailable, deselecting');
+      
       setSelectedMode(null);
     }
     // Simulation is always available, no need to check

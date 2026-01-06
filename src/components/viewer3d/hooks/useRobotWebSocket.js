@@ -38,7 +38,7 @@ export function useRobotWebSocket(isActive) {
   useEffect(() => {
     wasmReadyRef.current = wasmReady;
     if (wasmReady) {
-      console.log('🦀 WASM Kinematics ready for passive joints calculation');
+      
     }
   }, [wasmReady]);
 
@@ -80,7 +80,7 @@ export function useRobotWebSocket(isActive) {
           // WebSocket connected - reset attempts counter on success
           reconnectAttemptsRef.current = 0;
           if (isWiFiRef.current) {
-            console.log('🌐 WiFi WebSocket: Connected successfully!');
+            
           }
         };
 
