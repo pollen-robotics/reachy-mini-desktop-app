@@ -15,19 +15,19 @@ export function useAppFetching() {
    * @returns {Promise<string[]>} Array of official app IDs
    */
   const fetchOfficialAppIds = useCallback(async () => {
-    const listResponse = await fetchExternal(
-      OFFICIAL_APP_LIST_URL,
-      {},
-      DAEMON_CONFIG.TIMEOUTS.APPS_LIST,
-      { silent: true }
-    );
-    if (!listResponse.ok) {
-      const error = new Error(`HTTP ${listResponse.status}`);
-      error.name = 'NetworkError';
-      throw error;
-    }
-    const authorizedIds = await listResponse.json();
-    return Array.isArray(authorizedIds) ? authorizedIds : [];
+      const listResponse = await fetchExternal(
+        OFFICIAL_APP_LIST_URL,
+        {},
+        DAEMON_CONFIG.TIMEOUTS.APPS_LIST,
+        { silent: true }
+      );
+      if (!listResponse.ok) {
+        const error = new Error(`HTTP ${listResponse.status}`);
+        error.name = 'NetworkError';
+        throw error;
+      }
+      const authorizedIds = await listResponse.json();
+      return Array.isArray(authorizedIds) ? authorizedIds : [];
   }, []);
 
   /**

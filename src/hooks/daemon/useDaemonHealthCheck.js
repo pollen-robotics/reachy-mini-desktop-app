@@ -16,6 +16,7 @@ import { useDaemonEventBus } from './useDaemonEventBus';
  * - Transitioning to ready (that's HardwareScanView's job)
  *
  * ⚠️ SKIP during installations (daemon may be overloaded)
+ * ⚠️ SKIP during wake/sleep transitions (daemon may be busy with animation)
  *
  * Why /api/daemon/status instead of /health-check?
  * - /health-check only exists if --timeout-health-check is passed (not our case)
@@ -29,7 +30,8 @@ import { useDaemonEventBus } from './useDaemonEventBus';
  * If interval = timeout, slow responses cause avalanche timeouts and false crashes.
  */
 export function useDaemonHealthCheck(isActive) {
-  const { isDaemonCrashed, incrementTimeouts, resetTimeouts } = useAppStore();
+  const { isDaemonCrashed, isWakeSleepTransitioning, incrementTimeouts, resetTimeouts } =
+    useAppStore();
 
   // ✅ Event Bus for centralized event handling
   const eventBus = useDaemonEventBus();
@@ -43,6 +45,12 @@ export function useDaemonHealthCheck(isActive) {
     // Don't poll if daemon is already crashed
     if (isDaemonCrashed) {
       console.warn('⚠️ Daemon crashed, stopping health check polling');
+      return;
+    }
+
+    // ⏸️ Pause health check during wake/sleep transitions
+    // The daemon may be busy with animation and respond slowly
+    if (isWakeSleepTransitioning) {
       return;
     }
 
@@ -146,5 +154,5 @@ export function useDaemonHealthCheck(isActive) {
     return () => {
       clearInterval(interval);
     };
-  }, [isActive, isDaemonCrashed]); // Removed setters from deps - Zustand setters are stable
+  }, [isActive, isDaemonCrashed, isWakeSleepTransitioning]); // Removed setters from deps - Zustand setters are stable
 }

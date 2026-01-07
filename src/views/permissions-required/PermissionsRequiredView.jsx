@@ -265,7 +265,7 @@ export default function PermissionsRequiredView({ isRestarting: externalIsRestar
 
       if (result === false) {
         // Permission denied, open settings
-        await invoke(settingsCommand);
+          await invoke(settingsCommand);
       }
     } catch (error) {
       const errorMsg = error?.message || error?.toString() || 'Unknown error';
