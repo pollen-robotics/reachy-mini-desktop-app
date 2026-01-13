@@ -190,7 +190,7 @@ jobs:
           }
 
       - name: Setup Apple Code Signing (macOS only)
-        if: matrix.os == 'macos-latest'
+        if: startsWith(matrix.os, 'macos')
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -438,7 +438,7 @@ jobs:
           echo "✅ Version updated successfully"
 
       - name: Setup App Store Connect API Key (macOS only)
-        if: matrix.os == 'macos-latest'
+        if: startsWith(matrix.os, 'macos')
         shell: bash
         run: |
           # Verify all notarization variables are defined and valid
@@ -517,7 +517,7 @@ jobs:
           echo "   APPLE_API_ISSUER: ${CLEANED_ISSUER:0:8}... (valid UUID)"
 
       - name: Verify Rust target before build (macOS)
-        if: matrix.os == 'macos-latest'
+        if: startsWith(matrix.os, 'macos')
         shell: bash
         run: |
           echo "🔍 Pre-build verification of Rust target: ${{ matrix.target }}"
@@ -535,7 +535,7 @@ jobs:
           echo "✅ Target ${{ matrix.target }} verified"
 
       - name: Build Tauri app (macOS)
-        if: matrix.os == 'macos-latest'
+        if: startsWith(matrix.os, 'macos')
         env:
           # Don't pass APPLE_SIGNING_IDENTITY to prevent Tauri from auto-signing
           # We'll sign manually after build with our script that signs ALL binaries
@@ -838,7 +838,7 @@ jobs:
           echo "✅ Post-install scripts added to .deb package"
 
       - name: Sign all binaries (macOS only)
-        if: matrix.os == 'macos-latest'
+        if: startsWith(matrix.os, 'macos')
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         shell: bash
@@ -870,7 +870,7 @@ jobs:
           }
 
       - name: Notarize and Staple App (macOS only)
-        if: matrix.os == 'macos-latest'
+        if: startsWith(matrix.os, 'macos')
         env:
           APPLE_API_ISSUER: ${{ env.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ env.APPLE_API_KEY }}
@@ -955,13 +955,13 @@ jobs:
           fi
 
       - name: Install create-dmg (macOS only)
-        if: matrix.os == 'macos-latest'
+        if: startsWith(matrix.os, 'macos')
         run: |
           echo "📦 Installing create-dmg..."
           brew install create-dmg
 
       - name: Create DMG installer (macOS only)
-        if: matrix.os == 'macos-latest'
+        if: startsWith(matrix.os, 'macos')
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         shell: bash
@@ -1023,7 +1023,7 @@ jobs:
           echo "RELEASE_DMG_PATH=$DMG_PATH" >> $GITHUB_ENV
 
       - name: Notarize DMG (macOS only)
-        if: matrix.os == 'macos-latest'
+        if: startsWith(matrix.os, 'macos')
         env:
           APPLE_API_ISSUER: ${{ env.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ env.APPLE_API_KEY }}
@@ -1159,6 +1159,10 @@ jobs:
             src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.zip
             src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
             src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+            src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.dmg
+            src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.zip
+            src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
             releases/**/*.tar.gz
             releases/**/*.zip
             releases/**/*.zip.sig
@@ -1177,10 +1181,10 @@ jobs:
             ${{ matrix.os == 'ubuntu-22.04' && format('src-tauri/target/{0}/release/bundle/appimage/*.AppImage', matrix.target) || '' }}
             ${{ matrix.os == 'ubuntu-22.04' && format('src-tauri/target/{0}/release/bundle/appimage/*.AppImage.tar.gz', matrix.target) || '' }}
             ${{ matrix.os == 'ubuntu-22.04' && format('src-tauri/target/{0}/release/bundle/appimage/*.AppImage.tar.gz.sig', matrix.target) || '' }}
-            ${{ matrix.os == 'macos-latest' && format('src-tauri/target/{0}/release/bundle/macos/*.dmg', matrix.target) || '' }}
-            ${{ matrix.os == 'macos-latest' && format('src-tauri/target/{0}/release/bundle/macos/*.zip', matrix.target) || '' }}
-            ${{ matrix.os == 'macos-latest' && format('src-tauri/target/{0}/release/bundle/macos/*.app.tar.gz', matrix.target) || '' }}
-            ${{ matrix.os == 'macos-latest' && format('src-tauri/target/{0}/release/bundle/macos/*.app.tar.gz.sig', matrix.target) || '' }}
+            ${{ startsWith(matrix.os, 'macos') && format('src-tauri/target/{0}/release/bundle/macos/*.dmg', matrix.target) || '' }}
+            ${{ startsWith(matrix.os, 'macos') && format('src-tauri/target/{0}/release/bundle/macos/*.zip', matrix.target) || '' }}
+            ${{ startsWith(matrix.os, 'macos') && format('src-tauri/target/{0}/release/bundle/macos/*.app.tar.gz', matrix.target) || '' }}
+            ${{ startsWith(matrix.os, 'macos') && format('src-tauri/target/{0}/release/bundle/macos/*.app.tar.gz.sig', matrix.target) || '' }}
             releases/**/*.tar.gz
             releases/**/*.zip
             releases/**/*.zip.sig
