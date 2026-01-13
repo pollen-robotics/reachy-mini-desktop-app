@@ -143,6 +143,7 @@ pub fn run() {
             permissions::open_camera_settings,
             permissions::open_microphone_settings,
             permissions::open_wifi_settings,
+            permissions::open_files_settings,
             wifi::scan_local_wifi_networks,
             wifi::get_current_wifi_ssid,
             update::check_daemon_update,

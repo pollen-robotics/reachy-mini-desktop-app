@@ -4,9 +4,7 @@
       "binaries/uv.exe": "uv.exe",
       "binaries/uvx.exe": "uvx.exe",
       "binaries/.venv": ".venv",
-      "binaries/.venv/*": ".venv/",
-      "binaries/cpython-3.12.12-windows-x86_64-none": "cpython-3.12-windows-x86_64",
-      "binaries/cpython-3.12.12-windows-x86_64-none/*": "cpython-3.12-windows-x86_64/"
+      "binaries/.venv/*": ".venv/"
     },
     "windows": {
       "certificateThumbprint": null,
@@ -15,4 +13,3 @@
     }
   }
 }
-

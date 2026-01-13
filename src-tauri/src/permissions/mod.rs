@@ -96,6 +96,25 @@ pub fn open_wifi_settings() -> Result<(), String> {
     Ok(())
 }
 
+/// Open System Settings to Privacy & Security > Files and Folders (macOS)
+#[tauri::command]
+#[cfg(target_os = "macos")]
+pub fn open_files_settings() -> Result<(), String> {
+    use std::process::Command;
+    
+    let output = Command::new("open")
+        .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders")
+        .output()
+        .map_err(|e| format!("Failed to open System Settings: {}", e))?;
+    
+    if !output.status.success() {
+        return Err(format!("Failed to open System Settings: {}", 
+            String::from_utf8_lossy(&output.stderr)));
+    }
+    
+    Ok(())
+}
+
 // ============================================================================
 // Windows Implementation
 // ============================================================================
@@ -131,6 +150,18 @@ pub fn open_wifi_settings() -> Result<(), String> {
     // Open Windows Settings > Network & Internet > Wi-Fi
     Command::new("cmd")
         .args(["/C", "start", "ms-settings:network-wifi"])
+        .spawn()
+        .map_err(|e| format!("Failed to open Settings: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+#[cfg(target_os = "windows")]
+pub fn open_files_settings() -> Result<(), String> {
+    use std::process::Command;
+    // Open Windows Settings > Privacy > File System
+    Command::new("cmd")
+        .args(["/C", "start", "ms-settings:privacy-broadfilesystemaccess"])
         .spawn()
         .map_err(|e| format!("Failed to open Settings: {}", e))?;
     Ok(())
@@ -178,6 +209,18 @@ pub fn open_wifi_settings() -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+#[cfg(target_os = "linux")]
+pub fn open_files_settings() -> Result<(), String> {
+    // Linux doesn't have centralized file access permissions
+    // Best effort: open file manager or GNOME privacy settings
+    use std::process::Command;
+    let _ = Command::new("gnome-control-center")
+        .arg("privacy")
+        .spawn();
+    Ok(())
+}
+
 // ============================================================================
 // Fallback for other platforms (no-op)
 // ============================================================================
@@ -197,5 +240,11 @@ pub fn open_microphone_settings() -> Result<(), String> {
 #[tauri::command]
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 pub fn open_wifi_settings() -> Result<(), String> {
+    Ok(())
+}
+
+#[tauri::command]
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+pub fn open_files_settings() -> Result<(), String> {
     Ok(())
 }

@@ -109,23 +109,6 @@ else
     fi
 fi
 
-# Also reset All permissions (more comprehensive)
-echo "🔄 Resetting All permissions..."
-
-# Always try with bundle identifier first (works in production, may work in dev too)
-if tccutil reset All "$IDENTIFIER" >/dev/null 2>&1; then
-    echo "   ✅ All permissions reset (bundle identifier)"
-else
-    # In dev mode, if bundle identifier doesn't work, don't reset all apps
-    # (unsigned apps may not be in TCC with bundle identifier)
-    if [ "$IS_DEV" = true ]; then
-        echo "   ⚠️  Could not reset All permissions for $IDENTIFIER (app may not be in TCC)"
-        echo "      In dev mode, unsigned apps may not be registered in TCC with bundle identifier"
-        echo "      Try running the app first to register it, then run this script again"
-    else
-        echo "   ⚠️  Could not reset All permissions for $IDENTIFIER"
-    fi
-fi
 
 # In dev mode, also reset permissions for IDEs and terminals
 if [ "$IS_DEV" = true ]; then
@@ -136,19 +119,18 @@ if [ "$IS_DEV" = true ]; then
     
     reset_count=0
     for launcher in "${DEV_LAUNCHERS[@]}"; do
-        # Try to reset Camera and Microphone for each launcher
-        camera_reset=false
-        mic_reset=false
+        # Try to reset Camera and Microphone permissions for each launcher
+        any_reset=false
         
         if tccutil reset Camera "$launcher" >/dev/null 2>&1; then
-            camera_reset=true
+            any_reset=true
         fi
         if tccutil reset Microphone "$launcher" >/dev/null 2>&1; then
-            mic_reset=true
+            any_reset=true
         fi
         
         # Only show if at least one permission was reset
-        if [ "$camera_reset" = true ] || [ "$mic_reset" = true ]; then
+        if [ "$any_reset" = true ]; then
             echo "   ✅ $launcher"
             ((reset_count++)) || true
         fi
