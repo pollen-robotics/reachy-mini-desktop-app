@@ -158,8 +158,12 @@ export const createAppsSlice = (set, get) => ({
   unlockInstall: () => {
     const state = get();
     const success = state.installResult === 'success';
+    const durationSec = state.installStartTime
+      ? Math.round((Date.now() - state.installStartTime) / 1000)
+      : null;
+
     if (state.installingAppName) {
-      logInstallEnd(state.installingAppName, success);
+      logInstallEnd(state.installingAppName, success, durationSec, state.installJobType);
     }
     // Note: transitionTo.ready() is called from the caller
     // because it needs access to the robot slice

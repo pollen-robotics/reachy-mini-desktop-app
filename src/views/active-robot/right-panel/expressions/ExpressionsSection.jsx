@@ -12,6 +12,7 @@ import {
 import { useRobotCommands } from '@hooks/robot';
 import { useActiveRobotContext } from '../../context';
 import { useLogger } from '@/utils/logging';
+import { telemetry } from '@/utils/telemetry';
 
 // Constants
 const BUSY_DEBOUNCE_MS = 150;
@@ -123,6 +124,9 @@ export default function ExpressionsSection({ isBusy: isBusyProp = false, darkMod
 
       const logMessage = emoji ? `${emoji} ${action.label}` : action.label;
       logger.userAction(logMessage);
+
+      // 📊 Telemetry
+      telemetry.expressionPlayed({ name: action.name, type: action.type });
 
       // Play the move based on type
       if (action.type === 'dance') {

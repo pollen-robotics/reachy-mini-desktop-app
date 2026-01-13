@@ -87,7 +87,12 @@ pub fn run() {
         });
     }
 
+    // Aptabase App Key - Get yours at https://aptabase.com
+    // EU region keys start with "A-EU-", US region with "A-US-"
+    let aptabase_key = option_env!("APTABASE_KEY").unwrap_or("A-EU-PLACEHOLDER");
+
     let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_aptabase::Builder::new(aptabase_key).build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_positioner::init())

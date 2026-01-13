@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { DAEMON_CONFIG, fetchWithTimeout, buildApiUrl, getWsBaseUrl } from '../../../config/daemon';
 import useAppStore from '../../../store/useAppStore';
 import { ROBOT_STATUS } from '../../../constants/robotStatus';
+import { telemetry } from '../../../utils/telemetry';
 
 /**
  * Hook to manage robot wake/sleep state transitions
@@ -283,6 +284,9 @@ export function useWakeSleep() {
       // 5. Transition to ready
       transitionTo.ready();
 
+      // 📊 Telemetry
+      telemetry.robotWakeUp();
+
       return true;
     } catch (err) {
       console.error('Wake up error:', err);
@@ -341,6 +345,9 @@ export function useWakeSleep() {
 
       // 5. NOW it's safe to shutdown (animation done + motors disabled)
       transitionTo.sleeping({ safeToShutdown: true });
+
+      // 📊 Telemetry
+      telemetry.robotGoToSleep();
 
       return true;
     } catch (err) {
