@@ -1,8 +1,8 @@
 /**
  * Telemetry Module - Privacy-first analytics for Reachy Mini Control
  *
- * Uses Aptabase for anonymous, aggregated analytics.
- * No cookies, no fingerprinting, no device identifiers.
+ * Uses PostHog for anonymous, aggregated analytics.
+ * Can be self-hosted for full data ownership.
  *
  * Usage:
  *   import { telemetry } from '@/utils/telemetry';
@@ -13,7 +13,7 @@
  *   track.expressionPlayed({ name: 'loving1', type: 'emotion' });
  */
 
-import { trackEvent } from '@aptabase/tauri';
+import { PostHog } from 'tauri-plugin-posthog-api';
 import {
   EVENTS,
   validateConnectionMode,
@@ -60,7 +60,7 @@ const track = async (event, props = {}) => {
       Object.entries(props).filter(([_, v]) => v !== undefined && v !== null)
     );
 
-    await trackEvent(event, cleanProps);
+    await PostHog.capture(event, cleanProps);
 
     // Debug log in development
     if (import.meta.env.DEV) {
