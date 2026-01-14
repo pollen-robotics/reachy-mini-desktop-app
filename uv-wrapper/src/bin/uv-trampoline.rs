@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 use std::fs;
 
-use uv_wrapper::lookup_bin_folder;
+use uv_wrapper::{find_cpython_folder, lookup_bin_folder, patching_pyvenv_cfg};
 
 #[cfg(target_os = "windows")]
 use uv_wrapper::{get_local_app_data_dir, is_program_files_path, setup_local_venv_windows};
@@ -44,7 +44,7 @@ fn get_possible_bin_folders() -> Vec<&'static str> {
     //   ├── uv-trampoline-*.exe  (sidecar)
     //   ├── uv.exe               (resource)
     //   ├── .venv/               (resource)
-    //   └── .venv/               (resource, self-contained with --relocatable)
+    //   └── cpython-*/           (resource)
     //
     // BUT: Program Files is read-only, so we copy to %LOCALAPPDATA%\Reachy Mini Control\
     // The local copy has patched pyvenv.cfg with correct paths
@@ -329,7 +329,7 @@ fn main() -> ExitCode {
     };
     
     // On Windows, if we're running from Program Files, setup local venv first
-    // This copies .venv to %LOCALAPPDATA% where we can write
+    // This copies .venv and cpython to %LOCALAPPDATA% where we can write
     #[cfg(target_os = "windows")]
     {
         let exe_dir = env::current_exe()
@@ -352,7 +352,7 @@ fn main() -> ExitCode {
     }
     
     // On Linux, if running from /usr/lib/, copy venv to ~/.local/share/
-    // This copies .venv to XDG_DATA_HOME where we can write
+    // This copies .venv and cpython to XDG_DATA_HOME where we can write
     #[cfg(target_os = "linux")]
     {
         let exe_dir = env::current_exe()
@@ -400,9 +400,31 @@ fn main() -> ExitCode {
     }
 
     println!("📂 Running from {:?}", uv_folder);
+
+    let cpython_folder = match find_cpython_folder(&uv_folder) {
+        Ok(folder) => folder,
+        Err(e) => {
+            eprintln!("❌ Error: Unable to find cpython folder: {}", e);
+            return ExitCode::FAILURE;
+        }
+    };
     
-    // Note: With --relocatable venv, we no longer need to find cpython or patch pyvenv.cfg
-    // The venv is self-contained and works from any location
+    if let Err(e) = patching_pyvenv_cfg(&uv_folder, &cpython_folder) {
+        // Check if this is an AppTranslocation error
+        if e.contains("APP_TRANSLOCATION_ERROR") {
+            eprintln!("❌ AppTranslocation Error: {}", e);
+            eprintln!("");
+            eprintln!("📱 Please move the app to the Applications folder:");
+            eprintln!("   1. Open Finder");
+            eprintln!("   2. Drag 'Reachy Mini Control.app' to Applications");
+            eprintln!("   3. Launch from Applications");
+            eprintln!("");
+            eprintln!("This is required because macOS isolates apps downloaded from the internet.");
+            return ExitCode::FAILURE;
+        }
+        eprintln!("⚠️  Warning: Unable to patch pyvenv.cfg: {}", e);
+        // Continue anyway, this is not fatal
+    }
     
     // Get the absolute working directory for environment variables
     let working_dir = match env::current_dir() {

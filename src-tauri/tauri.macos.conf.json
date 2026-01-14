@@ -4,6 +4,8 @@
       "binaries/uv": "uv",
       "binaries/uvx": "uvx",
       "binaries/.venv": ".venv",
+      "binaries/cpython-3.12.12-macos-aarch64-none": "cpython-3.12.12-macos-aarch64-none",
+      "binaries/cpython-3.12.12-macos-aarch64-none/lib": ".venv/lib",
       "python-entitlements.plist": "python-entitlements.plist"
     },
     "macOS": {
@@ -16,3 +18,4 @@
     }
   }
 }
+

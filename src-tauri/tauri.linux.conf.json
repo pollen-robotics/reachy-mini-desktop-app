@@ -3,7 +3,9 @@
     "resources": {
       "binaries/uv": "uv",
       "binaries/uvx": "uvx",
-      "binaries/.venv": ".venv"
+      "binaries/.venv": ".venv",
+      "binaries/cpython-3.12*-linux-x86_64*": "cpython-3.12-linux-x86_64",
+      "binaries/cpython-3.12*-linux-x86_64*/lib": ".venv/lib"
     },
     "linux": {
       "deb": {
@@ -15,3 +17,4 @@
     }
   }
 }
+

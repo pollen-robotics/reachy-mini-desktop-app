@@ -329,8 +329,8 @@ export default function UpdateView({
       </Box>
 
       {/* Internet connectivity indicator - discrete pastille above logs */}
-      {/* Only display after first check is complete */}
-      {hasInternetChecked && (
+      {/* Only display during initial check, hide when update is being downloaded */}
+      {hasInternetChecked && !updateAvailable && !isDownloading && (
         <Box
           sx={{
             position: 'absolute',

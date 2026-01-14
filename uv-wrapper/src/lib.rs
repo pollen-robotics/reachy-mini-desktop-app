@@ -92,19 +92,31 @@ pub fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Resul
 
 /// Setup local venv on Windows by copying from Program Files to %LOCALAPPDATA%
 /// Returns the local directory path if setup was successful or already done
-/// Note: With --relocatable venv, we no longer need cpython or pyvenv.cfg patching
 #[cfg(target_os = "windows")]
 pub fn setup_local_venv_windows(program_files_dir: &std::path::Path) -> Result<PathBuf, String> {
     let local_dir = get_local_app_data_dir()
         .ok_or_else(|| "LOCALAPPDATA environment variable not set".to_string())?;
     
-    // Check if local venv already exists
+    // Check if local venv already exists and is valid
     let local_venv = local_dir.join(".venv");
-    let local_python = local_venv.join("Scripts").join("python.exe");
+    let local_pyvenv_cfg = local_venv.join("pyvenv.cfg");
     
-    if local_python.exists() {
-        println!("✅ Local venv already configured at {:?}", local_dir);
-        return Ok(local_dir);
+    if local_pyvenv_cfg.exists() {
+        // Check if the pyvenv.cfg points to a valid cpython
+        let content = fs::read_to_string(&local_pyvenv_cfg)
+            .map_err(|e| format!("Failed to read local pyvenv.cfg: {}", e))?;
+        
+        // Check if home path exists
+        for line in content.lines() {
+            if line.starts_with("home = ") {
+                let home_path = line.trim_start_matches("home = ");
+                if std::path::Path::new(home_path).exists() {
+                    println!("✅ Local venv already configured at {:?}", local_dir);
+                    return Ok(local_dir);
+                }
+            }
+        }
+        println!("⚠️  Local venv exists but has invalid paths, reconfiguring...");
     }
     
     println!("📦 Setting up local Python environment...");
@@ -115,7 +127,7 @@ pub fn setup_local_venv_windows(program_files_dir: &std::path::Path) -> Result<P
     fs::create_dir_all(&local_dir)
         .map_err(|e| format!("Failed to create local directory: {}", e))?;
     
-    // Copy .venv (self-contained with --relocatable)
+    // Copy .venv
     let src_venv = program_files_dir.join(".venv");
     if src_venv.exists() {
         println!("   📁 Copying .venv...");
@@ -130,6 +142,23 @@ pub fn setup_local_venv_windows(program_files_dir: &std::path::Path) -> Result<P
         return Err(format!(".venv not found at {:?}", src_venv));
     }
     
+    // Copy cpython folder
+    let cpython_folder = find_cpython_folder(program_files_dir)?;
+    let src_cpython = program_files_dir.join(&cpython_folder);
+    let dst_cpython = local_dir.join(&cpython_folder);
+    
+    if src_cpython.exists() {
+        println!("   📁 Copying {}...", cpython_folder);
+        if dst_cpython.exists() {
+            fs::remove_dir_all(&dst_cpython)
+                .map_err(|e| format!("Failed to remove old cpython: {}", e))?;
+        }
+        copy_dir_recursive(&src_cpython, &dst_cpython)?;
+        println!("   ✅ {} copied", cpython_folder);
+    } else {
+        return Err(format!("cpython folder not found at {:?}", src_cpython));
+    }
+    
     // Copy uv.exe and uvx.exe
     for exe in &["uv.exe", "uvx.exe"] {
         let src_exe = program_files_dir.join(exe);
@@ -140,6 +169,11 @@ pub fn setup_local_venv_windows(program_files_dir: &std::path::Path) -> Result<P
             println!("   ✅ {} copied", exe);
         }
     }
+    
+    // Patch pyvenv.cfg with local paths
+    println!("   🔧 Patching pyvenv.cfg...");
+    patching_pyvenv_cfg(&local_dir, &cpython_folder)?;
+    println!("   ✅ pyvenv.cfg patched");
     
     println!("✅ Local Python environment ready at {:?}", local_dir);
     Ok(local_dir)
@@ -152,19 +186,31 @@ pub fn setup_local_venv_windows(_program_files_dir: &std::path::Path) -> Result<
 
 /// Setup local venv on Linux by copying from /usr/lib/ to ~/.local/share/
 /// Returns the local directory path if setup was successful or already done
-/// Note: With --relocatable venv, we no longer need cpython or pyvenv.cfg patching
 #[cfg(target_os = "linux")]
 pub fn setup_local_venv_linux(system_lib_dir: &std::path::Path) -> Result<PathBuf, String> {
     let local_dir = get_xdg_data_home()
         .ok_or_else(|| "HOME environment variable not set".to_string())?;
     
-    // Check if local venv already exists
+    // Check if local venv already exists and is valid
     let local_venv = local_dir.join(".venv");
-    let local_python = local_venv.join("bin").join("python3");
+    let local_pyvenv_cfg = local_venv.join("pyvenv.cfg");
     
-    if local_python.exists() {
-        println!("✅ Local venv already configured at {:?}", local_dir);
-        return Ok(local_dir);
+    if local_pyvenv_cfg.exists() {
+        // Check if the pyvenv.cfg points to a valid cpython
+        let content = fs::read_to_string(&local_pyvenv_cfg)
+            .map_err(|e| format!("Failed to read local pyvenv.cfg: {}", e))?;
+        
+        // Check if home path exists
+        for line in content.lines() {
+            if line.starts_with("home = ") {
+                let home_path = line.trim_start_matches("home = ");
+                if std::path::Path::new(home_path).exists() {
+                    println!("✅ Local venv already configured at {:?}", local_dir);
+                    return Ok(local_dir);
+                }
+            }
+        }
+        println!("⚠️  Local venv exists but has invalid paths, reconfiguring...");
     }
     
     println!("📦 Setting up local Python environment...");
@@ -175,7 +221,7 @@ pub fn setup_local_venv_linux(system_lib_dir: &std::path::Path) -> Result<PathBu
     fs::create_dir_all(&local_dir)
         .map_err(|e| format!("Failed to create local directory: {}", e))?;
     
-    // Copy .venv (self-contained with --relocatable)
+    // Copy .venv
     let src_venv = system_lib_dir.join(".venv");
     if src_venv.exists() {
         println!("   📁 Copying .venv...");
@@ -188,6 +234,23 @@ pub fn setup_local_venv_linux(system_lib_dir: &std::path::Path) -> Result<PathBu
         println!("   ✅ .venv copied");
     } else {
         return Err(format!(".venv not found at {:?}", src_venv));
+    }
+    
+    // Copy cpython folder
+    let cpython_folder = find_cpython_folder(system_lib_dir)?;
+    let src_cpython = system_lib_dir.join(&cpython_folder);
+    let dst_cpython = local_dir.join(&cpython_folder);
+    
+    if src_cpython.exists() {
+        println!("   📁 Copying {}...", cpython_folder);
+        if dst_cpython.exists() {
+            fs::remove_dir_all(&dst_cpython)
+                .map_err(|e| format!("Failed to remove old cpython: {}", e))?;
+        }
+        copy_dir_recursive(&src_cpython, &dst_cpython)?;
+        println!("   ✅ {} copied", cpython_folder);
+    } else {
+        return Err(format!("cpython folder not found at {:?}", src_cpython));
     }
     
     // Copy uv and uvx binaries
@@ -211,6 +274,11 @@ pub fn setup_local_venv_linux(system_lib_dir: &std::path::Path) -> Result<PathBu
             println!("   ✅ {} copied", bin);
         }
     }
+    
+    // Patch pyvenv.cfg with local paths
+    println!("   🔧 Patching pyvenv.cfg...");
+    patching_pyvenv_cfg(&local_dir, &cpython_folder)?;
+    println!("   ✅ pyvenv.cfg patched");
     
     println!("✅ Local Python environment ready at {:?}", local_dir);
     Ok(local_dir)
@@ -283,6 +351,87 @@ pub fn run_command(cmd: &str) -> Result<std::process::ExitStatus, std::io::Error
     Ok(status)
 }
 
-// Note: find_cpython_folder and patching_pyvenv_cfg have been removed
-// With --relocatable venv, the venv is self-contained and doesn't need cpython or patching
+pub fn find_cpython_folder(uv_folder: &std::path::Path) -> Result<String, String> {
+    let entries = std::fs::read_dir(uv_folder)
+        .map_err(|e| format!("Unable to read uv folder for cpython lookup: {}", e))?;
+
+    for entry in entries {
+        let entry = entry
+            .map_err(|e| format!("Unable to read entry in uv folder: {}", e))?;
+        let file_name = entry.file_name();
+        let file_name_str = file_name.to_string_lossy();
+
+        if file_name_str.starts_with("cpython-") && entry.path().is_dir() {
+            return Ok(file_name_str.to_string());
+        }
+    }
+
+    Err(format!(
+        "Unable to find cpython folder in {:?}",
+        uv_folder
+    ))
+}
+
+/// Check if the current path is in AppTranslocation (macOS security feature)
+#[cfg(target_os = "macos")]
+pub fn is_app_translocation_path(path: &std::path::Path) -> bool {
+    path.to_string_lossy().contains("AppTranslocation")
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn is_app_translocation_path(_path: &std::path::Path) -> bool {
+    false
+}
+
+pub fn patching_pyvenv_cfg(uv_folder: &std::path::Path, cpython_folder: &str) -> Result<(), String> {
+    let pyvenv_cfg_path = uv_folder.join(".venv").join("pyvenv.cfg");
+    
+    // Check if file exists before trying to patch it
+    if !pyvenv_cfg_path.exists() {
+        return Err(format!(
+            "pyvenv.cfg file does not exist at {:?}",
+            pyvenv_cfg_path
+        ));
+    }
+    
+    println!("🔧 Patching pyvenv.cfg at {:?}", pyvenv_cfg_path);
+
+    let content = std::fs::read_to_string(&pyvenv_cfg_path)
+        .map_err(|e| format!("Unable to read pyvenv.cfg for patching: {}", e))?;
+
+    #[cfg(target_os = "windows")]
+    let home = uv_folder.join(cpython_folder);
+    #[cfg(not(target_os = "windows"))]
+    let home = uv_folder.join(cpython_folder).join("bin");
+
+    let new_content = content
+        .lines()
+        .map(|line| {
+            if line.starts_with("home = ") {
+                format!("home = {}", home.display())
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<String>>()
+        .join("\n");
+
+    // Try to write the patched file
+    match std::fs::write(&pyvenv_cfg_path, new_content) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            let error_msg = format!("Unable to write patched pyvenv.cfg: {}", e);
+    
+            // Check if we're in AppTranslocation and the error is read-only
+            #[cfg(target_os = "macos")]
+            {
+                if is_app_translocation_path(uv_folder) && error_msg.contains("Read-only") {
+                    return Err(format!("APP_TRANSLOCATION_ERROR: {}", error_msg));
+                }
+            }
+            
+            Err(error_msg)
+        }
+    }
+}
 

@@ -116,7 +116,60 @@ jobs:
         run: |
           TARGET_TRIPLET=${{ matrix.target }} bash ./scripts/build/build-sidecar-unix.sh || echo "Sidecar build skipped"
 
-      # Note: cpython steps removed - venv is now self-contained with --relocatable
+      - name: Update macOS resources config with cpython folder name
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        run: |
+          # Find the actual cpython folder name created by uv-bundle
+          CPYTHON_FOLDER=$(ls -d src-tauri/binaries/cpython-* 2>/dev/null | head -1 | xargs basename || echo "")
+          
+          if [ -z "$CPYTHON_FOLDER" ]; then
+            echo "⚠️  No cpython folder found in src-tauri/binaries/, skipping config update"
+            exit 0
+          fi
+          
+          echo "🔧 Found cpython folder: $CPYTHON_FOLDER"
+          echo "   Updating tauri.macos.conf.json..."
+          
+          # Update the tauri.macos.conf.json with the exact cpython folder name
+          # The config has hardcoded aarch64 path, we need to replace it with the actual folder
+          sed -i '' "s|cpython-3.12[^\"]*|$CPYTHON_FOLDER|g" src-tauri/tauri.macos.conf.json
+          
+          echo "✅ Updated tauri.macos.conf.json:"
+          cat src-tauri/tauri.macos.conf.json
+          
+          # Verify the binaries directory contents
+          echo ""
+          echo "📦 Contents of src-tauri/binaries/:"
+          ls -la src-tauri/binaries/
+
+      - name: Update Linux resources config with cpython folder name
+        if: matrix.os == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          # Find the actual cpython folder name created by uv-bundle
+          CPYTHON_FOLDER=$(ls -d src-tauri/binaries/cpython-* 2>/dev/null | head -1 | xargs basename || echo "")
+          
+          if [ -z "$CPYTHON_FOLDER" ]; then
+            echo "⚠️  No cpython folder found in src-tauri/binaries/, skipping config update"
+            exit 0
+          fi
+          
+          echo "🔧 Found cpython folder: $CPYTHON_FOLDER"
+          echo "   Updating tauri.linux.conf.json..."
+          
+          # Update the tauri.linux.conf.json with the exact cpython folder name
+          # Replace glob patterns with the actual folder name using sed
+          sed -i "s|cpython-3.12\*-linux-x86_64\*|$CPYTHON_FOLDER|g" src-tauri/tauri.linux.conf.json
+          sed -i "s|cpython-3.12-linux-x86_64|$CPYTHON_FOLDER|g" src-tauri/tauri.linux.conf.json
+          
+          echo "✅ Updated tauri.linux.conf.json:"
+          cat src-tauri/tauri.linux.conf.json
+          
+          # Verify the binaries directory contents
+          echo ""
+          echo "📦 Contents of src-tauri/binaries/:"
+          ls -la src-tauri/binaries/
 
       - name: Build sidecar (Windows)
         if: matrix.os == 'windows-latest'
@@ -188,6 +241,32 @@ jobs:
             Write-Host "❌ ERROR: site-packages directory not found!"
             exit 1
           }
+
+      - name: Update Windows resources config with cpython folder name
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          # Find the actual cpython folder name created by uv-bundle
+          $CPYTHON_FOLDER = (Get-ChildItem -Directory "src-tauri/binaries/cpython-*" -ErrorAction SilentlyContinue | Select-Object -First 1).Name
+          
+          if (-not $CPYTHON_FOLDER) {
+            Write-Host "❌ No cpython folder found in src-tauri/binaries/"
+            Write-Host "   This is required for Windows build"
+            Get-ChildItem src-tauri/binaries/ -ErrorAction SilentlyContinue
+            exit 1
+          }
+          
+          Write-Host "🔧 Found cpython folder: $CPYTHON_FOLDER"
+          Write-Host "   Updating tauri.windows.conf.json..."
+          
+          # Update the tauri.windows.conf.json with the exact cpython folder name
+          $content = Get-Content src-tauri/tauri.windows.conf.json -Raw
+          $content = $content -replace 'cpython-3\.12\*-windows-x86_64\*', $CPYTHON_FOLDER
+          $content = $content -replace 'cpython-3\.12-windows-x86_64', $CPYTHON_FOLDER
+          $content | Set-Content src-tauri/tauri.windows.conf.json
+          
+          Write-Host "✅ Updated tauri.windows.conf.json:"
+          Get-Content src-tauri/tauri.windows.conf.json
 
       - name: Setup Apple Code Signing (macOS only)
         if: startsWith(matrix.os, 'macos')

@@ -70,53 +70,13 @@ fn main() {
     ))
     .expect("Failed to install python");
 
-    // Creating a venv with --relocatable to avoid hardcoded paths
+    // Creating a venv
     #[cfg(not(target_os = "windows"))]
-    run_command("UV_PYTHON_INSTALL_DIR=. UV_WORKING_DIR=. ./uv venv --relocatable")
+    run_command("UV_PYTHON_INSTALL_DIR=. UV_WORKING_DIR=. ./uv venv")
         .expect("Failed to create virtual environment");
     #[cfg(target_os = "windows")]
-    run_command("$env:UV_PYTHON_INSTALL_DIR = '.'; $env:UV_WORKING_DIR = '.'; ./uv.exe venv --relocatable")
+    run_command("$env:UV_PYTHON_INSTALL_DIR = '.'; $env:UV_WORKING_DIR = '.'; ./uv.exe venv")
         .expect("Failed to create virtual environment");
-
-    // Copy libpython to .venv/lib/ so the venv is fully self-contained
-    // This allows us to NOT bundle the entire cpython folder
-    #[cfg(target_os = "macos")]
-    {
-        // Find cpython folder and copy libpython3.12.dylib
-        let cpython_lib = std::fs::read_dir(".")
-            .expect("Failed to read current directory")
-            .filter_map(|e| e.ok())
-            .find(|e| e.file_name().to_string_lossy().starts_with("cpython-"))
-            .map(|e| e.path().join("lib").join("libpython3.12.dylib"));
-        
-        if let Some(src_lib) = cpython_lib {
-            if src_lib.exists() {
-                let dst_lib = std::path::Path::new(".venv/lib/libpython3.12.dylib");
-                std::fs::create_dir_all(".venv/lib").expect("Failed to create .venv/lib");
-                std::fs::copy(&src_lib, dst_lib).expect("Failed to copy libpython3.12.dylib");
-                println!("✅ Copied libpython3.12.dylib to .venv/lib/");
-            }
-        }
-    }
-    
-    #[cfg(target_os = "linux")]
-    {
-        // Find cpython folder and copy libpython3.12.so
-        let cpython_lib = std::fs::read_dir(".")
-            .expect("Failed to read current directory")
-            .filter_map(|e| e.ok())
-            .find(|e| e.file_name().to_string_lossy().starts_with("cpython-"))
-            .map(|e| e.path().join("lib").join("libpython3.12.so.1.0"));
-        
-        if let Some(src_lib) = cpython_lib {
-            if src_lib.exists() {
-                let dst_lib = std::path::Path::new(".venv/lib/libpython3.12.so.1.0");
-                std::fs::create_dir_all(".venv/lib").expect("Failed to create .venv/lib");
-                std::fs::copy(&src_lib, dst_lib).expect("Failed to copy libpython3.12.so");
-                println!("✅ Copied libpython3.12.so to .venv/lib/");
-            }
-        }
-    }
 
     // Installing dependencies
     if !args.dependencies.is_empty() {
