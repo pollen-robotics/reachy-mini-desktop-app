@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 
 import { useDaemon, useDaemonHealthCheck } from '../hooks/daemon';
+import { telemetry } from '../utils/telemetry';
 import {
   useUsbDetection,
   useLogs,
@@ -26,6 +27,25 @@ function App() {
   // Initialize the store in daemon.js for centralized logging
   useEffect(() => {
     setAppStoreInstance(useAppStore);
+  }, []);
+
+  // 📊 Telemetry: Track app lifecycle
+  useEffect(() => {
+    // Track app started (runs once on mount)
+    // eslint-disable-next-line no-undef
+    telemetry.appStarted({ version: __APP_VERSION__ });
+
+    // Track app closed on unmount/window close
+    const handleBeforeUnload = () => {
+      telemetry.appClosed();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      telemetry.appClosed();
+    };
   }, []);
   const {
     daemonVersion,

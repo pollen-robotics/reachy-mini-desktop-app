@@ -1,5 +1,6 @@
 import React from 'react';
 import { INPUT_DEVICE_TYPES } from './navigationConstants';
+import { telemetry } from './telemetry';
 
 // Unified input management class (keyboard and gamepad)
 export class InputManager {
@@ -151,6 +152,13 @@ export class InputManager {
       for (const listener of this.deviceChangeListeners) {
         listener(newDevice);
       }
+    }
+
+    // 📊 Telemetry - Track controller usage
+    if (newDevice === INPUT_DEVICE_TYPES.GAMEPAD) {
+      telemetry.controllerUsed({ control: 'gamepad' });
+    } else if (newDevice === INPUT_DEVICE_TYPES.KEYBOARD) {
+      telemetry.controllerUsed({ control: 'keyboard' });
     }
   }
 

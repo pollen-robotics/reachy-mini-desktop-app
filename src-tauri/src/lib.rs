@@ -87,7 +87,17 @@ pub fn run() {
         });
     }
 
+    // PostHog Analytics (EU Cloud) - Project ID: 115674
+    // Override with POSTHOG_KEY env var for self-hosted instances
+    let posthog_key = option_env!("POSTHOG_KEY").unwrap_or("phc_oFlHvjvOT6aWXQ4Fot7A1VSAOHtGv9L2M9BZRZcyYQm");
+    let posthog_host = option_env!("POSTHOG_HOST").unwrap_or("https://eu.i.posthog.com");
+
     let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_posthog::init(tauri_plugin_posthog::PostHogConfig {
+            api_key: posthog_key.to_string(),
+            api_host: posthog_host.to_string(),
+            ..Default::default()
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_positioner::init())

@@ -7,7 +7,11 @@
  * - App installation
  *
  * Format: [Store] emoji action → details
+ *
+ * Also sends telemetry events for key actions.
  */
+
+import { telemetry } from '../utils/telemetry';
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -42,12 +46,18 @@ export const logConnect = (mode, options = {}) => {
   const { remoteHost, portName } = options;
   const target = mode === 'wifi' ? remoteHost : portName || 'local';
   log('🔌', 'CONNECT', `mode=${mode} target=${target}`);
+
+  // 📊 Telemetry
+  telemetry.robotConnected({ mode });
 };
 
 export const logDisconnect = (prevMode, reason = '') => {
   if (!LOG_LEVELS.LIFECYCLE) return;
   const reasonStr = reason ? ` (${reason})` : '';
   log('🔌', 'DISCONNECT', `from=${prevMode || 'none'}${reasonStr}`);
+
+  // 📊 Telemetry
+  telemetry.robotDisconnected({ mode: prevMode, reason });
 };
 
 export const logReset = (scope = 'all') => {
@@ -79,22 +89,40 @@ export const logCrash = error => {
 export const logAppStart = appName => {
   if (!LOG_LEVELS.LIFECYCLE) return;
   log('▶️', 'APP START', appName);
+
+  // 📊 Telemetry
+  telemetry.hfAppStarted({ app_id: appName });
 };
 
 export const logAppStop = appName => {
   if (!LOG_LEVELS.LIFECYCLE) return;
   log('⏹️', 'APP STOP', appName || 'none');
+
+  // 📊 Telemetry
+  if (appName) {
+    telemetry.hfAppStopped({ app_id: appName });
+  }
 };
 
 export const logInstallStart = (appName, jobType) => {
   if (!LOG_LEVELS.LIFECYCLE) return;
   log('📦', `${jobType?.toUpperCase() || 'INSTALL'} START`, appName);
+  // Note: Installation telemetry is sent at logInstallEnd (with success/failure)
 };
 
-export const logInstallEnd = (appName, success) => {
+export const logInstallEnd = (appName, success, durationSec, jobType = 'install') => {
   if (!LOG_LEVELS.LIFECYCLE) return;
   const emoji = success ? '✅' : '❌';
-  log(emoji, 'INSTALL END', appName);
+  log(emoji, `${jobType?.toUpperCase() || 'INSTALL'} END`, appName);
+
+  // 📊 Telemetry
+  if (jobType === 'remove') {
+    // Uninstall event
+    telemetry.hfAppUninstalled({ app_id: appName });
+  } else {
+    // Install event
+    telemetry.hfAppInstalled({ app_id: appName, success, duration_sec: durationSec });
+  }
 };
 
 export default {

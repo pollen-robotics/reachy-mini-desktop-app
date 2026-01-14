@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { telemetry } from '@/utils/telemetry';
 
 /**
  * Hook for managing modal stack
@@ -9,6 +10,11 @@ export function useModalStack() {
 
   const openModal = modalType => {
     setModalStack(prev => [...prev, modalType]);
+
+    // 📊 Telemetry
+    if (modalType === 'discover') {
+      telemetry.discoverOpened();
+    }
   };
 
   const closeModal = () => {

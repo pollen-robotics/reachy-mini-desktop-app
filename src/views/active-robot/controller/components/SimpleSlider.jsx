@@ -1,5 +1,6 @@
-import React, { useMemo, memo } from 'react';
+import React, { useMemo, memo, useRef } from 'react';
 import { Box, Typography, Slider } from '@mui/material';
+import { telemetry } from '../../../../utils/telemetry';
 
 /**
  * Simple Slider Control - Enhanced with more information
@@ -22,6 +23,9 @@ const SimpleSlider = memo(function SimpleSlider({
   showRollVisualization = false,
   smoothedValue,
 }) {
+  // 📊 Telemetry - Track slider usage once per session
+  const hasTrackedUsageRef = useRef(false);
+
   const displayValue =
     typeof value === 'number'
       ? value.toFixed(unit === 'deg' ? 1 : 3)
@@ -283,7 +287,14 @@ const SimpleSlider = memo(function SimpleSlider({
           )}
           <Slider
             value={value}
-            onChange={(e, newValue) => onChange(newValue, true)}
+            onChange={(e, newValue) => {
+              // 📊 Telemetry - Track slider usage (once per session)
+              if (!hasTrackedUsageRef.current) {
+                telemetry.controllerUsed({ control: 'slider' });
+                hasTrackedUsageRef.current = true;
+              }
+              onChange(newValue, true);
+            }}
             onChangeCommitted={(e, newValue) => onChange(newValue, false)}
             min={min}
             max={max}

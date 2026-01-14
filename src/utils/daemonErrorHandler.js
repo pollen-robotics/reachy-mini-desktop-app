@@ -1,5 +1,6 @@
 import { findErrorConfig, createErrorFromConfig } from './hardwareErrors';
 import { logError } from './logging';
+import { telemetry } from './telemetry';
 
 /**
  * Centralized daemon error handler
@@ -119,6 +120,13 @@ export const handleDaemonError = (errorType, error, context = {}) => {
   // Log to frontend logs using standardized logger
   const logMessage = `Daemon ${errorType} error: ${errorMessage}`;
   logError(logMessage);
+
+  // 📊 Telemetry - Track connection error
+  const connectionMode = store.connectionMode;
+  telemetry.connectionError({
+    mode: connectionMode,
+    error_type: errorType,
+  });
 
   return errorObject;
 };

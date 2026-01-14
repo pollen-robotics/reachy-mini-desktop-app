@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { Box, Typography } from '@mui/material';
+import { telemetry } from '../../../../utils/telemetry';
 
 /**
  * 2D Joystick Component - Compact
@@ -39,6 +40,9 @@ const Joystick2D = memo(function Joystick2D({
 
   // Cache the container rect at drag start to prevent jumps from scrolling/resizing
   const dragStartRectRef = useRef(null);
+
+  // 📊 Telemetry - Track joystick usage once per session
+  const hasTrackedUsageRef = useRef(false);
 
   // Update local stick position when values change (from external updates)
   // But only if we're not dragging and enough time has passed since last drag
@@ -160,6 +164,12 @@ const Joystick2D = memo(function Joystick2D({
     // Cache the container rect at drag start to prevent jumps
     if (containerRef.current) {
       dragStartRectRef.current = containerRef.current.getBoundingClientRect();
+    }
+
+    // 📊 Telemetry - Track joystick usage (once per session)
+    if (!hasTrackedUsageRef.current) {
+      telemetry.controllerUsed({ control: 'joystick' });
+      hasTrackedUsageRef.current = true;
     }
 
     setIsDragging(true);
