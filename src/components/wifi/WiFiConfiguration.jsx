@@ -19,6 +19,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import { buildApiUrl, fetchWithTimeout, DAEMON_CONFIG } from '../../config/daemon';
 import { isReachyHotspot } from '../../constants/wifi';
+import { telemetry } from '../../utils/telemetry';
 
 /**
  * WiFiConfiguration - Reusable WiFi configuration component
@@ -134,6 +135,9 @@ export default function WiFiConfiguration({
     if (!selectedSSID || !wifiPassword) return;
     const ssidToUse = selectedSSID;
 
+    // 📊 Telemetry - Track WiFi setup started
+    telemetry.wifiSetupStarted();
+
     if (onConnectStart) {
       onConnectStart(ssidToUse);
     }
@@ -198,6 +202,9 @@ export default function WiFiConfiguration({
             setSelectedSSID('');
             setIsConnecting(false);
 
+            // 📊 Telemetry - Track WiFi setup completed successfully
+            telemetry.wifiSetupCompleted({ success: true });
+
             if (onConnectSuccess) {
               onConnectSuccess(ssidToUse);
             }
@@ -226,6 +233,10 @@ export default function WiFiConfiguration({
 
             handleError(errorMsg, 'error');
             setIsConnecting(false);
+
+            // 📊 Telemetry - Track WiFi setup failed
+            telemetry.wifiSetupCompleted({ success: false });
+
             return 'failed';
           }
 
@@ -281,6 +292,10 @@ export default function WiFiConfiguration({
 
                   handleError(errorMsg, 'error');
                   setIsConnecting(false);
+
+                  // 📊 Telemetry - Track WiFi setup failed
+                  telemetry.wifiSetupCompleted({ success: false });
+
                   return 'failed';
                 }
               }
@@ -292,6 +307,9 @@ export default function WiFiConfiguration({
             setWifiPassword('');
             setSelectedSSID('');
             setIsConnecting(false);
+
+            // 📊 Telemetry - Track WiFi setup completed (likely success)
+            telemetry.wifiSetupCompleted({ success: true });
 
             if (onConnectSuccess) {
               onConnectSuccess(ssidToUse);
@@ -317,9 +335,15 @@ export default function WiFiConfiguration({
       // Timeout reached
       handleError('Connection timeout. Please try again.', 'error');
       setIsConnecting(false);
+
+      // 📊 Telemetry - Track WiFi setup failed (timeout)
+      telemetry.wifiSetupCompleted({ success: false });
     } catch (err) {
       handleError('Connection failed', 'error');
       setIsConnecting(false);
+
+      // 📊 Telemetry - Track WiFi setup failed (error)
+      telemetry.wifiSetupCompleted({ success: false });
     }
   }, [
     selectedSSID,
