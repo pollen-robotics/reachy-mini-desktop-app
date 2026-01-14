@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import useAppStore from '../../store/useAppStore';
 import { DAEMON_CONFIG, fetchWithTimeoutSkipInstall, buildApiUrl } from '../../config/daemon';
 import { useDaemonEventBus } from './useDaemonEventBus';
@@ -16,6 +16,8 @@ import { useDaemonEventBus } from './useDaemonEventBus';
  * - Transitioning to ready (that's HardwareScanView's job)
  *
  * ⚠️ SKIP during installations (daemon may be overloaded)
+ * ⚠️ SKIP during wake/sleep transitions (daemon may be busy with animation)
+ * ⚠️ PAUSE when window is hidden (prevents false timeouts on Windows/Linux)
  *
  * Why /api/daemon/status instead of /health-check?
  * - /health-check only exists if --timeout-health-check is passed (not our case)
@@ -27,12 +29,76 @@ import { useDaemonEventBus } from './useDaemonEventBus';
  *
  * ⚡ IMPORTANT: Polling interval (2.5s) > timeout (1.33s) to avoid accumulation!
  * If interval = timeout, slow responses cause avalanche timeouts and false crashes.
+ *
+ * 🎯 MULTI-LAYER PROTECTION:
+ * - macOS 14+: backgroundThrottling disabled in tauri.conf.json (native)
+ * - All platforms: Pause polling when window hidden (JS fallback)
+ * - All platforms: Pause during wake/sleep transitions
  */
 export function useDaemonHealthCheck(isActive) {
-  const { isDaemonCrashed, incrementTimeouts, resetTimeouts } = useAppStore();
+  const { isDaemonCrashed, isWakeSleepTransitioning, incrementTimeouts, resetTimeouts } =
+    useAppStore();
 
   // ✅ Event Bus for centralized event handling
   const eventBus = useDaemonEventBus();
+
+  // 🎯 Track window visibility to pause health checks when not visible
+  // This prevents false timeouts caused by browser/WebView throttling (Windows/Linux)
+  // On macOS 14+, backgroundThrottling is disabled natively, but this adds extra safety
+  const [isWindowVisible, setIsWindowVisible] = useState(() => {
+    // Initialize based on current visibility state
+    return typeof document !== 'undefined' ? document.visibilityState === 'visible' : true;
+  });
+
+  // Track if we were paused (to reset timeouts on resume)
+  const wasPausedRef = useRef(false);
+
+  // 👁️ Listen to visibility changes (tab hidden, window minimized, etc.)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const visible = document.visibilityState === 'visible';
+      setIsWindowVisible(visible);
+
+      if (!visible) {
+        wasPausedRef.current = true;
+        console.log('👁️ Window hidden - pausing health check (fallback for Windows/Linux)');
+      } else if (wasPausedRef.current) {
+        // Reset timeouts when becoming visible again (prevent false crash from accumulated timeouts)
+        console.log('👁️ Window visible - resuming health check, resetting timeout counter');
+        resetTimeouts();
+        wasPausedRef.current = false;
+      }
+    };
+
+    // Also listen to window focus/blur as backup (some edge cases)
+    const handleWindowBlur = () => {
+      // Only pause if visibility API didn't catch it
+      if (document.visibilityState === 'visible') {
+        wasPausedRef.current = true;
+        setIsWindowVisible(false);
+        console.log('👁️ Window blur - pausing health check');
+      }
+    };
+
+    const handleWindowFocus = () => {
+      if (!isWindowVisible) {
+        console.log('👁️ Window focus - resuming health check, resetting timeout counter');
+        resetTimeouts();
+        wasPausedRef.current = false;
+        setIsWindowVisible(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('focus', handleWindowFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('focus', handleWindowFocus);
+    };
+  }, [isWindowVisible, resetTimeouts]);
 
   useEffect(() => {
     if (!isActive) {
@@ -43,6 +109,19 @@ export function useDaemonHealthCheck(isActive) {
     // Don't poll if daemon is already crashed
     if (isDaemonCrashed) {
       console.warn('⚠️ Daemon crashed, stopping health check polling');
+      return;
+    }
+
+    // 👁️ Don't poll if window is not visible (prevents false timeouts)
+    // This is critical for Windows/Linux where backgroundThrottling is not supported
+    if (!isWindowVisible) {
+      console.log('👁️ Health check paused (window not visible)');
+      return;
+    }
+
+    // ⏸️ Pause health check during wake/sleep transitions
+    // The daemon may be busy with animation and respond slowly
+    if (isWakeSleepTransitioning) {
       return;
     }
 
@@ -146,5 +225,5 @@ export function useDaemonHealthCheck(isActive) {
     return () => {
       clearInterval(interval);
     };
-  }, [isActive, isDaemonCrashed]); // Removed setters from deps - Zustand setters are stable
+  }, [isActive, isDaemonCrashed, isWakeSleepTransitioning, isWindowVisible]); // Removed setters from deps - Zustand setters are stable
 }
