@@ -44,6 +44,9 @@
     ],
     "externalBin": [
       "binaries/uv-trampoline"
+    ],
+    "resources": [
+      "../scripts/avast_ssl_fix.py"
     ]
   },
   "plugins": {
