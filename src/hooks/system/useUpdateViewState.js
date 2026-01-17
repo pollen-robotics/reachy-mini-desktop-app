@@ -2,9 +2,6 @@ import { useReducer, useEffect, useRef, useMemo } from 'react';
 import { DAEMON_CONFIG } from '../../config/daemon';
 import useAppStore from '../../store/useAppStore';
 
-// 🧪 DEBUG: Set to true to always show update view (for testing UI)
-const DEBUG_FORCE_SHOW_UPDATE_VIEW = false;
-
 /**
  * Reducer for managing update view display state
  * Handles minimum display time, dev mode, and all update lifecycle states
@@ -300,11 +297,6 @@ export const useUpdateViewState = ({
 
   // Compute shouldShowUpdateView
   const shouldShowUpdateView = useMemo(() => {
-    // 🧪 DEBUG: Force show for testing
-    if (DEBUG_FORCE_SHOW_UPDATE_VIEW && updateAvailable && !updateSkipped && !isDownloading) {
-      return true;
-    }
-
     // ✅ CRITICAL: Never show again if we already completed the update check once
     // This prevents the bug where disconnecting from robot would show update view again
     if (state.hasCompletedOnce) return false;
