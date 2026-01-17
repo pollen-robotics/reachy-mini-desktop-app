@@ -76,51 +76,46 @@ const getOSType = () => {
 };
 
 /**
+ * Global context to include in ALL events
+ * This replaces PostHog.register() which is NOT available in tauri-plugin-posthog-api
+ */
+let globalContext = {
+  os: getOSType(),
+  app_version: 'unknown',
+  daemon_version: 'unknown',
+};
+
+/**
  * Initialize telemetry context with app metadata
  * Should be called once at app startup
- * Uses PostHog.register() to set super properties sent with ALL events
  * @param {{ appVersion: string, daemonVersion?: string }} context
  */
 export const initTelemetry = async context => {
   try {
-    const os = getOSType();
-
-    // Register super properties (automatically included in ALL events)
-    const superProps = {
-      os,
+    globalContext = {
+      os: getOSType(),
       app_version: context.appVersion || 'unknown',
       daemon_version: context.daemonVersion || 'unknown',
     };
 
-    await PostHog.register(superProps);
-
     if (import.meta.env.DEV) {
-      console.log('[Telemetry] Super properties registered:', superProps);
+      console.log('[Telemetry] Context initialized:', globalContext);
     }
   } catch (error) {
     if (import.meta.env.DEV) {
-      console.warn('[Telemetry] Failed to register super properties:', error);
+      console.warn('[Telemetry] Failed to initialize context:', error);
     }
   }
 };
 
 /**
  * Update telemetry context (e.g., when daemon version becomes available)
- * Uses PostHog.register() to update super properties
  * @param {Object} updates - Context updates (e.g., { daemon_version: '1.2.8' })
  */
 export const updateTelemetryContext = async updates => {
-  try {
-    // Update super properties (will merge with existing)
-    await PostHog.register(updates);
-
-    if (import.meta.env.DEV) {
-      console.log('[Telemetry] Super properties updated:', updates);
-    }
-  } catch (error) {
-    if (import.meta.env.DEV) {
-      console.warn('[Telemetry] Failed to update super properties:', error);
-    }
+  globalContext = { ...globalContext, ...updates };
+  if (import.meta.env.DEV) {
+    console.log('[Telemetry] Context updated:', globalContext);
   }
 };
 
@@ -164,11 +159,16 @@ const track = async (event, props = {}) => {
   }
 
   try {
+    // Merge global context with event properties
+    // This is necessary because tauri-plugin-posthog-api doesn't support PostHog.register()
+    const propsWithContext = {
+      ...globalContext,
+      ...props,
+    };
+
     // Filter out undefined/null values
-    // Note: Super properties (os, app_version, daemon_version) are automatically
-    // added to every event by PostHog.register() - no need to merge manually
     const cleanProps = Object.fromEntries(
-      Object.entries(props).filter(([_, v]) => v !== undefined && v !== null)
+      Object.entries(propsWithContext).filter(([_, v]) => v !== undefined && v !== null)
     );
 
     await PostHog.capture(event, cleanProps);
