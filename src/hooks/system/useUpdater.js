@@ -22,13 +22,59 @@ import { logInfo, logError, logWarning, logSuccess } from '../../utils/logging/l
  * @param {number} options.retryDelay - Initial delay between retries in ms (default: 1000)
  * @returns {object} State and update functions
  */
+// 🧪 DEBUG: Set to true to test update view with mock data
+const DEBUG_FORCE_UPDATE = false;
+const DEBUG_MOCK_UPDATE = {
+  version: '0.9.14',
+  date: '2026-01-16T16:10:09Z',
+  currentVersion: '0.9.13',
+  body: `## 🐛 Bug Fix
+
+### Fixed: App stuck on scan view (couldn't connect to any Reachy robot)
+
+**Problem:** \`tauriFetch\` from \`@tauri-apps/plugin-http\` has a bug where the response body stream never completes, causing \`.json()\` and \`.text()\` to hang forever.
+
+**Solution:** 
+- Use native \`fetch\` for all HTTP requests (no body stream bug)
+- Rely on the local Rust proxy to forward requests in WiFi mode
+
+This fix restores connectivity for all modes:
+- ✅ USB mode
+- ✅ Simulation mode  
+- ✅ WiFi mode
+
+---
+
+**Full Changelog**: https://github.com/pollen-robotics/reachy-mini-desktop-app/compare/v0.9.13...v0.9.14
+
+<!-- Release notes generated using configuration in .github/release.yml at v0.9.14 -->
+
+## What's Changed
+### 🔄 Other Changes
+* fix(http): use native fetch + local proxy instead of tauriFetch by @tfrere in https://github.com/pollen-robotics/reachy-mini-desktop-app/pull/109
+
+
+**Full Changelog**: https://github.com/pollen-robotics/reachy-mini-desktop-app/compare/v0.9.13...v0.9.14`,
+  downloadAndInstall: async onProgress => {
+    // Simulate download progress
+    for (let i = 0; i <= 100; i += 10) {
+      await new Promise(r => setTimeout(r, 200));
+      onProgress({ event: 'Progress', data: { chunkLength: i, contentLength: 100 } });
+    }
+    onProgress({ event: 'Finished' });
+  },
+};
+
 export const useUpdater = ({
   autoCheck = true,
   checkInterval = 3600000, // 1 hour by default
   maxRetries = 3,
   retryDelay = 1000,
 } = {}) => {
-  const [updateAvailable, setUpdateAvailable] = useState(null);
+  // 🧪 DEBUG: Force update available for testing
+  const [updateAvailable, setUpdateAvailable] = useState(
+    DEBUG_FORCE_UPDATE ? DEBUG_MOCK_UPDATE : null
+  );
   const [isChecking, setIsChecking] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);

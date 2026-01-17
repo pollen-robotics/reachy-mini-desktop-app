@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Box, Typography, LinearProgress, CircularProgress } from '@mui/material';
+import { Box, Typography, LinearProgress, CircularProgress, Button, Link } from '@mui/material';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import reachyUpdateBoxSvg from '../../assets/reachy-update-box.svg';
 import useAppStore from '../../store/useAppStore';
 import { DAEMON_CONFIG } from '../../config/daemon';
 import { useInternetHealthcheck } from './hooks';
-import LogConsole from '@components/LogConsole';
+import PulseButton from '@components/PulseButton';
 
 /**
  * Update view component
@@ -19,7 +20,7 @@ export default function UpdateView({
   updateError,
   onInstallUpdate,
 }) {
-  const { darkMode } = useAppStore();
+  const { darkMode, skipUpdate } = useAppStore();
   const [minDisplayTimeElapsed, setMinDisplayTimeElapsed] = useState(false);
   const checkStartTimeRef = useRef(Date.now());
   const { isOnline: isInternetOnline, hasChecked: hasInternetChecked } = useInternetHealthcheck({
@@ -41,22 +42,7 @@ export default function UpdateView({
     return () => clearTimeout(timer);
   }, []); // ✅ Only reset on mount - ensures consistent 2s display regardless of check speed
 
-  // Automatic installation if update available and minimum time elapsed
-  useEffect(() => {
-    if (
-      updateAvailable &&
-      !isDownloading &&
-      !updateError &&
-      minDisplayTimeElapsed &&
-      onInstallUpdate
-    ) {
-      // Small delay to let UI update
-      const installTimer = setTimeout(() => {
-        onInstallUpdate();
-      }, 300);
-      return () => clearTimeout(installTimer);
-    }
-  }, [updateAvailable, isDownloading, updateError, minDisplayTimeElapsed, onInstallUpdate]);
+  // ✅ No automatic installation - user chooses via buttons
 
   const formatDate = dateString => {
     try {
@@ -182,11 +168,35 @@ export default function UpdateView({
                 textAlign: 'center',
                 maxWidth: 360,
                 lineHeight: 1.6,
-                mb: 3,
+                mb: 2,
               }}
             >
               Version {updateAvailable.version} • {formatDate(updateAvailable.date)}
             </Typography>
+
+            {/* Link to release notes on website */}
+            {!isDownloading && (
+              <Link
+                href="https://huggingface.co/spaces/pollen-robotics/Reachy_Mini#/download?scrollTo=release-notes"
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 0.5,
+                  color: darkMode ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.45)',
+                  fontSize: 12,
+                  textDecoration: 'none',
+                  mb: 2,
+                  '&:hover': {
+                    color: '#FF9500',
+                  },
+                }}
+              >
+                View release notes
+                <OpenInNewIcon sx={{ fontSize: 14 }} />
+              </Link>
+            )}
 
             {/* Progress bar */}
             {(isDownloading || isChecking) && (
@@ -238,18 +248,45 @@ export default function UpdateView({
               </Box>
             )}
 
-            {/* Status text */}
+            {/* Action buttons - Update or Skip */}
             {!isDownloading && !updateError && (
-              <Typography
+              <Box
                 sx={{
-                  fontSize: 13,
-                  color: darkMode ? '#888' : '#666',
-                  textAlign: 'center',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 1.5,
                   mt: 2,
+                  width: '100%',
+                  maxWidth: 280,
+                  alignItems: 'center',
                 }}
               >
-                Installing update automatically...
-              </Typography>
+                <PulseButton
+                  onClick={onInstallUpdate}
+                  darkMode={darkMode}
+                  pulse={true}
+                  size="medium"
+                  sx={{ minWidth: 180 }}
+                >
+                  Update Now
+                </PulseButton>
+                <Button
+                  variant="text"
+                  onClick={skipUpdate}
+                  sx={{
+                    color: darkMode ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.45)',
+                    fontWeight: 500,
+                    fontSize: 13,
+                    py: 0.8,
+                    textTransform: 'none',
+                    '&:hover': {
+                      bgcolor: darkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
+                    },
+                  }}
+                >
+                  Skip for now
+                </Button>
+              </Box>
             )}
           </>
         ) : updateError ? (
@@ -380,39 +417,6 @@ export default function UpdateView({
           </Typography>
         </Box>
       )}
-
-      {/* Update logs console - positioned at the bottom */}
-      <Box
-        sx={{
-          position: 'fixed',
-          bottom: 16,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: 'calc(100% - 32px)',
-          maxWidth: '420px',
-          zIndex: 1000,
-          opacity: 0.2, // Very subtle by default
-          transition: 'opacity 0.3s ease-in-out',
-          '&:hover': {
-            opacity: 1, // Full opacity on hover
-          },
-        }}
-      >
-        <LogConsole
-          logs={[]}
-          darkMode={darkMode}
-          includeStoreLogs={true}
-          compact={true}
-          showTimestamp={false}
-          lines={3}
-          sx={{
-            bgcolor: darkMode ? 'rgba(0, 0, 0, 0.6)' : 'rgba(255, 255, 255, 0.7)',
-            border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.12)'}`,
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-          }}
-        />
-      </Box>
     </Box>
   );
 }

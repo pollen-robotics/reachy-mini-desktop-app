@@ -33,6 +33,8 @@ export const uiInitialState = {
   rightPanelView: null, // null | 'controller' | 'expressions'
   showFirstTimeWifiSetup: false, // true when showing first time WiFi setup view
   showBluetoothSupportView: false, // true when showing Bluetooth support/reset view
+  // 🔄 Update view state - user can skip proposed updates
+  updateSkipped: false, // true when user clicks "Skip" on update view
   // 🍞 Global toast notification state
   toast: {
     open: false,
@@ -77,6 +79,10 @@ export const createUISlice = (set, get) => ({
 
   // Bluetooth support view management
   setShowBluetoothSupportView: value => set({ showBluetoothSupportView: value }),
+
+  // Update skip management
+  skipUpdate: () => set({ updateSkipped: true }),
+  resetUpdateSkipped: () => set({ updateSkipped: false }),
 
   // Dark mode management
   setDarkMode: value => {
