@@ -3,6 +3,7 @@
 /// This module provides event-driven USB device detection using Windows WM_DEVICECHANGE messages.
 /// This completely eliminates the need for polling, preventing terminal flicker issues on Windows.
 
+#[cfg(target_os = "windows")]
 use std::sync::{Arc, Mutex};
 
 #[cfg(target_os = "windows")]
@@ -14,6 +15,7 @@ use windows::{
 };
 
 /// Shared state for USB device monitoring
+#[cfg(target_os = "windows")]
 pub struct UsbMonitorState {
     /// Current Reachy Mini port (VID:PID = 1a86:55d3)
     pub reachy_port: Option<String>,
@@ -21,6 +23,7 @@ pub struct UsbMonitorState {
     pub available_ports: Vec<serialport::SerialPortInfo>,
 }
 
+#[cfg(target_os = "windows")]
 impl UsbMonitorState {
     pub fn new() -> Self {
         UsbMonitorState {
@@ -89,12 +92,10 @@ pub fn get_reachy_port() -> Option<String> {
 }
 
 /// Force an immediate update of the USB device list
+#[cfg(target_os = "windows")]
 pub fn force_update() {
-    #[cfg(target_os = "windows")]
-    {
-        if let Ok(mut state) = USB_MONITOR.lock() {
-            state.update();
-        }
+    if let Ok(mut state) = USB_MONITOR.lock() {
+        state.update();
     }
 }
 

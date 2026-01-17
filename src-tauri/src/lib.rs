@@ -1,3 +1,6 @@
+// Suppress warnings from objc crate's msg_send! macro (uses deprecated cfg checks)
+#![allow(unexpected_cfgs)]
+
 // Modules
 #[macro_use]
 mod daemon;
