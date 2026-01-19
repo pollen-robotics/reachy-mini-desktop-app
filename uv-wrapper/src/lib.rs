@@ -111,6 +111,23 @@ pub fn setup_local_venv_windows(program_files_dir: &std::path::Path) -> Result<P
             if line.starts_with("home = ") {
                 let home_path = line.trim_start_matches("home = ");
                 if std::path::Path::new(home_path).exists() {
+                    // Sync scripts folder if missing (handles upgrades from older versions)
+                    // This ensures avast_ssl_fix.py is present even for existing installations
+                    let dst_avast_fix = local_dir.join("scripts").join("avast_ssl_fix.py");
+                    if !dst_avast_fix.exists() {
+                        let src_scripts = program_files_dir.join("scripts");
+                        let dst_scripts = local_dir.join("scripts");
+                        if src_scripts.exists() {
+                            println!("📁 Syncing scripts folder (upgrade)...");
+                            let _ = fs::create_dir_all(&dst_scripts);
+                            if let Err(e) = copy_dir_recursive(&src_scripts, &dst_scripts) {
+                                println!("⚠️  Failed to sync scripts: {}", e);
+                            } else {
+                                println!("✅ scripts synced");
+                            }
+                        }
+                    }
+                    
                     println!("✅ Local venv already configured at {:?}", local_dir);
                     return Ok(local_dir);
                 }
