@@ -96,6 +96,46 @@ async fn set_local_proxy_target(
     Ok(())
 }
 
+/// Opens a URL in Chrome/Firefox on macOS (to avoid Safari)
+/// Returns an error on other platforms - use shell:open instead
+#[tauri::command]
+async fn open_url_in_browser(url: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        // Try Chrome first
+        let chrome_result = std::process::Command::new("open")
+            .args(["-a", "Google Chrome", &url])
+            .spawn();
+
+        if chrome_result.is_ok() {
+            return Ok(());
+        }
+
+        // Try Firefox
+        let firefox_result = std::process::Command::new("open")
+            .args(["-a", "Firefox", &url])
+            .spawn();
+
+        if firefox_result.is_ok() {
+            return Ok(());
+        }
+
+        // Fallback to default browser (Safari)
+        std::process::Command::new("open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| format!("Failed to open URL: {}", e))?;
+
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        // On non-macOS platforms, return error so frontend uses default shell:open
+        return Err("open_url_in_browser is only available on macOS".to_string());
+    }
+}
+
 #[tauri::command]
 async fn clear_local_proxy_target(state: State<'_, Arc<LocalProxyState>>) -> Result<(), String> {
     local_proxy::clear_target_host(&state).await;
@@ -212,7 +252,8 @@ pub fn run() {
             update::check_daemon_update,
             update::update_daemon,
             set_local_proxy_target,
-            clear_local_proxy_target
+            clear_local_proxy_target,
+            open_url_in_browser
         ])
         .on_window_event(|window, event| {
             match event {

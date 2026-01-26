@@ -55,6 +55,19 @@ export function consolidateRuntime(daemonApp, hfMetadata) {
 }
 
 /**
+ * Checks if an app is a web/JS app based on reachy_mini_js_app tag
+ * @param {Object} daemonApp - App from daemon
+ * @param {Object} spaceData - Space data from /api/spaces (or null)
+ * @returns {boolean} True if app has reachy_mini_js_app tag
+ */
+function checkIsWebApp(daemonApp, spaceData) {
+  const rootTags = spaceData?.tags || daemonApp?.extra?.tags || [];
+  const cardDataTags = spaceData?.cardData?.tags || daemonApp?.extra?.cardData?.tags || [];
+  const allTags = [...rootTags, ...cardDataTags];
+  return allTags.some(tag => tag && tag.toLowerCase() === 'reachy_mini_js_app');
+}
+
+/**
  * Builds enriched app object with metadata from all sources
  * @param {Object} daemonApp - App from daemon
  * @param {Object} hfMetadata - Metadata from Hugging Face (or null)
@@ -65,6 +78,7 @@ export function consolidateRuntime(daemonApp, hfMetadata) {
 export function buildEnrichedApp(daemonApp, hfMetadata, spaceData, isInstalled) {
   const isOfficialApp = !!spaceData;
   const consolidatedRuntime = consolidateRuntime(daemonApp, hfMetadata);
+  const isWebApp = checkIsWebApp(daemonApp, spaceData);
 
   return {
     name: daemonApp.name,
@@ -80,6 +94,7 @@ export function buildEnrichedApp(daemonApp, hfMetadata, spaceData, isInstalled) 
       (spaceData?.id ? `https://huggingface.co/spaces/${spaceData.id}` : null),
     source_kind: daemonApp.source_kind || 'local',
     isInstalled,
+    isWebApp,
     extra: {
       // Spread daemonApp.extra first (contains full /api/spaces data for official apps)
       ...daemonApp.extra,

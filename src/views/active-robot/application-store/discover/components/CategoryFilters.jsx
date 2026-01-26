@@ -96,6 +96,9 @@ export default function CategoryFilters({
                 category.name.replace('sdk:', '').slice(1).toLowerCase()
               : category.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
             const isSelected = selectedCategory === category.name;
+            const isWebApps = category.name === 'Web Apps';
+            // Use blue for Web Apps category, orange for others
+            const accentColor = isWebApps ? '#3b82f6' : '#FF9500';
 
             return (
               <Chip
@@ -107,7 +110,7 @@ export default function CategoryFilters({
                       sx={{
                         fontSize: 11,
                         fontWeight: 600,
-                        color: isSelected ? '#FF9500' : darkMode ? '#888' : '#999',
+                        color: isSelected ? accentColor : darkMode ? '#888' : '#999',
                         opacity: 0.8,
                       }}
                     >
@@ -123,21 +126,21 @@ export default function CategoryFilters({
                   fontWeight: isSelected ? 700 : 500,
                   bgcolor: isSelected
                     ? darkMode
-                      ? 'rgba(255, 149, 0, 0.2)'
-                      : 'rgba(255, 149, 0, 0.15)'
+                      ? `${accentColor}33` // 20% opacity
+                      : `${accentColor}26` // 15% opacity
                     : darkMode
                       ? 'rgba(255, 255, 255, 0.08)'
                       : 'rgba(0, 0, 0, 0.05)',
-                  color: isSelected ? '#FF9500' : darkMode ? '#aaa' : '#666',
+                  color: isSelected ? accentColor : darkMode ? '#aaa' : '#666',
                   border: isSelected
-                    ? '1px solid #FF9500'
+                    ? `1px solid ${accentColor}`
                     : `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'}`,
                   cursor: 'pointer',
                   '&:hover': {
                     bgcolor: isSelected
                       ? darkMode
-                        ? 'rgba(255, 149, 0, 0.25)'
-                        : 'rgba(255, 149, 0, 0.2)'
+                        ? `${accentColor}40` // 25% opacity
+                        : `${accentColor}33` // 20% opacity
                       : darkMode
                         ? 'rgba(255, 255, 255, 0.12)'
                         : 'rgba(0, 0, 0, 0.08)',

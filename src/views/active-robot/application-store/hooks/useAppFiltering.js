@@ -21,6 +21,11 @@ export function useAppFiltering(availableApps, searchQuery, selectedCategory, of
     });
   }, [availableApps, officialOnly]);
 
+  // Count web apps for the special "Web Apps" category
+  const webAppsCount = useMemo(() => {
+    return appsForMode.filter(app => app.isWebApp).length;
+  }, [appsForMode]);
+
   // Extract available categories from apps with counts (based on filtered mode)
   const categories = useMemo(() => {
     const categoryMap = new Map(); // category -> count
@@ -73,8 +78,8 @@ export function useAppFiltering(availableApps, searchQuery, selectedCategory, of
     });
 
     // Convert to array of objects with name and count, sorted by count (descending) then by name
-    // Limit to top 6 categories by count
-    return Array.from(categoryMap.entries())
+    // Limit to top 5 categories by count (leaving room for Web Apps if present)
+    const tagCategories = Array.from(categoryMap.entries())
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => {
         // First sort by count (descending)
@@ -84,8 +89,15 @@ export function useAppFiltering(availableApps, searchQuery, selectedCategory, of
         // Then by name (ascending)
         return a.name.localeCompare(b.name);
       })
-      .slice(0, 6); // Keep only top 6 categories
-  }, [appsForMode]);
+      .slice(0, webAppsCount > 0 ? 5 : 6); // Keep 5 if we have web apps, 6 otherwise
+
+    // Add "Web Apps" category at the beginning if there are any web apps
+    if (webAppsCount > 0) {
+      return [{ name: 'Web Apps', count: webAppsCount, isSpecial: true }, ...tagCategories];
+    }
+
+    return tagCategories;
+  }, [appsForMode, webAppsCount]);
 
   // Filter apps based on search and category (already filtered by mode)
   const filteredApps = useMemo(() => {
@@ -94,8 +106,12 @@ export function useAppFiltering(availableApps, searchQuery, selectedCategory, of
 
     // Filter by category FIRST
     if (selectedCategory) {
-      const beforeCount = apps.length;
       apps = apps.filter(app => {
+        // Special handling for "Web Apps" category
+        if (selectedCategory === 'Web Apps') {
+          return app.isWebApp === true;
+        }
+
         // Get tags from both root level and cardData
         const rootTags = app.extra?.tags || [];
         const cardDataTags = app.extra?.cardData?.tags || [];
@@ -119,7 +135,6 @@ export function useAppFiltering(availableApps, searchQuery, selectedCategory, of
           return tagMatches || sdkMatches;
         }
       });
-      const afterCount = apps.length;
     }
 
     // Filter by search query AFTER category filter

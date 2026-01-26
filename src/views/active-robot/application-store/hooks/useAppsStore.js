@@ -86,7 +86,12 @@ export function useAppsStore(isActive) {
   }, [activeJobsObj]);
 
   // Specialized hooks
-  const { fetchOfficialApps, fetchAllAppsFromDaemon, fetchInstalledApps } = useAppFetching();
+  const {
+    fetchOfficialApps,
+    fetchAllAppsFromDaemon,
+    fetchInstalledApps,
+    fetchWebAppsFromHuggingFace,
+  } = useAppFetching();
   const { enrichApps } = useAppEnrichment();
 
   // Track if we're currently fetching to avoid duplicate fetches
@@ -120,7 +125,11 @@ export function useAppsStore(isActive) {
         currentCacheValid && currentLastFetch && Date.now() - currentLastFetch < CACHE_DURATION;
 
       // Use cache if valid and not forcing refresh
-      if (!forceRefresh && isCacheFresh && currentAvailableApps.length > 0) {
+      // But check if we have web apps - if not, we need to fetch them (new feature)
+      const hasWebApps = currentAvailableApps.some(app => app.isWebApp);
+      const shouldFetchWebApps = !hasWebApps; // Force fetch if no web apps in cache
+
+      if (!forceRefresh && !shouldFetchWebApps && isCacheFresh && currentAvailableApps.length > 0) {
         const remainingTime = Math.round(
           (CACHE_DURATION - (Date.now() - currentLastFetch)) / 1000 / 60 / 60
         );
@@ -139,27 +148,25 @@ export function useAppsStore(isActive) {
         return currentAvailableApps;
       }
 
-      // Force refresh if cache is empty
-      if (!forceRefresh && isCacheFresh && currentAvailableApps.length === 0) {
-      }
-
       try {
         isFetchingRef.current = true;
         setAppsLoading(true);
         setAppsError(null);
 
         // ========================================
-        // STEP 1: Fetch ALL apps (official + community) in parallel
+        // STEP 1: Fetch ALL apps (official + community + web) in parallel
         // ========================================
 
         let officialApps = [];
         let communityApps = [];
+        let webApps = [];
         let fetchError = null;
 
-        // Fetch both in parallel for speed
-        const [officialResult, communityResult] = await Promise.allSettled([
+        // Fetch all in parallel for speed
+        const [officialResult, communityResult, webAppsResult] = await Promise.allSettled([
           fetchOfficialApps(),
           fetchAllAppsFromDaemon(),
+          fetchWebAppsFromHuggingFace(),
         ]);
 
         if (officialResult.status === 'fulfilled') {
@@ -175,12 +182,27 @@ export function useAppsStore(isActive) {
           console.warn(`⚠️ Failed to fetch community apps:`, communityResult.reason);
         }
 
+        if (webAppsResult.status === 'fulfilled') {
+          webApps = webAppsResult.value || [];
+        } else {
+          console.warn('[Apps] Failed to fetch web apps:', webAppsResult.reason?.message);
+        }
+
         // Mark apps with isOfficial flag
         officialApps = officialApps.map(app => ({ ...app, isOfficial: true }));
         communityApps = communityApps.map(app => ({ ...app, isOfficial: false }));
+        // Web apps are community apps (not official)
+        webApps = webApps.map(app => ({ ...app, isOfficial: false }));
 
-        // Merge all apps (official first, then community)
-        let availableAppsFromSource = [...officialApps, ...communityApps];
+        // Deduplicate web apps that might already be in community apps
+        const existingAppIds = new Set([
+          ...officialApps.map(a => a.id?.toLowerCase()),
+          ...communityApps.map(a => a.id?.toLowerCase()),
+        ]);
+        const uniqueWebApps = webApps.filter(app => !existingAppIds.has(app.id?.toLowerCase()));
+
+        // Merge all apps (official first, then community, then unique web apps)
+        let availableAppsFromSource = [...officialApps, ...communityApps, ...uniqueWebApps];
 
         // ========================================
         // STEP 2: Fetch installed apps from daemon
@@ -276,6 +298,7 @@ export function useAppsStore(isActive) {
       fetchOfficialApps,
       fetchAllAppsFromDaemon,
       fetchInstalledApps,
+      fetchWebAppsFromHuggingFace,
       enrichApps,
       setAvailableApps,
       setInstalledApps,

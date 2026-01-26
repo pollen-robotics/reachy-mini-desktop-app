@@ -225,6 +225,52 @@ export function useAppFetching() {
   }, [fetchOfficialAppIds]);
 
   /**
+   * Fetch JS/web apps directly from HuggingFace API
+   * These apps have the reachy_mini_js_app tag and are not fetched by the daemon
+   */
+  const fetchWebAppsFromHuggingFace = useCallback(async () => {
+    const HF_SPACES_SEARCH_URL = 'https://huggingface.co/api/spaces';
+
+    try {
+      // Search for spaces with reachy_mini_js_app tag
+      const response = await fetchExternal(
+        `${HF_SPACES_SEARCH_URL}?filter=reachy_mini_js_app&full=true`,
+        {},
+        DAEMON_CONFIG.TIMEOUTS.APPS_LIST,
+        { silent: true }
+      );
+
+      if (!response.ok) {
+        console.warn('[Apps] Failed to fetch web apps from HuggingFace:', response.status);
+        return [];
+      }
+
+      const spaces = await response.json();
+
+      // Transform HuggingFace space data to app format
+      return spaces.map(space => ({
+        name: space.id?.split('/').pop() || space.id,
+        id: space.id,
+        description: space.cardData?.short_description || '',
+        url: `https://huggingface.co/spaces/${space.id}`,
+        source_kind: 'hf_space',
+        extra: {
+          id: space.id,
+          cardData: space.cardData || {},
+          likes: space.likes || 0,
+          downloads: space.downloads || 0,
+          lastModified: space.lastModified,
+          tags: space.tags || [],
+          runtime: space.runtime,
+        },
+      }));
+    } catch (err) {
+      console.error('[Apps] Error fetching web apps from HuggingFace:', err);
+      return [];
+    }
+  }, []);
+
+  /**
    * Fetch installed apps from daemon
    */
   const fetchInstalledApps = useCallback(async (retryCount = 0) => {
@@ -281,5 +327,6 @@ export function useAppFetching() {
     fetchOfficialApps,
     fetchAllAppsFromDaemon,
     fetchInstalledApps,
+    fetchWebAppsFromHuggingFace,
   };
 }

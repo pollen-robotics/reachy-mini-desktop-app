@@ -1,10 +1,29 @@
-import React from 'react';
-import { Box, Typography, Button, Avatar, CircularProgress } from '@mui/material';
+import { Box, Typography, Button, Avatar, CircularProgress, Chip } from '@mui/material';
 import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
-import { useActiveRobotContext } from '../../../context';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+
+/**
+ * Opens a URL in a browser
+ * On macOS: tries Chrome → Firefox → Safari (to avoid Safari as default)
+ * On other platforms: uses default browser
+ */
+async function openInBrowser(url) {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('open_url_in_browser', { url });
+  } catch (err) {
+    // On non-macOS or if Chrome/Firefox not found, fall back to default browser
+    try {
+      const { open } = await import('@tauri-apps/plugin-shell');
+      await open(url);
+    } catch {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  }
+}
 
 /**
  * App card component for Discover Modal
@@ -22,8 +41,6 @@ export default function AppCard({
   searchQuery,
   index,
 }) {
-  const { shellApi } = useActiveRobotContext();
-  const open = shellApi.open;
   // Extract data from HF Space API
   const cardData = app.extra?.cardData || {};
   const author = app.extra?.id?.split('/')?.[0] || app.extra?.author || null;
@@ -189,21 +206,39 @@ export default function AppCard({
               alignItems: 'flex-start',
             }}
           >
-            {/* Title */}
-            <Typography
-              sx={{
-                fontSize: 16,
-                fontWeight: 700,
-                color: darkMode ? '#ffffff' : '#1a1a1a',
-                letterSpacing: '-0.3px',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                width: '100%',
-              }}
-            >
-              {app.name}
-            </Typography>
+            {/* Title + Web App Badge */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+              <Typography
+                sx={{
+                  fontSize: 16,
+                  fontWeight: 700,
+                  color: darkMode ? '#ffffff' : '#1a1a1a',
+                  letterSpacing: '-0.3px',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
+                {app.name}
+              </Typography>
+              {app.isWebApp && (
+                <Chip
+                  label="Web"
+                  size="small"
+                  sx={{
+                    height: 18,
+                    fontSize: 9,
+                    fontWeight: 700,
+                    bgcolor: 'rgba(59, 130, 246, 0.1)',
+                    color: '#3b82f6',
+                    flexShrink: 0,
+                    '& .MuiChip-label': { px: 0.75 },
+                  }}
+                />
+              )}
+            </Box>
 
             {/* Description */}
             <Typography
@@ -253,82 +288,122 @@ export default function AppCard({
           </Typography>
         </Box>
 
-        {/* Install/Installed Button */}
-        <Button
-          variant="outlined"
-          color="primary"
-          size="small"
-          disabled={isBusy || isInstalled}
-          onClick={e => {
-            e.stopPropagation();
-            if (!isInstalled) {
-              handleInstall(app);
+        {/* Install/Installed/Open Button */}
+        {app.isWebApp ? (
+          // Web app: Show "Open" button that opens the URL
+          <Button
+            variant="outlined"
+            color="primary"
+            size="small"
+            onClick={async e => {
+              e.stopPropagation();
+              if (app.url) {
+                try {
+                  await openInBrowser(app.url);
+                } catch (err) {
+                  console.error('Failed to open web app URL:', err);
+                }
+              }
+            }}
+            endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
+            sx={{
+              mt: 2.5,
+              width: '100%',
+              py: 1,
+              fontSize: 12,
+              fontWeight: 600,
+              textTransform: 'none',
+              borderRadius: '10px',
+              bgcolor: 'transparent',
+              color: '#3b82f6',
+              border: '1px solid #3b82f6',
+              transition: 'all 0.2s ease',
+              '&:hover': {
+                bgcolor: 'rgba(59, 130, 246, 0.08)',
+                borderColor: '#3b82f6',
+              },
+            }}
+          >
+            Open
+          </Button>
+        ) : (
+          // Python app: Show Install/Installed button
+          <Button
+            variant="outlined"
+            color="primary"
+            size="small"
+            disabled={isBusy || isInstalled}
+            onClick={e => {
+              e.stopPropagation();
+              if (!isInstalled) {
+                handleInstall(app);
+              }
+            }}
+            endIcon={
+              isInstalled ? (
+                <CheckCircleOutlineIcon sx={{ fontSize: 14 }} />
+              ) : isInstalling ? (
+                <CircularProgress size={14} sx={{ color: '#FF9500' }} />
+              ) : (
+                <DownloadOutlinedIcon sx={{ fontSize: 14 }} />
+              )
             }
-          }}
-          endIcon={
-            isInstalled ? (
-              <CheckCircleOutlineIcon sx={{ fontSize: 14 }} />
-            ) : isInstalling ? (
-              <CircularProgress size={14} sx={{ color: '#FF9500' }} />
-            ) : (
-              <DownloadOutlinedIcon sx={{ fontSize: 14 }} />
-            )
-          }
-          sx={{
-            mt: 2.5,
-            width: '100%',
-            py: 1,
-            fontSize: 12,
-            fontWeight: 600,
-            textTransform: 'none',
-            borderRadius: '10px',
-            bgcolor: 'transparent',
-            color: isInstalled
-              ? darkMode
-                ? 'rgba(255, 255, 255, 0.5)'
-                : 'rgba(0, 0, 0, 0.5)'
-              : installFailed
-                ? '#ef4444'
-                : '#FF9500',
-            border: isInstalled
-              ? darkMode
-                ? '1px solid rgba(255, 255, 255, 0.2)'
-                : '1px solid rgba(0, 0, 0, 0.2)'
-              : installFailed
-                ? '1px solid #ef4444'
-                : isInstalling
-                  ? '1px solid #FF9500'
-                  : '1px solid #FF9500',
-            transition: 'all 0.2s ease',
-            '&:hover': {
-              bgcolor: isInstalled
-                ? 'transparent'
-                : installFailed
-                  ? 'rgba(239, 68, 68, 0.08)'
-                  : 'rgba(255, 149, 0, 0.08)',
-              borderColor: isInstalled
+            sx={{
+              mt: 2.5,
+              width: '100%',
+              py: 1,
+              fontSize: 12,
+              fontWeight: 600,
+              textTransform: 'none',
+              borderRadius: '10px',
+              bgcolor: 'transparent',
+              color: isInstalled
                 ? darkMode
-                  ? 'rgba(255, 255, 255, 0.2)'
-                  : 'rgba(0, 0, 0, 0.2)'
+                  ? 'rgba(255, 255, 255, 0.5)'
+                  : 'rgba(0, 0, 0, 0.5)'
                 : installFailed
                   ? '#ef4444'
                   : '#FF9500',
-            },
-            '&:disabled': {
-              bgcolor: 'transparent',
-              color: darkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)',
-              borderColor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.12)',
-            },
-          }}
-        >
-          {isInstalled
-            ? 'Installed'
-            : isInstalling
-              ? 'Installing...'
-              : installFailed
-                ? 'Retry Install'
-                : 'Install'}
-        </Button>
+              border: isInstalled
+                ? darkMode
+                  ? '1px solid rgba(255, 255, 255, 0.2)'
+                  : '1px solid rgba(0, 0, 0, 0.2)'
+                : installFailed
+                  ? '1px solid #ef4444'
+                  : isInstalling
+                    ? '1px solid #FF9500'
+                    : '1px solid #FF9500',
+              transition: 'all 0.2s ease',
+              '&:hover': {
+                bgcolor: isInstalled
+                  ? 'transparent'
+                  : installFailed
+                    ? 'rgba(239, 68, 68, 0.08)'
+                    : 'rgba(255, 149, 0, 0.08)',
+                borderColor: isInstalled
+                  ? darkMode
+                    ? 'rgba(255, 255, 255, 0.2)'
+                    : 'rgba(0, 0, 0, 0.2)'
+                  : installFailed
+                    ? '#ef4444'
+                    : '#FF9500',
+              },
+              '&:disabled': {
+                bgcolor: 'transparent',
+                color: darkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)',
+                borderColor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.12)',
+              },
+            }}
+          >
+            {isInstalled
+              ? 'Installed'
+              : isInstalling
+                ? 'Installing...'
+                : installFailed
+                  ? 'Retry Install'
+                  : 'Install'}
+          </Button>
+        )}
       </Box>
     </Box>
   );
