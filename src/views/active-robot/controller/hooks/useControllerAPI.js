@@ -7,6 +7,7 @@ const SEND_THROTTLE_MS = 50;
 // WebSocket reconnection settings
 const WS_RECONNECT_DELAY_MS = 1000;
 const WS_MAX_RECONNECT_ATTEMPTS = 5;
+const WS_CLEANUP_DELAY_MS = 100; // 🔒 Delay before reconnection to avoid race conditions
 
 /**
  * Controller API hook with WebSocket support
@@ -21,21 +22,42 @@ export function useControllerAPI() {
   const wsRef = useRef(null);
   const wsReconnectAttempts = useRef(0);
   const wsReconnectTimeoutRef = useRef(null);
+  const isMountedRef = useRef(true);
+  const isConnectingRef = useRef(false); // 🔒 Prevent multiple simultaneous connections
+
+  // 🔒 Store buildApiUrl in ref to avoid dependency changes
+  const buildApiUrlRef = useRef(buildApiUrl);
+  useEffect(() => {
+    buildApiUrlRef.current = buildApiUrl;
+  }, [buildApiUrl]);
 
   /**
    * Build WebSocket URL from HTTP URL
    */
   const buildWsUrl = useCallback(() => {
-    const httpUrl = buildApiUrl('/api/move/ws/set_target');
+    const httpUrl = buildApiUrlRef.current('/api/move/ws/set_target');
     // Convert http(s):// to ws(s)://
     return httpUrl.replace(/^http/, 'ws');
-  }, [buildApiUrl]);
+  }, []); // 🔒 No dependencies - uses ref
 
   /**
    * Connect to WebSocket
    */
   const connectWebSocket = useCallback(() => {
+    // 🔒 Prevent multiple simultaneous connections
+    if (isConnectingRef.current) {
+      console.warn('[Controller] Connection already in progress, skipping');
+      return;
+    }
+
+    // 🔒 Check if WebSocket already exists and is connecting or open
     if (wsRef.current) {
+      const state = wsRef.current.readyState;
+      if (state === WebSocket.CONNECTING || state === WebSocket.OPEN) {
+        console.warn('[Controller] WebSocket already active, skipping new connection');
+        return;
+      }
+      // Close stale WebSocket
       wsRef.current.close();
       wsRef.current = null;
     }
@@ -45,24 +67,38 @@ export function useControllerAPI() {
       wsReconnectTimeoutRef.current = null;
     }
 
+    isConnectingRef.current = true;
+
     try {
       const ws = new WebSocket(buildWsUrl());
 
       ws.onopen = () => {
+        isConnectingRef.current = false;
         wsReconnectAttempts.current = 0;
       };
 
       ws.onclose = event => {
+        isConnectingRef.current = false;
         wsRef.current = null;
 
+        if (!isMountedRef.current) return;
+        if (event.code === 1000) return; // Clean close, no reconnect
+
         // Auto-reconnect if not a clean close
-        if (event.code !== 1000 && wsReconnectAttempts.current < WS_MAX_RECONNECT_ATTEMPTS) {
+        if (wsReconnectAttempts.current < WS_MAX_RECONNECT_ATTEMPTS) {
           wsReconnectAttempts.current++;
-          wsReconnectTimeoutRef.current = setTimeout(connectWebSocket, WS_RECONNECT_DELAY_MS);
+          // 🔒 Add small delay to avoid race conditions during HMR/fast remounts
+          wsReconnectTimeoutRef.current = setTimeout(() => {
+            if (isMountedRef.current) {
+              connectWebSocket();
+            }
+          }, WS_RECONNECT_DELAY_MS + WS_CLEANUP_DELAY_MS);
         }
       };
 
-      ws.onerror = () => {};
+      ws.onerror = () => {
+        isConnectingRef.current = false;
+      };
 
       ws.onmessage = event => {
         try {
@@ -77,6 +113,7 @@ export function useControllerAPI() {
 
       wsRef.current = ws;
     } catch {
+      isConnectingRef.current = false;
       // Will fallback to HTTP
     }
   }, [buildWsUrl]);
@@ -97,13 +134,26 @@ export function useControllerAPI() {
   }, []);
 
   // Connect WebSocket on mount
+  // 🔒 Empty dependency array - only runs on mount/unmount
   useEffect(() => {
-    connectWebSocket();
+    isMountedRef.current = true;
+    isConnectingRef.current = false;
+    wsReconnectAttempts.current = 0;
+
+    // 🔒 Small delay before initial connection to let cleanup complete during HMR
+    const initialConnectTimeout = setTimeout(() => {
+      if (isMountedRef.current) {
+        connectWebSocket();
+      }
+    }, WS_CLEANUP_DELAY_MS);
 
     return () => {
+      isMountedRef.current = false;
+      isConnectingRef.current = false;
+      clearTimeout(initialConnectTimeout);
       disconnectWebSocket();
     };
-  }, [connectWebSocket, disconnectWebSocket]);
+  }, []); // 🔒 Empty deps - mount/unmount only
 
   /**
    * Send command via WebSocket (fast path)

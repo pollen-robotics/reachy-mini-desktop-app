@@ -8,6 +8,7 @@ const WS_FREQUENCY = 20; // 20Hz for smooth 3D visualization
 const WS_RECONNECT_DELAY_MS = 1000;
 const WS_MAX_RECONNECT_ATTEMPTS = 5;
 const WS_MAX_WIFI_RECONNECT_ATTEMPTS = 3;
+const WS_CLEANUP_DELAY_MS = 100; // Delay before reconnection to avoid race conditions
 
 /**
  * 🚀 Unified WebSocket hook for ALL robot state data
@@ -35,12 +36,14 @@ export function useRobotStateWebSocket(isActive) {
   const isMountedRef = useRef(true);
   const isWiFiRef = useRef(false);
   const dataVersionRef = useRef(0);
+  const isConnectingRef = useRef(false); // 🔒 Prevent multiple simultaneous connections
 
-  // Store refs for stable callbacks
+  // Store refs for stable callbacks (avoid dependency changes triggering reconnections)
   const setRobotStateFullRef = useRef(setRobotStateFull);
   const eventBusRef = useRef(eventBus);
+  const isDaemonCrashedRef = useRef(isDaemonCrashed); // 🔒 Use ref to avoid effect re-runs
 
-  // Keep refs in sync
+  // Keep refs in sync (without triggering effect re-runs)
   useEffect(() => {
     setRobotStateFullRef.current = setRobotStateFull;
   }, [setRobotStateFull]);
@@ -48,6 +51,16 @@ export function useRobotStateWebSocket(isActive) {
   useEffect(() => {
     eventBusRef.current = eventBus;
   }, [eventBus]);
+
+  useEffect(() => {
+    isDaemonCrashedRef.current = isDaemonCrashed;
+    // If daemon crashes while connected, close the WebSocket
+    if (isDaemonCrashed && wsRef.current) {
+      console.warn('[RobotState WS] Daemon crashed, closing WebSocket');
+      wsRef.current.close(1000);
+      wsRef.current = null;
+    }
+  }, [isDaemonCrashed]);
 
   /**
    * Build WebSocket URL with all required parameters
@@ -111,10 +124,12 @@ export function useRobotStateWebSocket(isActive) {
   }, []); // No dependencies - uses refs
 
   // Main effect: connect/disconnect based on isActive
+  // 🔒 Only depends on isActive - other values accessed via refs to prevent reconnection storms
   useEffect(() => {
     isMountedRef.current = true;
     reconnectAttemptsRef.current = 0;
     isWiFiRef.current = isWiFiMode();
+    isConnectingRef.current = false;
 
     if (!isActive) {
       // Clear state when inactive
@@ -136,17 +151,14 @@ export function useRobotStateWebSocket(isActive) {
       return;
     }
 
-    if (isDaemonCrashed) {
-      console.warn('[RobotState WS] Daemon crashed, not connecting');
-      if (wsRef.current) {
-        wsRef.current.close(1000);
-        wsRef.current = null;
-      }
-      return;
-    }
-
     // Connect WebSocket
     const connectWebSocket = () => {
+      // 🔒 Check if daemon crashed (via ref, not dependency)
+      if (isDaemonCrashedRef.current) {
+        console.warn('[RobotState WS] Daemon crashed, not connecting');
+        return;
+      }
+
       const maxAttempts = isWiFiRef.current
         ? WS_MAX_WIFI_RECONNECT_ATTEMPTS
         : WS_MAX_RECONNECT_ATTEMPTS;
@@ -156,7 +168,20 @@ export function useRobotStateWebSocket(isActive) {
         return;
       }
 
+      // 🔒 Prevent multiple simultaneous connections
+      if (isConnectingRef.current) {
+        console.warn('[RobotState WS] Connection already in progress, skipping');
+        return;
+      }
+
+      // 🔒 Check if WebSocket already exists and is connecting or open
       if (wsRef.current) {
+        const state = wsRef.current.readyState;
+        if (state === WebSocket.CONNECTING || state === WebSocket.OPEN) {
+          console.warn('[RobotState WS] WebSocket already active, skipping new connection');
+          return;
+        }
+        // Close stale WebSocket
         wsRef.current.close();
         wsRef.current = null;
       }
@@ -166,11 +191,14 @@ export function useRobotStateWebSocket(isActive) {
         reconnectTimeoutRef.current = null;
       }
 
+      isConnectingRef.current = true;
+
       try {
         const wsUrl = buildWsUrl();
         const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
+          isConnectingRef.current = false;
           reconnectAttemptsRef.current = 0;
           console.log('[RobotState WS] Connected');
         };
@@ -186,35 +214,51 @@ export function useRobotStateWebSocket(isActive) {
           }
         };
 
-        ws.onerror = () => {};
+        ws.onerror = () => {
+          isConnectingRef.current = false;
+        };
 
         ws.onclose = event => {
+          isConnectingRef.current = false;
           wsRef.current = null;
 
           if (!isMountedRef.current) return;
-          if (event.code === 1000) return;
+          if (event.code === 1000) return; // Clean close, no reconnect
+
+          // 🔒 Don't reconnect if daemon crashed
+          if (isDaemonCrashedRef.current) return;
 
           reconnectAttemptsRef.current++;
 
           if (reconnectAttemptsRef.current < maxAttempts) {
+            // 🔒 Add small delay to avoid race conditions during HMR/fast remounts
             reconnectTimeoutRef.current = setTimeout(() => {
-              if (isMountedRef.current) {
+              if (isMountedRef.current && !isDaemonCrashedRef.current) {
                 connectWebSocket();
               }
-            }, WS_RECONNECT_DELAY_MS);
+            }, WS_RECONNECT_DELAY_MS + WS_CLEANUP_DELAY_MS);
           }
         };
 
         wsRef.current = ws;
       } catch (err) {
+        isConnectingRef.current = false;
         console.error('[RobotState WS] Failed to connect:', err);
       }
     };
 
-    connectWebSocket();
+    // 🔒 Small delay before initial connection to let cleanup complete during HMR
+    const initialConnectTimeout = setTimeout(() => {
+      if (isMountedRef.current && !isDaemonCrashedRef.current) {
+        connectWebSocket();
+      }
+    }, WS_CLEANUP_DELAY_MS);
 
     return () => {
       isMountedRef.current = false;
+      isConnectingRef.current = false;
+
+      clearTimeout(initialConnectTimeout);
 
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
@@ -226,7 +270,7 @@ export function useRobotStateWebSocket(isActive) {
         wsRef.current = null;
       }
     };
-  }, [isActive, isDaemonCrashed, buildWsUrl, processData]);
+  }, [isActive, buildWsUrl, processData]); // 🔒 Removed isDaemonCrashed - accessed via ref
 
   return {
     isConnected: wsRef.current?.readyState === WebSocket.OPEN,
