@@ -31,6 +31,7 @@
     "deep-link:default",
     "posthog:default",
     "posthog:allow-get-config",
+    "os:default",
     {
       "identifier": "http:default",
       "allow": [

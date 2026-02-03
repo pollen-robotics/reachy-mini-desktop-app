@@ -8,57 +8,110 @@
 import useAppStore from '../store/useAppStore';
 
 /**
- * Get system information
+ * Get system information using Tauri OS plugin for reliable data
  */
 const getSystemInfo = async () => {
   const info = {
     timestamp: new Date().toISOString(),
     timestampLocal: new Date().toLocaleString(),
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    userAgent: navigator.userAgent,
-    platform: navigator.platform,
     language: navigator.language,
+    languages: navigator.languages || [navigator.language],
     screenResolution: `${window.screen.width}x${window.screen.height}`,
+    screenColorDepth: window.screen.colorDepth,
     windowSize: `${window.innerWidth}x${window.innerHeight}`,
     devicePixelRatio: window.devicePixelRatio,
     online: navigator.onLine,
+    cookiesEnabled: navigator.cookieEnabled,
+    doNotTrack: navigator.doNotTrack,
   };
 
-  // Try to get Tauri app version
+  // Hardware information (best effort via browser APIs)
+  info.hardware = {
+    cpuCores: navigator.hardwareConcurrency || 'N/A',
+    maxTouchPoints: navigator.maxTouchPoints || 0,
+  };
+
+  // Memory information (if available - Chrome/Edge only)
+  if ('memory' in performance && performance.memory) {
+    info.memory = {
+      jsHeapSizeLimit: `${(performance.memory.jsHeapSizeLimit / 1024 / 1024).toFixed(2)} MB`,
+      totalJSHeapSize: `${(performance.memory.totalJSHeapSize / 1024 / 1024).toFixed(2)} MB`,
+      usedJSHeapSize: `${(performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(2)} MB`,
+    };
+  }
+
+  // Connection information (if available)
+  if ('connection' in navigator && navigator.connection) {
+    info.network = {
+      effectiveType: navigator.connection.effectiveType || 'unknown',
+      downlink: navigator.connection.downlink ? `${navigator.connection.downlink} Mbps` : 'unknown',
+      rtt: navigator.connection.rtt ? `${navigator.connection.rtt} ms` : 'unknown',
+      saveData: navigator.connection.saveData || false,
+    };
+  }
+
+  // Get Tauri app version and name
   try {
-    const { getVersion } = await import('@tauri-apps/api/app');
+    const { getVersion, getName } = await import('@tauri-apps/api/app');
     info.appVersion = await getVersion();
-  } catch (e) {
+    info.appName = await getName();
+  } catch {
     info.appVersion = 'N/A (web mode or error)';
+    info.appName = 'N/A';
   }
 
-  // Parse OS info from userAgent
-  const ua = navigator.userAgent;
-  let osName = 'unknown';
-  let osVersion = 'unknown';
-
-  if (ua.includes('Mac OS X')) {
-    osName = 'macOS';
-    const match = ua.match(/Mac OS X (\d+[._]\d+[._]?\d*)/);
-    if (match) osVersion = match[1].replace(/_/g, '.');
-  } else if (ua.includes('Windows')) {
-    osName = 'Windows';
-    const match = ua.match(/Windows NT (\d+\.\d+)/);
-    if (match) {
-      const ntVersion = match[1];
-      // Map NT versions to Windows versions
-      const ntMap = { '10.0': '10/11', 6.3: '8.1', 6.2: '8', 6.1: '7' };
-      osVersion = ntMap[ntVersion] || ntVersion;
-    }
-  } else if (ua.includes('Linux')) {
-    osName = 'Linux';
-  }
-
-  info.os = {
-    name: osName,
-    version: osVersion,
-    platform: navigator.platform,
+  // App runtime info
+  info.runtime = {
+    isTauri: typeof window !== 'undefined' && '__TAURI__' in window,
+    nodeEnv: import.meta.env?.MODE || 'unknown',
+    dev: import.meta.env?.DEV || false,
+    sessionDuration: `${(performance.now() / 1000 / 60).toFixed(2)} minutes`,
   };
+
+  // Get OS information from Tauri OS plugin (reliable, not spoofed by browser)
+  try {
+    const { type, version, arch, platform, locale, hostname, family, eol, exeExtension } =
+      await import('@tauri-apps/plugin-os');
+
+    info.os = {
+      type: await type(), // 'macos' | 'windows' | 'linux' | 'ios' | 'android'
+      version: await version(), // OS version (e.g., "14.1.0" for macOS Sonoma)
+      arch: await arch(), // CPU architecture (e.g., "aarch64", "x86_64")
+      platform: await platform(), // Platform info
+      family: await family(), // 'unix' | 'windows'
+      locale: await locale(), // System locale (e.g., "fr-FR")
+      eol: await eol(), // End-of-line marker (\n or \r\n)
+      exeExtension: await exeExtension(), // Executable extension ('' or 'exe')
+    };
+
+    // Try to get hostname (may fail on some systems)
+    try {
+      info.os.hostname = await hostname();
+    } catch {
+      info.os.hostname = 'N/A';
+    }
+
+    // Keep userAgent and platform for legacy/debugging purposes
+    info.browser = {
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+    };
+  } catch (e) {
+    // Fallback to browser info if Tauri OS plugin fails (web mode)
+    console.warn('⚠️ Tauri OS plugin not available, falling back to browser info:', e);
+    info.os = {
+      type: 'unknown',
+      version: 'N/A',
+      arch: 'N/A',
+      platform: navigator.platform,
+      locale: navigator.language,
+    };
+    info.browser = {
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+    };
+  }
 
   return info;
 };
@@ -171,12 +224,115 @@ export const formatReportAsText = report => {
   lines.push('───────────────────────────────────────────────────────────────────');
   lines.push(`  Generated: ${report.system.timestampLocal}`);
   lines.push(`  Timezone: ${report.system.timezone}`);
-  lines.push(`  App Version: ${report.system.appVersion}`);
-  lines.push(`  OS: ${report.system.os?.name || 'unknown'} ${report.system.os?.version || ''}`);
-  lines.push(`  Platform: ${report.system.os?.platform || 'unknown'}`);
-  lines.push(`  Screen: ${report.system.screenResolution}`);
-  lines.push(`  Window: ${report.system.windowSize}`);
   lines.push('');
+
+  // Application Info
+  lines.push('  📦 Application:');
+  lines.push(`     Name: ${report.system.appName || 'N/A'}`);
+  lines.push(`     Version: ${report.system.appVersion}`);
+  if (report.system.runtime) {
+    lines.push(`     Runtime: ${report.system.runtime.isTauri ? 'Tauri' : 'Web Browser'}`);
+    lines.push(`     Mode: ${report.system.runtime.nodeEnv}`);
+    lines.push(`     Development: ${report.system.runtime.dev ? 'Yes' : 'No'}`);
+    lines.push(`     Session Duration: ${report.system.runtime.sessionDuration}`);
+  }
+  lines.push('');
+
+  // Operating System
+  lines.push('  💻 Operating System:');
+  lines.push(`     Type: ${report.system.os?.type || 'unknown'}`);
+  lines.push(`     Version: ${report.system.os?.version || 'unknown'}`);
+  lines.push(`     Family: ${report.system.os?.family || 'unknown'}`);
+
+  // Architecture with friendly name
+  const arch = report.system.os?.arch || 'unknown';
+  let archDisplay = arch;
+  if (arch === 'aarch64' || arch === 'arm64') {
+    archDisplay = `${arch} (Apple Silicon)`;
+  } else if (arch === 'x86_64' || arch === 'x86' || arch === 'amd64') {
+    archDisplay = `${arch} (Intel)`;
+  }
+  lines.push(`     Architecture: ${archDisplay}`);
+
+  lines.push(`     Platform: ${report.system.os?.platform || 'unknown'}`);
+  if (report.system.os?.hostname && report.system.os.hostname !== 'N/A') {
+    lines.push(`     Hostname: ${report.system.os.hostname}`);
+  }
+  lines.push('');
+
+  // Localization
+  lines.push('  🌍 Localization:');
+  lines.push(`     System Locale: ${report.system.os?.locale || 'unknown'}`);
+  lines.push(`     Browser Language: ${report.system.language || 'unknown'}`);
+  if (report.system.languages && report.system.languages.length > 0) {
+    lines.push(`     Languages: ${report.system.languages.join(', ')}`);
+  }
+  lines.push('');
+
+  // Hardware
+  if (report.system.hardware) {
+    lines.push('  ⚙️ Hardware:');
+    lines.push(`     CPU Cores: ${report.system.hardware.cpuCores}`);
+    if (report.system.hardware.maxTouchPoints > 0) {
+      lines.push(`     Touch Points: ${report.system.hardware.maxTouchPoints}`);
+    }
+    lines.push('');
+  }
+
+  // Memory (if available)
+  if (report.system.memory) {
+    lines.push('  💾 Memory (JavaScript Heap):');
+    lines.push(`     Limit: ${report.system.memory.jsHeapSizeLimit}`);
+    lines.push(`     Total: ${report.system.memory.totalJSHeapSize}`);
+    lines.push(`     Used: ${report.system.memory.usedJSHeapSize}`);
+    lines.push('');
+  }
+
+  // Display
+  lines.push('  🖥️ Display:');
+  lines.push(`     Screen: ${report.system.screenResolution}`);
+  lines.push(`     Color Depth: ${report.system.screenColorDepth}-bit`);
+  lines.push(`     Window: ${report.system.windowSize}`);
+  lines.push(`     Pixel Ratio: ${report.system.devicePixelRatio}x`);
+  lines.push('');
+
+  // Network
+  lines.push('  🌐 Network:');
+  lines.push(`     Online: ${report.system.online ? 'Yes' : 'No'}`);
+  if (report.system.network) {
+    lines.push(`     Type: ${report.system.network.effectiveType}`);
+    lines.push(`     Downlink: ${report.system.network.downlink}`);
+    lines.push(`     RTT: ${report.system.network.rtt}`);
+    lines.push(`     Save Data: ${report.system.network.saveData ? 'Yes' : 'No'}`);
+  }
+  lines.push('');
+
+  // Privacy & Security
+  lines.push('  🔒 Privacy & Security:');
+  lines.push(`     Cookies Enabled: ${report.system.cookiesEnabled ? 'Yes' : 'No'}`);
+  lines.push(`     Do Not Track: ${report.system.doNotTrack || 'Not set'}`);
+  lines.push('');
+
+  // Technical Details
+  if (report.system.browser || report.system.os?.eol || report.system.os?.exeExtension) {
+    lines.push('  🔧 Technical Details:');
+    if (report.system.os?.eol) {
+      const eolDisplay =
+        report.system.os.eol === '\n'
+          ? '\\n (Unix)'
+          : report.system.os.eol === '\r\n'
+            ? '\\r\\n (Windows)'
+            : report.system.os.eol;
+      lines.push(`     EOL Marker: ${eolDisplay}`);
+    }
+    if (report.system.os?.exeExtension !== undefined) {
+      lines.push(`     Exe Extension: ${report.system.os.exeExtension || '(none)'}`);
+    }
+    if (report.system.browser) {
+      lines.push(`     User Agent: ${report.system.browser.userAgent}`);
+    }
+    lines.push('');
+  }
 
   // Robot State
   lines.push('🤖 ROBOT STATE');
@@ -322,8 +478,14 @@ export const copyDiagnosticToClipboard = async () => {
   }
 };
 
-// Expose to window for easy access from DevTools
-if (typeof window !== 'undefined') {
+/**
+ * Setup keyboard shortcut for diagnostic report download
+ * Uses the global toast system for notifications
+ */
+export const setupDiagnosticShortcut = () => {
+  if (typeof window === 'undefined') return;
+
+  // Expose to window for easy access from DevTools
   window.reachyDiagnostic = {
     generate: generateDiagnosticReport,
     download: downloadDiagnosticReport,
@@ -334,48 +496,38 @@ if (typeof window !== 'undefined') {
 
   // Secret keyboard shortcut: Ctrl+Shift+D (Cmd+Shift+D on Mac)
   // Downloads diagnostic report as text file
-  window.addEventListener('keydown', async e => {
+  const handleKeyDown = async e => {
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
     const modifierKey = isMac ? e.metaKey : e.ctrlKey;
 
     if (modifierKey && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'd') {
       e.preventDefault();
 
-      // Show a subtle notification
-      const notification = document.createElement('div');
-      notification.textContent = '📋 Generating diagnostic report...';
-      notification.style.cssText = `
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        background: rgba(0, 0, 0, 0.8);
-        color: white;
-        padding: 12px 20px;
-        border-radius: 8px;
-        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-        font-size: 14px;
-        z-index: 99999;
-        animation: fadeIn 0.3s ease;
-      `;
-      document.body.appendChild(notification);
+      // Get toast from store
+      const store = useAppStore.getState();
+      const showToast = store.showToast;
+
+      showToast('📋 Generating diagnostic report...', 'info');
 
       const result = await downloadDiagnosticReport('text');
 
       if (result.success) {
-        notification.textContent = `✅ Downloaded: ${result.filename}`;
-        notification.style.background = 'rgba(34, 197, 94, 0.9)';
+        showToast(`✅ Downloaded: ${result.filename}`, 'success');
       } else {
-        notification.textContent = `❌ Failed: ${result.error}`;
-        notification.style.background = 'rgba(239, 68, 68, 0.9)';
+        showToast(`❌ Failed: ${result.error}`, 'error');
       }
-
-      setTimeout(() => {
-        notification.style.opacity = '0';
-        notification.style.transition = 'opacity 0.3s ease';
-        setTimeout(() => notification.remove(), 300);
-      }, 2000);
     }
-  });
+  };
+
+  window.addEventListener('keydown', handleKeyDown);
+
+  // Return cleanup function
+  return () => window.removeEventListener('keydown', handleKeyDown);
+};
+
+// Auto-setup on import
+if (typeof window !== 'undefined') {
+  setupDiagnosticShortcut();
 }
 
 export default {
@@ -383,4 +535,5 @@ export default {
   formatReportAsText,
   downloadDiagnosticReport,
   copyDiagnosticToClipboard,
+  setupDiagnosticShortcut,
 };

@@ -29,6 +29,7 @@ tauri-plugin-http = "2"
 tauri-plugin-deep-link = "2"
 tauri-plugin-posthog = "0.2"
 tauri-plugin-automation = "0.1"
+tauri-plugin-os = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serialport = "4.8"

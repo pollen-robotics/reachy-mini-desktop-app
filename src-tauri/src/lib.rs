@@ -142,6 +142,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_deep_link::init());
 
     let builder = if cfg!(target_os = "macos") {
