@@ -4,7 +4,9 @@
 // Modules
 #[macro_use]
 mod daemon;
+mod discovery;
 mod local_proxy;
+mod network;
 mod permissions;
 mod python;
 mod signing;
@@ -16,6 +18,7 @@ mod window;
 use daemon::{
     add_log, cleanup_system_daemons, kill_daemon, spawn_and_monitor_sidecar, DaemonState,
 };
+use discovery::DiscoveryState;
 use local_proxy::LocalProxyState;
 use std::sync::Arc;
 use tauri::{Manager, State};
@@ -157,6 +160,9 @@ pub fn run() {
 
     // Create shared local proxy state (proxy starts on-demand when WiFi target is set)
     let local_proxy_state = Arc::new(LocalProxyState::new());
+    
+    // Create discovery state (mDNS + cache + static peers)
+    let discovery_state = DiscoveryState::new();
 
     builder
         .manage(DaemonState {
@@ -164,6 +170,7 @@ pub fn run() {
             logs: std::sync::Mutex::new(std::collections::VecDeque::new()),
         })
         .manage(local_proxy_state)
+        .manage(discovery_state)
         .setup(
             move |#[cfg(target_os = "macos")] app, #[cfg(not(target_os = "macos"))] _app| {
                 // 🔌 Start USB device monitor (Windows: event-driven, no polling, no terminal flicker)
@@ -217,7 +224,17 @@ pub fn run() {
             update::check_daemon_update,
             update::update_daemon,
             set_local_proxy_target,
-            clear_local_proxy_target
+            clear_local_proxy_target,
+            // Robot discovery (mDNS + manual IP)
+            discovery::discover_robots,
+            discovery::connect_to_ip,
+            discovery::add_static_peer,
+            discovery::remove_static_peer,
+            discovery::get_static_peers,
+            discovery::clear_discovery_cache,
+            // Network detection (VPN)
+            network::detect_vpn,
+            network::get_network_info
         ])
         .on_window_event(|window, event| {
             match event {
