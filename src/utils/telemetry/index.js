@@ -20,6 +20,7 @@ import {
   validateControllerType,
   validateExpressionType,
 } from './events';
+import { generateDiagnosticSnapshot } from '../diagnosticExport';
 
 // Re-export events for convenience
 export { EVENTS } from './events';
@@ -283,14 +284,32 @@ export const telemetry = {
   },
 
   /**
-   * Track connection error
+   * Track connection error with diagnostic snapshot
+   * Automatically includes robot state, recent error logs, and session info
+   * for better debugging in PostHog
+   *
    * @param {{ mode?: string, error_type?: string, error_message?: string }} props
    */
   connectionError: (props = {}) => {
+    // Generate diagnostic snapshot for debugging context
+    let diagnostic = null;
+    try {
+      diagnostic = generateDiagnosticSnapshot();
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.warn('[Telemetry] Failed to generate diagnostic snapshot:', error);
+      }
+    }
+
     track(EVENTS.CONNECTION_ERROR, {
       mode: validateConnectionMode(props.mode),
       error_type: props.error_type,
       error_message: props.error_message, // Optional: truncated error message for debugging
+      // Diagnostic snapshot for debugging
+      diagnostic_robot: diagnostic?.robot || null,
+      diagnostic_logs: diagnostic?.logs || null,
+      diagnostic_installed_apps: diagnostic?.installed_apps || null,
+      diagnostic_session: diagnostic?.session || null,
     });
   },
 

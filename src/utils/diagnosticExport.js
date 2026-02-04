@@ -117,6 +117,67 @@ const getSystemInfo = async () => {
 };
 
 /**
+ * Generate a compact diagnostic snapshot for telemetry
+ * This is a lightweight version of the full diagnostic report
+ * designed to be sent with error events to PostHog
+ *
+ * @returns {Object} Compact diagnostic snapshot
+ */
+export const generateDiagnosticSnapshot = () => {
+  const state = useAppStore.getState();
+
+  // Get recent error logs (last 20 errors/warnings only)
+  const frontendLogs = state.frontendLogs || [];
+  const recentErrors = frontendLogs
+    .filter(log => log.level === 'error' || log.level === 'warning')
+    .slice(-20)
+    .map(log => `[${log.timestamp}] ${log.level.toUpperCase()}: ${log.message}`);
+
+  // Get recent daemon logs (last 10 lines)
+  const daemonLogs = state.logs || [];
+  const recentDaemonLogs = daemonLogs.slice(-10);
+
+  // Get installed app IDs only (compact)
+  const installedAppIds = (state.apps || []).filter(app => app.installed).map(app => app.id);
+
+  return {
+    // Robot state (essential info only)
+    robot: {
+      status: state.robotStatus,
+      connection_mode: state.connectionMode,
+      is_usb_connected: state.isUsbConnected,
+      usb_port: state.usbPortName || null,
+      remote_host: state.remoteHost || null,
+      daemon_version: state.daemonVersion || 'unknown',
+      is_crashed: state.isDaemonCrashed,
+      consecutive_timeouts: state.consecutiveTimeouts,
+      hardware_error: state.hardwareError
+        ? {
+            type: state.hardwareError.type,
+            message: state.hardwareError.message,
+            code: state.hardwareError.code,
+          }
+        : null,
+      startup_error: state.startupError || null,
+      is_app_running: state.isAppRunning,
+      current_app: state.currentAppName || null,
+    },
+    // Logs (compact)
+    logs: {
+      recent_errors: recentErrors,
+      recent_daemon: recentDaemonLogs,
+    },
+    // Apps (IDs only)
+    installed_apps: installedAppIds,
+    // Session info
+    session: {
+      duration_minutes: Math.round(performance.now() / 1000 / 60),
+      timestamp: new Date().toISOString(),
+    },
+  };
+};
+
+/**
  * Get robot/daemon state from the store
  */
 const getRobotState = () => {
