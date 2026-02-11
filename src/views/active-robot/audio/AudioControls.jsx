@@ -1,5 +1,14 @@
 import React from 'react';
-import { Box, Typography, IconButton, Slider, Tooltip } from '@mui/material';
+import {
+  Box,
+  Typography,
+  IconButton,
+  Slider,
+  Tooltip,
+  Select,
+  MenuItem,
+  CircularProgress,
+} from '@mui/material';
 import MicIcon from '@mui/icons-material/Mic';
 import MicOffIcon from '@mui/icons-material/MicOff';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
@@ -30,6 +39,13 @@ function AudioControls({
   darkMode,
   disabled = false,
   isSleeping = false, // Hide DoA and audio visualizer when robot is sleeping
+  deviceSelectionSupported = false,
+  availableSpeakers = [],
+  availableMicrophones = [],
+  devicesLoading = false,
+  onRefreshDevices,
+  onSpeakerDeviceChange,
+  onMicrophoneDeviceChange,
 }) {
   const isMicActive = microphoneVolume > 0 && !disabled;
 
@@ -107,7 +123,9 @@ function AudioControls({
     onMute,
     onVolumeChange,
     extraIndicator = null,
-    externalAudioLevel = null
+    externalAudioLevel = null,
+    devices = [],
+    onDeviceChange = null
   ) => (
     <Box
       sx={{
@@ -160,7 +178,7 @@ function AudioControls({
             minWidth: 0,
           }}
         >
-          {/* Device info */}
+          {/* Device info - Select dropdown if supported, otherwise read-only text */}
           <Box
             sx={{
               flex: 1,
@@ -171,8 +189,86 @@ function AudioControls({
               overflow: 'hidden',
             }}
           >
-            <Typography sx={deviceTextStyle}>{device}</Typography>
-            {platform && <Typography sx={platformTextStyle}>{platform}</Typography>}
+            {deviceSelectionSupported && devices.length > 0 ? (
+              <Select
+                variant="standard"
+                disableUnderline
+                value={devices.find(d => d.name === device)?.id || ''}
+                onChange={e => onDeviceChange?.(e.target.value)}
+                onOpen={() => onRefreshDevices?.()}
+                disabled={disabled}
+                size="small"
+                sx={{
+                  ...deviceTextStyle,
+                  fontSize: 9,
+                  minWidth: 0,
+                  '& .MuiSelect-select': {
+                    padding: '0 16px 0 0 !important',
+                    minHeight: 'unset',
+                    lineHeight: 1.4,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  },
+                  '& .MuiSelect-icon': {
+                    fontSize: 14,
+                    right: 0,
+                    color: darkMode ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)',
+                  },
+                }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      maxHeight: 200,
+                      bgcolor: darkMode ? '#1e1e1e' : '#fff',
+                      '&::-webkit-scrollbar': { width: '6px' },
+                      '&::-webkit-scrollbar-track': { bgcolor: 'transparent' },
+                      '&::-webkit-scrollbar-thumb': {
+                        bgcolor: darkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)',
+                        borderRadius: '3px',
+                        '&:hover': {
+                          bgcolor: darkMode ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.25)',
+                        },
+                      },
+                    },
+                  },
+                }}
+                renderValue={val => {
+                  if (devicesLoading && devices.length === 0) return 'Loading...';
+                  const selected = devices.find(d => d.id === val);
+                  return selected?.name || device || 'Select device';
+                }}
+              >
+                {devicesLoading && devices.length === 0 ? (
+                  <MenuItem value="" disabled sx={{ fontSize: 11 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <CircularProgress size={12} thickness={3} />
+                      <em>Scanning devices...</em>
+                    </Box>
+                  </MenuItem>
+                ) : (
+                  devices.map(d => (
+                    <MenuItem
+                      key={d.id}
+                      value={d.id}
+                      sx={{
+                        fontSize: 11,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {d.name}
+                    </MenuItem>
+                  ))
+                )}
+              </Select>
+            ) : (
+              <>
+                <Typography sx={deviceTextStyle}>{device}</Typography>
+                {platform && <Typography sx={platformTextStyle}>{platform}</Typography>}
+              </>
+            )}
           </Box>
 
           {/* Mute button and slider */}
@@ -272,7 +368,11 @@ function AudioControls({
         volume,
         volume > 0,
         onSpeakerMute,
-        onVolumeChange
+        onVolumeChange,
+        null,
+        null,
+        availableSpeakers,
+        onSpeakerDeviceChange
       )}
       {renderControl(
         'Microphone',
@@ -293,7 +393,9 @@ function AudioControls({
           />
         ) : null,
         // Audio waveform only in WiFi mode AND when robot is awake
-        isWifiMode && !isSleeping ? microphoneLevel : null
+        isWifiMode && !isSleeping ? microphoneLevel : null,
+        availableMicrophones,
+        onMicrophoneDeviceChange
       )}
     </Box>
   );

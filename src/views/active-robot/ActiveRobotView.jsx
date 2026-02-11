@@ -190,6 +190,13 @@ function ActiveRobotView({
     handleMicrophoneVolumeChange,
     handleSpeakerMute,
     handleMicrophoneMute,
+    deviceSelectionSupported,
+    availableSpeakers,
+    availableMicrophones,
+    devicesLoading,
+    fetchAudioDevices,
+    handleSpeakerDeviceChange,
+    handleMicrophoneDeviceChange,
   } = useAudioControls(isActive);
 
   // ✅ Apps loading state (for internal UI if needed)
@@ -557,6 +564,13 @@ function ActiveRobotView({
                 darkMode={darkMode}
                 disabled={isBusyState}
                 isSleeping={robotStatus === 'sleeping'}
+                deviceSelectionSupported={deviceSelectionSupported}
+                availableSpeakers={availableSpeakers}
+                availableMicrophones={availableMicrophones}
+                devicesLoading={devicesLoading}
+                onRefreshDevices={fetchAudioDevices}
+                onSpeakerDeviceChange={handleSpeakerDeviceChange}
+                onMicrophoneDeviceChange={handleMicrophoneDeviceChange}
               />
             </Box>
 
