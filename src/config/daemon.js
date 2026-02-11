@@ -157,6 +157,9 @@ export const DAEMON_CONFIG = {
     VOLUME_SET: '/api/volume/set',
     MICROPHONE_CURRENT: '/api/volume/microphone/current',
     MICROPHONE_SET: '/api/volume/microphone/set',
+    AUDIO_DEVICES: '/api/audio/devices',
+    AUDIO_SPEAKER_SET_DEVICE: '/api/audio/speaker/set-device',
+    AUDIO_MICROPHONE_SET_DEVICE: '/api/audio/microphone/set-device',
   },
 
   // Endpoints to NOT log (frequent calls)
@@ -164,6 +167,7 @@ export const DAEMON_CONFIG = {
     '/api/state/full', // Used during startup (HardwareScanView)
     '/api/daemon/status', // Health check every 2.5s
     '/api/apps/list-available/installed', // Called frequently when fetching apps
+    '/api/audio/devices', // Audio device list (polled on dropdown open)
   ],
 };
 

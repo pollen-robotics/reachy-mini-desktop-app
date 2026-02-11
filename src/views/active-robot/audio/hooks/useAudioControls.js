@@ -21,6 +21,12 @@ export function useAudioControls(isActive) {
   const [speakerPlatform, setSpeakerPlatform] = useState(null);
   const [microphonePlatform, setMicrophonePlatform] = useState(null);
 
+  // Device selection support (optional daemon capability)
+  const [deviceSelectionSupported, setDeviceSelectionSupported] = useState(false);
+  const [availableSpeakers, setAvailableSpeakers] = useState([]);
+  const [availableMicrophones, setAvailableMicrophones] = useState([]);
+  const [devicesLoading, setDevicesLoading] = useState(false);
+
   // Debounce timeouts refs (to cancel previous API calls when slider moves)
   const volumeDebounceTimeoutRef = useRef(null);
   const microphoneDebounceTimeoutRef = useRef(null);
@@ -71,7 +77,87 @@ export function useAudioControls(isActive) {
       setMicrophonePlatform,
       'microphone volume'
     );
+
+    // Check if daemon supports device selection (optional endpoint)
+    fetchAudioDevices();
   }, [isActive]);
+
+  // Fetch available audio devices from daemon (optional capability)
+  const fetchAudioDevices = useCallback(async () => {
+    setDevicesLoading(true);
+    try {
+      const response = await fetchWithTimeout(
+        buildApiUrl(DAEMON_CONFIG.ENDPOINTS.AUDIO_DEVICES),
+        {},
+        DAEMON_CONFIG.TIMEOUTS.VERSION,
+        { silent: true }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setDeviceSelectionSupported(true);
+        setAvailableSpeakers(data.speakers || []);
+        setAvailableMicrophones(data.microphones || []);
+      } else {
+        // 404 or other non-ok → daemon doesn't support device selection
+        setDeviceSelectionSupported(false);
+      }
+    } catch (_err) {
+      // Network error or timeout → not supported
+      setDeviceSelectionSupported(false);
+    } finally {
+      setDevicesLoading(false);
+    }
+  }, [buildApiUrl, fetchWithTimeout, DAEMON_CONFIG]);
+
+  // Change speaker device
+  const handleSpeakerDeviceChange = useCallback(
+    async deviceId => {
+      try {
+        const response = await fetchWithTimeout(
+          buildApiUrl(DAEMON_CONFIG.ENDPOINTS.AUDIO_SPEAKER_SET_DEVICE),
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_id: deviceId }),
+          },
+          DAEMON_CONFIG.TIMEOUTS.VERSION,
+          { silent: false, label: 'Set speaker device' }
+        );
+        if (response.ok) {
+          const data = await response.json();
+          if (data.device) setSpeakerDevice(data.device);
+        }
+      } catch (err) {
+        console.warn('Failed to set speaker device:', err);
+      }
+    },
+    [buildApiUrl, fetchWithTimeout, DAEMON_CONFIG]
+  );
+
+  // Change microphone device
+  const handleMicrophoneDeviceChange = useCallback(
+    async deviceId => {
+      try {
+        const response = await fetchWithTimeout(
+          buildApiUrl(DAEMON_CONFIG.ENDPOINTS.AUDIO_MICROPHONE_SET_DEVICE),
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_id: deviceId }),
+          },
+          DAEMON_CONFIG.TIMEOUTS.VERSION,
+          { silent: false, label: 'Set microphone device' }
+        );
+        if (response.ok) {
+          const data = await response.json();
+          if (data.device) setMicrophoneDevice(data.device);
+        }
+      } catch (err) {
+        console.warn('Failed to set microphone device:', err);
+      }
+    },
+    [buildApiUrl, fetchWithTimeout, DAEMON_CONFIG]
+  );
 
   // Actual API call for volume (extracted for debouncing)
   const updateVolumeInApi = useCallback(async newVolume => {
@@ -306,5 +392,12 @@ export function useAudioControls(isActive) {
     handleMicrophoneVolumeChange,
     handleSpeakerMute,
     handleMicrophoneMute,
+    deviceSelectionSupported,
+    availableSpeakers,
+    availableMicrophones,
+    devicesLoading,
+    fetchAudioDevices,
+    handleSpeakerDeviceChange,
+    handleMicrophoneDeviceChange,
   };
 }
