@@ -5,10 +5,10 @@
  * Used by FindingRobotView to detect and list connection options.
  *
  * V2: Uses native Rust discovery (mDNS, cache, static peers) for reliability.
- * Replaces the old tauriFetch-based approach with proper mDNS discovery.
+ * Supports multiple WiFi robots with selection.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import useAppStore from '../../store/useAppStore';
 import { DAEMON_CONFIG } from '../../config/daemon';
@@ -29,27 +29,24 @@ async function checkUsbRobot() {
 /**
  * Discover WiFi robots using the native Rust discovery system
  * Uses cache → static peers → mDNS in order for speed
- * @returns {Promise<{available: boolean, host: string | null}>}
+ * @returns {Promise<{available: boolean, robots: Array}>}
  */
 async function checkWifiRobotV2() {
   try {
-    // Use the new Rust-native discovery (cache + static peers + mDNS)
-    const robots = await invoke('discover_robots');
+    const rawRobots = await invoke('discover_robots');
 
-    if (robots && robots.length > 0) {
-      const robot = robots[0]; // Take the first discovered robot
+    if (rawRobots && rawRobots.length > 0) {
+      const robots = rawRobots.map(robot => ({
+        ...robot,
+        displayHost: robot.ip,
+      }));
 
-      // Return hostname if available (e.g., "reachy-mini.home"), otherwise IP
-      const host = robot.hostname
-        ? robot.hostname.replace(/\.$/, '') // Remove trailing dot from mDNS hostname
-        : robot.ip;
-
-      return { available: true, host };
+      return { available: true, robots };
     }
 
-    return { available: false, host: null };
+    return { available: false, robots: [] };
   } catch (e) {
-    return { available: false, host: null };
+    return { available: false, robots: [] };
   }
 }
 
@@ -67,7 +64,11 @@ export function useRobotDiscovery() {
   // Discovery state
   const [isScanning, setIsScanning] = useState(true);
   const [usbRobot, setUsbRobot] = useState({ available: false, portName: null });
-  const [wifiRobot, setWifiRobot] = useState({ available: false, host: null });
+  const [wifiRobots, setWifiRobots] = useState({
+    available: false,
+    robots: [],
+    selectedRobot: null,
+  });
 
   // Refs for interval management
   const scanIntervalRef = useRef(null);
@@ -84,6 +85,13 @@ export function useRobotDiscovery() {
   }, [cleanupBlacklist]);
 
   /**
+   * Select a specific WiFi robot from the discovered list
+   */
+  const selectWifiRobot = useCallback(robot => {
+    setWifiRobots(prev => ({ ...prev, selectedRobot: robot }));
+  }, []);
+
+  /**
    * Perform a single discovery scan (USB + WiFi in parallel)
    */
   const performScan = useCallback(async () => {
@@ -97,7 +105,6 @@ export function useRobotDiscovery() {
 
     try {
       // Scan USB and WiFi in parallel
-      // USB check is fast, WiFi discovery may take up to 5-10s
       const usbPromise = checkUsbRobot();
       const wifiPromise = checkWifiRobotV2();
 
@@ -124,9 +131,24 @@ export function useRobotDiscovery() {
         setIsFirstCheck(false);
       }
 
-      // Only update state if still mounted (USB already updated above)
+      // Only update state if still mounted
       if (isMountedRef.current) {
-        setWifiRobot(wifiResult);
+        setWifiRobots(prev => {
+          // Auto-select when exactly 1 robot found
+          const selectedRobot =
+            wifiResult.robots.length === 1
+              ? wifiResult.robots[0]
+              : // Keep previous selection if still valid
+                prev.selectedRobot && wifiResult.robots.some(r => r.ip === prev.selectedRobot.ip)
+                ? prev.selectedRobot
+                : null;
+
+          return {
+            available: wifiResult.available,
+            robots: wifiResult.robots,
+            selectedRobot,
+          };
+        });
         setIsScanning(false);
       }
     } finally {
@@ -148,7 +170,7 @@ export function useRobotDiscovery() {
     // Perform initial scan immediately
     performScan();
 
-    // Then scan periodically (longer interval since mDNS discovery is more reliable)
+    // Then scan periodically
     scanIntervalRef.current = setInterval(() => {
       if (isMountedRef.current) {
         performScan();
@@ -188,16 +210,27 @@ export function useRobotDiscovery() {
     };
   }, [startScanning, stopScanning]);
 
+  // Backward-compatible wifiRobot derived property
+  const wifiRobot = useMemo(() => {
+    if (!wifiRobots.available || wifiRobots.robots.length === 0) {
+      return { available: false, host: null };
+    }
+    const robot = wifiRobots.selectedRobot || wifiRobots.robots[0];
+    return { available: true, host: robot.displayHost };
+  }, [wifiRobots]);
+
   return {
     // State
     isScanning,
     usbRobot, // { available: boolean, portName: string | null }
-    wifiRobot, // { available: boolean, host: string | null }
+    wifiRobots, // { available: boolean, robots: Array, selectedRobot: object | null }
+    wifiRobot, // backward-compat: { available: boolean, host: string | null }
 
     // Helpers
-    hasAnyRobot: usbRobot.available || wifiRobot.available,
+    hasAnyRobot: usbRobot.available || wifiRobots.available,
 
     // Actions
+    selectWifiRobot,
     startScanning,
     stopScanning,
     refresh,

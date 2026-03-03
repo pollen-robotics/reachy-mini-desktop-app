@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Box, Typography, CircularProgress } from '@mui/material';
+import { Box, Typography, CircularProgress, Select, MenuItem } from '@mui/material';
 import UsbOutlinedIcon from '@mui/icons-material/UsbOutlined';
 import PulseButton from '@components/PulseButton';
 import WifiOutlinedIcon from '@mui/icons-material/WifiOutlined';
@@ -229,7 +229,7 @@ function ConnectionCard({
  */
 export default function FindingRobotView() {
   const { darkMode, setShowFirstTimeWifiSetup } = useAppStore();
-  const { isScanning, usbRobot, wifiRobot } = useRobotDiscovery();
+  const { isScanning, usbRobot, wifiRobot, wifiRobots, selectWifiRobot } = useRobotDiscovery();
   const { connect, isConnecting, isDisconnecting } = useConnection();
   const [selectedMode, setSelectedMode] = useState(null);
   const [dots, setDots] = useState('');
@@ -285,7 +285,7 @@ export default function FindingRobotView() {
         // 🧹 Don't pre-select Simulation if real USB is available (prevents confusion after crash)
         const isAvailable =
           (savedMode === ConnectionMode.USB && usbRobot.available) ||
-          (savedMode === ConnectionMode.WIFI && wifiRobot.available) ||
+          (savedMode === ConnectionMode.WIFI && wifiRobots.available) ||
           (savedMode === ConnectionMode.SIMULATION && !usbRobot.available);
 
         if (isAvailable) {
@@ -296,7 +296,7 @@ export default function FindingRobotView() {
     } catch (e) {
       // localStorage might not be available
     }
-  }, [usbRobot.available, wifiRobot.available, selectedMode, isBusy]);
+  }, [usbRobot.available, wifiRobots.available, selectedMode, isBusy]);
 
   // Auto-select USB if it becomes available and nothing selected (fallback if no saved preference)
   useEffect(() => {
@@ -308,7 +308,7 @@ export default function FindingRobotView() {
   // Auto-select WiFi if it becomes available and nothing selected (and no USB, fallback)
   useEffect(() => {
     if (
-      wifiRobot.available &&
+      wifiRobots.available &&
       !selectedMode &&
       !usbRobot.available &&
       !isBusy &&
@@ -316,7 +316,7 @@ export default function FindingRobotView() {
     ) {
       setSelectedMode(ConnectionMode.WIFI);
     }
-  }, [wifiRobot.available, selectedMode, usbRobot.available, isBusy]);
+  }, [wifiRobots.available, selectedMode, usbRobot.available, isBusy]);
 
   // Auto-deselect if selected mode becomes unavailable
   // USB/WiFi can become unavailable if cable is unplugged or network changes
@@ -326,11 +326,11 @@ export default function FindingRobotView() {
     if (selectedMode === ConnectionMode.USB && !usbRobot.available) {
       setSelectedMode(null);
     }
-    if (selectedMode === ConnectionMode.WIFI && !wifiRobot.available) {
+    if (selectedMode === ConnectionMode.WIFI && !wifiRobots.available) {
       setSelectedMode(null);
     }
     // Simulation is always available, no need to check
-  }, [selectedMode, usbRobot.available, wifiRobot.available, isBusy]);
+  }, [selectedMode, usbRobot.available, wifiRobots.available, isBusy]);
 
   // Save selected mode to localStorage when user makes a selection
   const handleSelectMode = useCallback(mode => {
@@ -355,18 +355,18 @@ export default function FindingRobotView() {
         await connect(ConnectionMode.USB, { portName: usbRobot.portName });
         break;
       case ConnectionMode.WIFI:
-        await connect(ConnectionMode.WIFI, { host: wifiRobot.host });
+        await connect(ConnectionMode.WIFI, { host: wifiRobots.selectedRobot?.displayHost });
         break;
       case ConnectionMode.SIMULATION:
         await connect(ConnectionMode.SIMULATION);
         break;
     }
-  }, [selectedMode, isBusy, usbRobot, wifiRobot, connect]);
+  }, [selectedMode, isBusy, usbRobot, wifiRobots, connect]);
 
   const canStart =
     selectedMode &&
     ((selectedMode === ConnectionMode.USB && usbRobot.available) ||
-      (selectedMode === ConnectionMode.WIFI && wifiRobot.available) ||
+      (selectedMode === ConnectionMode.WIFI && wifiRobots.available && wifiRobots.selectedRobot) ||
       selectedMode === ConnectionMode.SIMULATION);
 
   return (
@@ -440,7 +440,7 @@ export default function FindingRobotView() {
         >
           {isScanning
             ? `Looking for robots${dots}`
-            : usbRobot.available || wifiRobot.available
+            : usbRobot.available || wifiRobots.available
               ? 'Choose how to connect'
               : 'No robot detected'}
         </Typography>
@@ -524,11 +524,17 @@ export default function FindingRobotView() {
           <ConnectionCard
             icon={WifiOutlinedIcon}
             label="Reachy WiFi"
-            subtitle={wifiRobot.available ? wifiRobot.host : null}
+            subtitle={
+              wifiRobots.available
+                ? wifiRobots.robots.length > 1
+                  ? `${wifiRobots.robots.length} robots`
+                  : wifiRobot.host
+                : null
+            }
             fullSubtitle={wifiRobot.available ? wifiRobot.host : null}
-            available={wifiRobot.available}
+            available={wifiRobots.available}
             selected={selectedMode === ConnectionMode.WIFI}
-            onClick={() => wifiRobot.available && handleSelectMode(ConnectionMode.WIFI)}
+            onClick={() => wifiRobots.available && handleSelectMode(ConnectionMode.WIFI)}
             disabled={isBusy}
             darkMode={darkMode}
           />
@@ -545,6 +551,57 @@ export default function FindingRobotView() {
             darkMode={darkMode}
           />
         </Box>
+
+        {/* WiFi robot selector - shown when WiFi selected and 2+ robots */}
+        {selectedMode === ConnectionMode.WIFI && wifiRobots.robots.length > 1 && (
+          <Select
+            value={wifiRobots.selectedRobot?.ip || ''}
+            onChange={e => {
+              const robot = wifiRobots.robots.find(r => r.ip === e.target.value);
+              if (robot) selectWifiRobot(robot);
+            }}
+            displayEmpty
+            size="small"
+            sx={{
+              width: '100%',
+              maxWidth: 380,
+              mb: 2.5,
+              fontSize: 13,
+              color: darkMode ? '#e0e0e0' : '#333',
+              '.MuiOutlinedInput-notchedOutline': {
+                borderColor: darkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.12)',
+              },
+              '&:hover .MuiOutlinedInput-notchedOutline': {
+                borderColor: darkMode ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.2)',
+              },
+              '.MuiSvgIcon-root': {
+                color: darkMode ? '#888' : '#666',
+              },
+            }}
+            MenuProps={{
+              PaperProps: {
+                sx: {
+                  bgcolor: darkMode ? '#2a2a2a' : '#fff',
+                  color: darkMode ? '#e0e0e0' : '#333',
+                },
+              },
+            }}
+          >
+            <MenuItem value="" disabled>
+              Select a robot...
+            </MenuItem>
+            {wifiRobots.robots.map(robot => (
+              <MenuItem key={robot.ip} value={robot.ip}>
+                <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                  <Typography sx={{ fontSize: 13, fontWeight: 500 }}>{robot.name}</Typography>
+                  <Typography sx={{ fontSize: 11, color: darkMode ? '#888' : '#999' }}>
+                    {robot.displayHost}
+                  </Typography>
+                </Box>
+              </MenuItem>
+            ))}
+          </Select>
+        )}
 
         {/* Start Button - Primary Outlined */}
         <PulseButton

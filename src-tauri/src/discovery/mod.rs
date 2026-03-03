@@ -10,8 +10,10 @@
 //! Rust implementation that's faster, more reliable, and cross-platform.
 
 use crate::daemon::DAEMON_PORT;
+use futures_util::future::join_all;
 use mdns_sd::{ServiceDaemon, ServiceEvent};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
@@ -40,10 +42,10 @@ impl DiscoveryState {
             last_known_ip: Arc::new(RwLock::new(None)),
             static_peers: Arc::new(RwLock::new(vec![
                 // mDNS/DNS hostnames (resolved by router or Bonjour)
-                "reachy-mini.home".to_string(),  // Router DNS (.home TLD)
+                "reachy-mini.home".to_string(), // Router DNS (.home TLD)
                 "reachy-mini.local".to_string(), // Bonjour/mDNS (.local TLD)
                 // Common static IPs
-                "192.168.1.18".to_string(),      // Default Reachy IP
+                "192.168.1.18".to_string(), // Default Reachy IP
             ])),
         }
     }
@@ -55,24 +57,55 @@ impl Default for DiscoveryState {
     }
 }
 
-/// Check if a robot is available at a specific IP
-async fn check_robot_at_ip(ip: &str, port: u16, timeout_secs: u64) -> Result<RobotInfo, String> {
-    let url = format!("http://{}:{}/api/daemon/status", ip, port);
-    
+/// Resolve a host string to an IP address.
+/// If it's already an IP, returns it as-is. Otherwise does DNS lookup.
+/// Prefers IPv4 over IPv6 for local network reliability.
+async fn resolve_to_ip(host: &str, port: u16) -> Option<String> {
+    // Already a valid IP?
+    if host.parse::<std::net::IpAddr>().is_ok() {
+        return Some(host.to_string());
+    }
+    // DNS resolve — prefer IPv4
+    let addr = format!("{}:{}", host, port);
+    if let Ok(addrs) = tokio::net::lookup_host(&addr).await {
+        let all: Vec<_> = addrs.collect();
+        // Pick first IPv4, fall back to first result
+        let best = all.iter().find(|a| a.is_ipv4()).or(all.first());
+        if let Some(socket_addr) = best {
+            return Some(socket_addr.ip().to_string());
+        }
+    }
+    None
+}
+
+/// Check if a robot is available at a specific host (IP or hostname)
+async fn check_robot_at_ip(host: &str, port: u16, timeout_secs: u64) -> Result<RobotInfo, String> {
+    let url = format!("http://{}:{}/api/daemon/status", host, port);
+
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(timeout_secs))
         .build()
         .map_err(|e| format!("HTTP client error: {}", e))?;
-    
+
     match client.get(&url).send().await {
         Ok(response) => {
             if response.status().is_success() {
+                // Resolve hostname to actual IP for proper deduplication
+                let resolved_ip = resolve_to_ip(host, port)
+                    .await
+                    .unwrap_or_else(|| host.to_string());
+                let is_hostname = host.parse::<std::net::IpAddr>().is_err();
+
                 Ok(RobotInfo {
-                    name: format!("Reachy at {}", ip),
-                    ip: ip.to_string(),
+                    name: host.trim_end_matches('.').to_string(),
+                    ip: resolved_ip,
                     port,
                     discovery_method: "check".to_string(),
-                    hostname: None,
+                    hostname: if is_hostname {
+                        Some(host.to_string())
+                    } else {
+                        None
+                    },
                 })
             } else {
                 Err(format!("HTTP {}", response.status()))
@@ -82,95 +115,189 @@ async fn check_robot_at_ip(ip: &str, port: u16, timeout_secs: u64) -> Result<Rob
     }
 }
 
+/// Pick the best IP from an mDNS address set: prefer IPv4, fall back to first.
+fn pick_best_addr(addrs: &std::collections::HashSet<std::net::IpAddr>) -> Option<String> {
+    addrs
+        .iter()
+        .find(|a| a.is_ipv4())
+        .or_else(|| addrs.iter().next())
+        .map(|a| a.to_string())
+}
+
 /// Discover robots via mDNS (Multicast DNS Service Discovery)
-/// This is the automatic discovery method that works on local networks
+/// Browses both `_reachy-mini._tcp.local.` (new specific service) and
+/// `_http._tcp.local.` (old generic HTTP, filtered for "reachy") concurrently.
 async fn discover_via_mdns(timeout: Duration) -> Result<Vec<RobotInfo>, String> {
-    // Create mDNS daemon
-    let mdns = ServiceDaemon::new()
-        .map_err(|e| format!("Failed to start mDNS daemon: {}", e))?;
-    
-    // Browse for HTTP services on the local network
-    // We look for _http._tcp.local which is a standard mDNS service type
-    let receiver = mdns
+    let mdns = ServiceDaemon::new().map_err(|e| format!("Failed to start mDNS daemon: {}", e))?;
+
+    // Browse both service types concurrently
+    let receiver_reachy = mdns
+        .browse("_reachy-mini._tcp.local.")
+        .map_err(|e| format!("mDNS browse (_reachy-mini) failed: {}", e))?;
+    let receiver_http = mdns
         .browse("_http._tcp.local.")
-        .map_err(|e| format!("mDNS browse failed: {}", e))?;
-    
+        .map_err(|e| format!("mDNS browse (_http) failed: {}", e))?;
+
     let mut robots = Vec::new();
-    let mut seen_ips = std::collections::HashSet::new();
+    let mut seen_ips = HashSet::new();
     let start = Instant::now();
-    
-    log::info!("[discovery] mDNS discovery started (timeout: {:?})", timeout);
-    
+
+    log::info!(
+        "[discovery] mDNS discovery started (timeout: {:?})",
+        timeout
+    );
+
     while start.elapsed() < timeout {
-        // Check for new service events with a short timeout
-        match receiver.recv_timeout(Duration::from_millis(100)) {
-            Ok(event) => {
-                match event {
-                    ServiceEvent::ServiceResolved(info) => {
-                        let fullname = info.get_fullname();
-                        let hostname = info.get_hostname();
-                        
-                        // Filter for Reachy services
-                        // Look for "reachy" in the service name or hostname
-                        if fullname.to_lowercase().contains("reachy")
-                            || hostname.to_lowercase().contains("reachy")
+        // Check _reachy-mini._tcp events
+        if let Ok(event) = receiver_reachy.recv_timeout(Duration::from_millis(50)) {
+            if let ServiceEvent::ServiceResolved(info) = event {
+                if let Some(ip) = pick_best_addr(info.get_addresses()) {
+                    if !seen_ips.contains(&ip) {
+                        seen_ips.insert(ip.clone());
+
+                        // Name priority: robot_name TXT property > instance name from fullname > hostname
+                        let name = if let Some(robot_name) = info.get_property_val_str("robot_name")
                         {
-                            // Get the first IPv4 address
-                            if let Some(addr) = info.get_addresses().iter().next() {
-                                let ip = addr.to_string();
-                                
-                                // Avoid duplicates
-                                if !seen_ips.contains(&ip) {
-                                    seen_ips.insert(ip.clone());
-                                    
-                                    log::info!(
-                                        "[discovery] mDNS found: {} at {}:{}",
-                                        hostname,
-                                        ip,
-                                        info.get_port()
-                                    );
-                                    
-                                    robots.push(RobotInfo {
-                                        name: hostname.trim_end_matches('.').to_string(),
-                                        ip: ip.clone(),
-                                        port: info.get_port(),
-                                        discovery_method: "mdns".to_string(),
-                                        hostname: Some(hostname.to_string()),
-                                    });
-                                }
-                            }
-                        }
+                            robot_name.to_string()
+                        } else {
+                            // Extract instance name: "instance._reachy-mini._tcp.local." → "instance"
+                            info.get_fullname()
+                                .split("._reachy-mini._tcp.")
+                                .next()
+                                .unwrap_or(info.get_hostname().trim_end_matches('.'))
+                                .to_string()
+                        };
+
+                        log::info!(
+                            "[discovery] mDNS (_reachy-mini) found: {} at {}:{}",
+                            name,
+                            ip,
+                            info.get_port()
+                        );
+
+                        robots.push(RobotInfo {
+                            name,
+                            ip: ip.clone(),
+                            port: info.get_port(),
+                            discovery_method: "mdns".to_string(),
+                            hostname: Some(info.get_hostname().to_string()),
+                        });
                     }
-                    ServiceEvent::SearchStarted(_) => {
-                        log::info!("[discovery] mDNS search started");
-                    }
-                    _ => {}
                 }
             }
-            Err(_) => {
-                // Timeout on recv - continue waiting
+        }
+
+        // Check _http._tcp events (filtered for "reachy")
+        if let Ok(event) = receiver_http.recv_timeout(Duration::from_millis(50)) {
+            if let ServiceEvent::ServiceResolved(info) = event {
+                let fullname = info.get_fullname();
+                let hostname = info.get_hostname();
+
+                if fullname.to_lowercase().contains("reachy")
+                    || hostname.to_lowercase().contains("reachy")
+                {
+                    if let Some(ip) = pick_best_addr(info.get_addresses()) {
+                        if !seen_ips.contains(&ip) {
+                            seen_ips.insert(ip.clone());
+
+                            // Extract instance name: "instance._http._tcp.local." → "instance"
+                            let name = fullname
+                                .split("._http._tcp.")
+                                .next()
+                                .unwrap_or(hostname.trim_end_matches('.'))
+                                .to_string();
+
+                            log::info!(
+                                "[discovery] mDNS (_http) found: {} at {}:{}",
+                                name,
+                                ip,
+                                info.get_port()
+                            );
+
+                            robots.push(RobotInfo {
+                                name,
+                                ip: ip.clone(),
+                                port: info.get_port(),
+                                discovery_method: "mdns".to_string(),
+                                hostname: Some(hostname.to_string()),
+                            });
+                        }
+                    }
+                }
             }
         }
     }
-    
+
     log::info!(
         "[discovery] mDNS discovery finished ({} robots found)",
         robots.len()
     );
-    
+
     Ok(robots)
 }
 
-/// Main discovery command - tries multiple methods in order
+/// Deduplication tracker for discovered robots (by IP and hostname).
+struct DeduplicatedRobots {
+    robots: Vec<RobotInfo>,
+    seen_ips: HashSet<String>,
+    seen_hostnames: HashSet<String>,
+}
+
+impl DeduplicatedRobots {
+    fn new() -> Self {
+        Self {
+            robots: Vec::new(),
+            seen_ips: HashSet::new(),
+            seen_hostnames: HashSet::new(),
+        }
+    }
+
+    /// Register a robot's identity for dedup without adding it to the list.
+    /// Used when a duplicate is skipped but we still want to track its hostname.
+    fn register(&mut self, robot: &RobotInfo) {
+        self.seen_ips.insert(robot.ip.clone());
+        if let Some(h) = &robot.hostname {
+            self.seen_hostnames
+                .insert(h.trim_end_matches('.').to_lowercase());
+        }
+    }
+
+    /// Returns true if this robot (by IP or hostname) was already seen.
+    fn is_known(&self, robot: &RobotInfo) -> bool {
+        if self.seen_ips.contains(&robot.ip) {
+            return true;
+        }
+        if let Some(h) = &robot.hostname {
+            let key = h.trim_end_matches('.').to_lowercase();
+            if self.seen_hostnames.contains(&key) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Try to add a robot. Returns true if added, false if duplicate.
+    fn try_add(&mut self, robot: RobotInfo) -> bool {
+        if self.is_known(&robot) {
+            self.register(&robot); // still learn its hostname
+            return false;
+        }
+        self.register(&robot);
+        self.robots.push(robot);
+        true
+    }
+}
+
+/// Main discovery command - tries multiple methods, merges and deduplicates results
 #[tauri::command]
 pub async fn discover_robots(
     state: tauri::State<'_, DiscoveryState>,
 ) -> Result<Vec<RobotInfo>, String> {
-    let mut robots = Vec::new();
+    let mut discovered = DeduplicatedRobots::new();
     let port = DAEMON_PORT;
-    
+
     log::info!("[discovery] Starting robot discovery");
-    
+
     // STEP 1: Check cache (last known IP) - Ultra fast path
     {
         let last_ip = state.last_known_ip.read().await;
@@ -179,70 +306,84 @@ pub async fn discover_robots(
             match check_robot_at_ip(ip, port, 2).await {
                 Ok(mut robot) => {
                     robot.discovery_method = "cache".to_string();
-                    log::info!("[discovery] Cache hit! Robot found at {}", ip);
-                    return Ok(vec![robot]);
+                    log::info!("[discovery] Cache hit at {} (resolved: {})", ip, robot.ip);
+                    discovered.try_add(robot);
                 }
                 Err(e) => {
-                    log::error!("[discovery] Cache miss: {}", e);
+                    log::info!("[discovery] Cache miss: {}", e);
                 }
             }
         }
     }
-    
-    // STEP 2: Check static peers (user-configured IPs)
+
+    // STEP 2: Check static peers concurrently
     {
         let peers = state.static_peers.read().await;
-        log::info!("[discovery] Checking {} static peer(s)", peers.len());
-        
-        for ip in peers.iter() {
-            match check_robot_at_ip(ip, port, 3).await {
+        let peers_to_check: Vec<_> = peers.clone();
+
+        log::info!(
+            "[discovery] Checking {} static peer(s) concurrently",
+            peers_to_check.len()
+        );
+
+        let results = join_all(
+            peers_to_check
+                .iter()
+                .map(|ip| check_robot_at_ip(ip, port, 3)),
+        )
+        .await;
+
+        for (peer, result) in peers_to_check.iter().zip(results) {
+            match result {
                 Ok(mut robot) => {
                     robot.discovery_method = "static".to_string();
-                    log::info!("[discovery] Static peer found at {}", ip);
-                    
-                    // Update cache
-                    *state.last_known_ip.write().await = Some(ip.clone());
-                    
-                    robots.push(robot);
-                    // Return immediately on first success
-                    return Ok(robots);
+                    if discovered.try_add(robot) {
+                        log::info!("[discovery] Static peer found at {}", peer);
+                    } else {
+                        log::debug!("[discovery] Static peer {} already known, skipping", peer);
+                    }
                 }
                 Err(e) => {
-                    log::info!("[discovery] Static peer {} not available: {}", ip, e);
+                    log::debug!("[discovery] Static peer {} not available: {}", peer, e);
                 }
             }
         }
     }
-    
+
     // STEP 3: mDNS discovery (automatic, works on LAN without VPN)
     log::info!("[discovery] Starting mDNS discovery");
     match discover_via_mdns(Duration::from_secs(5)).await {
         Ok(mdns_robots) => {
-            if !mdns_robots.is_empty() {
-                log::info!("[discovery] mDNS found {} robot(s)", mdns_robots.len());
-                
-                // Update cache with first robot
-                if let Some(robot) = mdns_robots.first() {
-                    *state.last_known_ip.write().await = Some(robot.ip.clone());
-                }
-                
-                robots.extend(mdns_robots);
-                return Ok(robots);
-            } else {
-                log::info!("[discovery] mDNS found no robots");
+            for robot in mdns_robots {
+                if discovered.try_add(robot) {
+                    let added = discovered.robots.last().unwrap();
+                    log::info!("[discovery] mDNS found: {} at {}", added.name, added.ip);
+                } // silently skip duplicates from mDNS
             }
         }
         Err(e) => {
             log::warn!("[discovery] mDNS discovery failed: {}", e);
         }
     }
-    
-    // No robots found via any automatic method
-    if robots.is_empty() {
-        log::error!("[discovery] No robots found via automatic discovery");
-        log::info!("[discovery] Hint: Use manual IP connection mode");
+
+    // Update cache with first robot found
+    if let Some(robot) = discovered.robots.first() {
+        *state.last_known_ip.write().await = Some(robot.ip.clone());
     }
-    
+
+    let robots = discovered.robots;
+    if robots.is_empty() {
+        log::info!("[discovery] No robots found");
+    } else {
+        log::info!("[discovery] Discovery complete: {} robot(s):", robots.len());
+        for (i, robot) in robots.iter().enumerate() {
+            log::info!(
+                "[discovery]   [{}] name={:?} ip={} method={} hostname={:?}",
+                i, robot.name, robot.ip, robot.discovery_method, robot.hostname
+            );
+        }
+    }
+
     Ok(robots)
 }
 
@@ -253,17 +394,17 @@ pub async fn connect_to_ip(
     state: tauri::State<'_, DiscoveryState>,
 ) -> Result<RobotInfo, String> {
     let port = DAEMON_PORT;
-    
+
     log::info!("[discovery] Manual connection to IP: {}", ip);
-    
+
     match check_robot_at_ip(&ip, port, 5).await {
         Ok(mut robot) => {
             robot.discovery_method = "manual".to_string();
             log::info!("[discovery] Manual connection successful: {}", ip);
-            
+
             // Save to cache and static peers
             *state.last_known_ip.write().await = Some(ip.clone());
-            
+
             // Add to static peers if not already there
             let mut peers = state.static_peers.write().await;
             if !peers.contains(&ip) {
@@ -272,7 +413,7 @@ pub async fn connect_to_ip(
                     peers.truncate(5); // Keep only last 5 IPs
                 }
             }
-            
+
             Ok(robot)
         }
         Err(e) => {
@@ -289,7 +430,7 @@ pub async fn add_static_peer(
     state: tauri::State<'_, DiscoveryState>,
 ) -> Result<(), String> {
     let mut peers = state.static_peers.write().await;
-    
+
     if !peers.contains(&ip) {
         peers.push(ip.clone());
         log::info!("[discovery] Added static peer: {}", ip);
@@ -306,7 +447,7 @@ pub async fn remove_static_peer(
     state: tauri::State<'_, DiscoveryState>,
 ) -> Result<(), String> {
     let mut peers = state.static_peers.write().await;
-    
+
     if let Some(pos) = peers.iter().position(|x| x == &ip) {
         peers.remove(pos);
         log::info!("[discovery] Removed static peer: {}", ip);
@@ -327,9 +468,7 @@ pub async fn get_static_peers(
 
 /// Clear all cached data (useful for testing or troubleshooting)
 #[tauri::command]
-pub async fn clear_discovery_cache(
-    state: tauri::State<'_, DiscoveryState>,
-) -> Result<(), String> {
+pub async fn clear_discovery_cache(state: tauri::State<'_, DiscoveryState>) -> Result<(), String> {
     *state.last_known_ip.write().await = None;
     log::info!("[discovery] Discovery cache cleared");
     Ok(())
