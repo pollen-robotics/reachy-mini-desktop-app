@@ -12,17 +12,8 @@ export default function CameraFeed({ isLarge = false }) {
   const videoRef = useRef(null);
 
   // Get shared WebRTC stream from context
-  const {
-    state,
-    stream,
-    isConnected,
-    isConnecting,
-    isWifiMode,
-    isWirelessVersion,
-    checkFailed,
-    isRobotAwake,
-    connect,
-  } = useWebRTCStreamContext();
+  const { state, stream, isConnected, isConnecting, isSimulation, isRobotAwake, connect } =
+    useWebRTCStreamContext();
 
   // Attach stream to video element
   useEffect(() => {
@@ -45,48 +36,8 @@ export default function CameraFeed({ isLarge = false }) {
     bgcolor: '#000000',
   };
 
-  // Non-WiFi mode - Coming soon placeholder
-  if (!isWifiMode) {
-    return (
-      <Box sx={placeholderStyle}>
-        <Box
-          sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 1,
-          }}
-        >
-          <VideocamOutlinedIcon
-            sx={{
-              fontSize: isLarge ? 64 : 32,
-              color: 'rgba(255, 255, 255, 0.3)',
-            }}
-          />
-          <Typography
-            sx={{
-              fontSize: isLarge ? 12 : 9,
-              color: 'rgba(255, 255, 255, 0.4)',
-              fontFamily: 'SF Mono, Monaco, Menlo, monospace',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-            }}
-          >
-            Camera coming soon
-          </Typography>
-        </Box>
-      </Box>
-    );
-  }
-
-  // WiFi but non-wireless version - Stream not available
-  if (isWirelessVersion === false) {
+  // Simulation mode - no camera available
+  if (isSimulation) {
     return (
       <Box sx={placeholderStyle}>
         <Box
@@ -125,42 +76,7 @@ export default function CameraFeed({ isLarge = false }) {
     );
   }
 
-  // Still checking if wireless version
-  if (isWirelessVersion === null && !checkFailed) {
-    return (
-      <Box sx={placeholderStyle}>
-        <Box
-          sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 1.5,
-          }}
-        >
-          <CircularProgress size={isLarge ? 32 : 20} sx={{ color: '#FF9500' }} />
-          <Typography
-            sx={{
-              fontSize: isLarge ? 12 : 9,
-              color: 'rgba(255, 255, 255, 0.5)',
-              fontFamily: 'SF Mono, Monaco, Menlo, monospace',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-            }}
-          >
-            Checking stream...
-          </Typography>
-        </Box>
-      </Box>
-    );
-  }
-
-  // WiFi wireless version but robot not awake - show "wake up" hint
+  // Robot not awake - show "wake up" hint
   if (!isRobotAwake) {
     return (
       <Box sx={placeholderStyle}>
@@ -202,7 +118,7 @@ export default function CameraFeed({ isLarge = false }) {
     );
   }
 
-  // WiFi wireless mode, robot awake - show WebRTC stream
+  // Robot awake - show WebRTC stream
   return (
     <Box sx={placeholderStyle}>
       {/* Video element */}

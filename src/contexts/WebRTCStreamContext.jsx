@@ -6,7 +6,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import useAppStore from '../store/useAppStore';
-import { fetchWithTimeout, buildApiUrl } from '../config/daemon';
+import { getDaemonHostname } from '../config/daemon';
 import { ROBOT_STATUS } from '../constants/robotStatus';
 
 // Import the GStreamer WebRTC API
@@ -32,8 +32,8 @@ const WebRTCStreamContext = createContext(null);
  * Provider component that manages the shared WebRTC connection
  */
 export function WebRTCStreamProvider({ children }) {
-  const { connectionMode, remoteHost, robotStatus } = useAppStore();
-  const isWifiMode = connectionMode === 'wifi';
+  const { connectionMode, robotStatus } = useAppStore();
+  const isSimulation = connectionMode === 'simulation';
   const isRobotAwake = robotStatus === ROBOT_STATUS.READY || robotStatus === ROBOT_STATUS.BUSY;
 
   // Stream state
@@ -41,10 +41,6 @@ export function WebRTCStreamProvider({ children }) {
   const [stream, setStream] = useState(null);
   const [audioTrack, setAudioTrack] = useState(null);
   const [error, setError] = useState(null);
-
-  // Check if wireless version
-  const [isWirelessVersion, setIsWirelessVersion] = useState(null);
-  const [checkFailed, setCheckFailed] = useState(false);
 
   // Refs for cleanup
   const apiRef = useRef(null);
@@ -54,34 +50,8 @@ export function WebRTCStreamProvider({ children }) {
   const producersListenerRef = useRef(null);
   const connectionListenerRef = useRef(null);
 
-  // Check wireless version on mount
-  useEffect(() => {
-    if (!isWifiMode) {
-      setIsWirelessVersion(false);
-      return;
-    }
-
-    const checkWirelessVersion = async () => {
-      try {
-        const response = await fetchWithTimeout(buildApiUrl('/api/daemon/status'), {}, 5000, {
-          silent: true,
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setIsWirelessVersion(data.wireless_version === true);
-        } else {
-          setCheckFailed(true);
-        }
-      } catch (e) {
-        setCheckFailed(true);
-      }
-    };
-
-    checkWirelessVersion();
-  }, [isWifiMode]);
-
   // Should we connect?
-  const shouldConnect = isWifiMode && isWirelessVersion === true && isRobotAwake;
+  const shouldConnect = !isSimulation && isRobotAwake;
 
   /**
    * Clean up session and API
@@ -125,17 +95,14 @@ export function WebRTCStreamProvider({ children }) {
    * Connect to the WebRTC stream
    */
   const connect = useCallback(() => {
-    if (!remoteHost || !mountedRef.current) {
-      setError('No robot host specified');
-      setState(StreamState.ERROR);
-      return;
-    }
+    if (!mountedRef.current) return;
 
     cleanup();
     setState(StreamState.CONNECTING);
     setError(null);
 
-    const signalingUrl = `ws://${remoteHost}:${SIGNALING_PORT}`;
+    const signalingHost = getDaemonHostname();
+    const signalingUrl = `ws://${signalingHost}:${SIGNALING_PORT}`;
 
     try {
       const GstWebRTCAPI = window.GstWebRTCAPI;
@@ -252,7 +219,7 @@ export function WebRTCStreamProvider({ children }) {
       setError(e.message);
       setState(StreamState.ERROR);
     }
-  }, [remoteHost, cleanup]);
+  }, [cleanup]);
 
   /**
    * Disconnect from the stream
@@ -288,9 +255,7 @@ export function WebRTCStreamProvider({ children }) {
     isConnecting: state === StreamState.CONNECTING,
 
     // Derived state
-    isWifiMode,
-    isWirelessVersion,
-    checkFailed,
+    isSimulation,
     isRobotAwake,
     shouldConnect,
 
