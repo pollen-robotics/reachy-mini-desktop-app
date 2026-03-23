@@ -66,14 +66,16 @@ fi
 echo "📝 Creating PyInstaller spec file..."
 cat > /tmp/daemon.spec << 'EOF'
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_data_files
 
 block_cipher = None
+datas = collect_data_files('reachy_mini')
 
 a = Analysis(
     ['entry_point.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=datas,
     hiddenimports=[
         'uvicorn.logging',
         'uvicorn.loops',

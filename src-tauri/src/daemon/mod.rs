@@ -111,9 +111,18 @@ pub struct DaemonState {
     /// Tracks how the frontend connected (usb/wifi/simulation/external).
     /// Set by start_daemon, cleared on stop. Used for HMR/boot reconciliation.
     pub connection_mode: Mutex<Option<String>>,
+    /// Whether the desktop app should ask the Python daemon to preload datasets
+    /// during startup. Controlled by the app CLI flags.
+    pub preload_datasets: bool,
 }
 
 pub const MAX_LOGS: usize = 50;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SidecarLauncher {
+    UvTrampoline,
+    BundledDaemon,
+}
 
 // ============================================================================
 // LOG MANAGEMENT
@@ -473,7 +482,7 @@ pub fn spawn_and_monitor_sidecar(
     state: &State<DaemonState>,
     sim_mode: bool,
 ) -> Result<(), String> {
-    use crate::python::build_daemon_args;
+    use crate::python::{build_daemon_args, build_daemon_flags};
     use tauri_plugin_shell::ShellExt;
 
     let process_lock = state
@@ -486,8 +495,34 @@ pub fn spawn_and_monitor_sidecar(
     }
     drop(process_lock);
 
-    let daemon_args = build_daemon_args(sim_mode, true)?;
-    log::info!("[tauri] Launching daemon with --preload-datasets");
+    let preload_datasets = state.preload_datasets;
+    let (launcher, sidecar_cmd, daemon_args) =
+        match app_handle.shell().sidecar("reachy-mini-daemon") {
+            Ok(cmd) => (
+                SidecarLauncher::BundledDaemon,
+                cmd,
+                build_daemon_flags(sim_mode, preload_datasets),
+            ),
+            Err(_) => (
+                SidecarLauncher::UvTrampoline,
+                app_handle
+                    .shell()
+                    .sidecar("uv-trampoline")
+                    .map_err(|e| e.to_string())?,
+                build_daemon_args(sim_mode, preload_datasets)?,
+            ),
+        };
+    if preload_datasets {
+        log::info!(
+            "[tauri] Launching daemon with --preload-datasets via {:?}",
+            launcher
+        );
+    } else {
+        log::info!(
+            "[tauri] Launching daemon without --preload-datasets via {:?}",
+            launcher
+        );
+    }
 
     if sim_mode {
         log::info!("[tauri] Launching daemon in simulation mode (mockup-sim)");
@@ -495,10 +530,7 @@ pub fn spawn_and_monitor_sidecar(
 
     let daemon_args_refs: Vec<&str> = daemon_args.iter().map(|s| s.as_str()).collect();
 
-    let sidecar_command = app_handle
-        .shell()
-        .sidecar("uv-trampoline")
-        .map_err(|e| e.to_string())?
+    let sidecar_command = sidecar_cmd
         .args(daemon_args_refs)
         .env("PYTHONIOENCODING", "utf-8");
 
@@ -581,7 +613,7 @@ pub fn spawn_and_monitor_sidecar(
                         continue;
                     }
 
-                    if has_argument_error {
+                    if has_argument_error && preload_datasets {
                         log::info!("[tauri] Retrying without --preload-datasets...");
 
                         match daemon_state.process.lock() {
@@ -593,37 +625,58 @@ pub fn spawn_and_monitor_sidecar(
 
                         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-                        use crate::python::build_daemon_args;
+                        use crate::python::{build_daemon_args, build_daemon_flags};
                         use tauri_plugin_shell::ShellExt;
 
-                        let daemon_args = match build_daemon_args(sim_mode, false) {
-                            Ok(args) => args,
-                            Err(e) => {
-                                log::error!("[tauri] Failed to build daemon args: {}", e);
-                                let _ = crate::daemon::transition_and_emit(
-                                    &daemon_state,
-                                    crate::daemon::DaemonStatus::Crashed,
-                                    &app_handle_clone,
-                                );
-                                continue;
+                        let (sidecar_cmd, daemon_args) = match launcher {
+                            SidecarLauncher::BundledDaemon => {
+                                match app_handle_clone.shell().sidecar("reachy-mini-daemon") {
+                                    Ok(cmd) => (cmd, build_daemon_flags(sim_mode, false)),
+                                    Err(e) => {
+                                        log::error!(
+                                            "[tauri] Failed to get bundled daemon sidecar: {}",
+                                            e
+                                        );
+                                        let _ = crate::daemon::transition_and_emit(
+                                            &daemon_state,
+                                            crate::daemon::DaemonStatus::Crashed,
+                                            &app_handle_clone,
+                                        );
+                                        continue;
+                                    }
+                                }
+                            }
+                            SidecarLauncher::UvTrampoline => {
+                                let args = match build_daemon_args(sim_mode, false) {
+                                    Ok(args) => args,
+                                    Err(e) => {
+                                        log::error!("[tauri] Failed to build daemon args: {}", e);
+                                        let _ = crate::daemon::transition_and_emit(
+                                            &daemon_state,
+                                            crate::daemon::DaemonStatus::Crashed,
+                                            &app_handle_clone,
+                                        );
+                                        continue;
+                                    }
+                                };
+
+                                match app_handle_clone.shell().sidecar("uv-trampoline") {
+                                    Ok(cmd) => (cmd, args),
+                                    Err(e) => {
+                                        log::error!("[tauri] Failed to get sidecar: {}", e);
+                                        let _ = crate::daemon::transition_and_emit(
+                                            &daemon_state,
+                                            crate::daemon::DaemonStatus::Crashed,
+                                            &app_handle_clone,
+                                        );
+                                        continue;
+                                    }
+                                }
                             }
                         };
 
                         let daemon_args_refs: Vec<&str> =
                             daemon_args.iter().map(|s| s.as_str()).collect();
-
-                        let sidecar_cmd = match app_handle_clone.shell().sidecar("uv-trampoline") {
-                            Ok(cmd) => cmd,
-                            Err(e) => {
-                                log::error!("[tauri] Failed to get sidecar: {}", e);
-                                let _ = crate::daemon::transition_and_emit(
-                                    &daemon_state,
-                                    crate::daemon::DaemonStatus::Crashed,
-                                    &app_handle_clone,
-                                );
-                                continue;
-                            }
-                        };
 
                         match sidecar_cmd
                             .args(daemon_args_refs)

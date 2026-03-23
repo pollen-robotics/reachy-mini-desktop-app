@@ -20,6 +20,18 @@ use daemon::{
     transition_and_emit, transition_status, DaemonState, DaemonStatus,
 };
 
+fn parse_preload_datasets_flag() -> bool {
+    let mut preload_datasets = true;
+    for arg in std::env::args() {
+        match arg.as_str() {
+            "--no-preload-datasets" => preload_datasets = false,
+            "--preload-datasets" => preload_datasets = true,
+            _ => {}
+        }
+    }
+    preload_datasets
+}
+
 /// Cross-platform path for the crash marker file.
 /// Uses the OS-standard data/log directory instead of hardcoded macOS paths.
 fn crash_marker_path() -> Option<std::path::PathBuf> {
@@ -244,6 +256,8 @@ extern "C" {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let preload_datasets = parse_preload_datasets_flag();
+
     // On Linux/X11, XInitThreads must be called before ANY other X11/GTK call
     // to prevent "[xcb] Unknown sequence number" crashes in multi-threaded apps.
     // This must happen before panic hooks, signal handlers, and Tauri builder.
@@ -344,6 +358,7 @@ pub fn run() {
             status: std::sync::Mutex::new(DaemonStatus::Idle),
             generation: std::sync::Mutex::new(0),
             connection_mode: std::sync::Mutex::new(None),
+            preload_datasets,
         })
         .manage(local_proxy_state)
         .manage(discovery_state)

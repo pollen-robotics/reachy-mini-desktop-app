@@ -43,3 +43,22 @@ pub fn build_daemon_args(sim_mode: bool, preload_datasets: bool) -> Result<Vec<S
 
     Ok(args)
 }
+
+// Helper to build arguments for the standalone bundled daemon binary
+// (PyInstaller on Linux, potentially other single-binary launchers later).
+pub fn build_daemon_flags(sim_mode: bool, preload_datasets: bool) -> Vec<String> {
+    let mut args = vec![
+        "--desktop-app-daemon".to_string(),
+        "--no-wake-up-on-start".to_string(),
+    ];
+
+    if preload_datasets {
+        args.push("--preload-datasets".to_string());
+    }
+
+    if sim_mode {
+        args.push("--mockup-sim".to_string());
+    }
+
+    args
+}
