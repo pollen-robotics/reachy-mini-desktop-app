@@ -500,7 +500,8 @@ pub fn spawn_and_monitor_sidecar(
         .sidecar("uv-trampoline")
         .map_err(|e| e.to_string())?
         .args(daemon_args_refs)
-        .env("PYTHONIOENCODING", "utf-8");
+        .env("PYTHONIOENCODING", "utf-8")
+        .env("GST_REGISTRY_UPDATE", "no");
 
     let (mut rx, child) = sidecar_command.spawn().map_err(|e| e.to_string())?;
 
@@ -628,6 +629,7 @@ pub fn spawn_and_monitor_sidecar(
                         match sidecar_cmd
                             .args(daemon_args_refs)
                             .env("PYTHONIOENCODING", "utf-8")
+                            .env("GST_REGISTRY_UPDATE", "no")
                             .spawn()
                         {
                             Ok((mut new_rx, new_child)) => {
