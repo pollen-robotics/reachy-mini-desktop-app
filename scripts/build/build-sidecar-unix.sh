@@ -74,6 +74,8 @@ CPYTHON_DIR=$(ls -d "../$DST_DIR"/cpython-3.12* 2>/dev/null | head -1)
 if [ -n "$CPYTHON_DIR" ] && [ -d "$CPYTHON_DIR/lib" ] && [ -d "../$DST_DIR/apps_venv" ]; then
     echo "📁 Copying cpython libs into apps_venv/lib/..."
     cp -a "$CPYTHON_DIR/lib/"* "../$DST_DIR/apps_venv/lib/"
+    # Remove EXTERNALLY-MANAGED marker that came from cpython (apps need runtime installs)
+    find "../$DST_DIR/apps_venv" -name "EXTERNALLY-MANAGED" -delete 2>/dev/null
     echo "✅ cpython libs copied to apps_venv/lib/"
 fi
 

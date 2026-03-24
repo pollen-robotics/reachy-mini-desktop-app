@@ -44,6 +44,8 @@ Push-Location uv-wrapper
     if ($CpythonDir -and (Test-Path "..\$DST_DIR\apps_venv")) {
         Write-Host "Copying cpython libs into apps_venv/lib/..."
         Copy-Item -Path "$($CpythonDir.FullName)\lib\*" -Destination "..\$DST_DIR\apps_venv\lib\" -Recurse -Force
+        # Remove EXTERNALLY-MANAGED marker that came from cpython (apps need runtime installs)
+        Get-ChildItem -Path "..\$DST_DIR\apps_venv" -Recurse -Filter "EXTERNALLY-MANAGED" -ErrorAction SilentlyContinue | Remove-Item -Force
         Write-Host "cpython libs copied to apps_venv/lib/"
     }
 
