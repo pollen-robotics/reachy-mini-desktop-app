@@ -4,6 +4,7 @@
       "binaries/uv": "uv",
       "binaries/uvx": "uvx",
       "binaries/.venv": ".venv",
+      "binaries/apps_venv": "apps_venv",
       "binaries/cpython-3.12.13-macos-aarch64-none": "cpython-3.12.13-macos-aarch64-none",
       "binaries/cpython-3.12.13-macos-aarch64-none/lib": ".venv/lib",
       "python-entitlements.plist": "python-entitlements.plist",

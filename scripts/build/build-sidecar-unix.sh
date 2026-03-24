@@ -68,6 +68,15 @@ echo "📦 Installing sidecar with REACHY_MINI_SOURCE=$REACHY_MINI_SOURCE..."
     --apps-dependencies "reachy-mini" \
     --reachy-mini-source "$REACHY_MINI_SOURCE"
 
+# Copy cpython shared libs into apps_venv/lib/ so Python can find libpython at runtime
+# (Same as what Tauri resource mapping does for .venv/lib via cpython/lib -> .venv/lib)
+CPYTHON_DIR=$(ls -d "../$DST_DIR"/cpython-3.12* 2>/dev/null | head -1)
+if [ -n "$CPYTHON_DIR" ] && [ -d "$CPYTHON_DIR/lib" ] && [ -d "../$DST_DIR/apps_venv" ]; then
+    echo "📁 Copying cpython libs into apps_venv/lib/..."
+    cp -a "$CPYTHON_DIR/lib/"* "../$DST_DIR/apps_venv/lib/"
+    echo "✅ cpython libs copied to apps_venv/lib/"
+fi
+
 # Build uv-trampoline
 echo "🔨 Building uv-trampoline..."
 # Use TARGET_TRIPLET for cross-compilation if provided

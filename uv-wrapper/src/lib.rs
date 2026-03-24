@@ -186,7 +186,20 @@ pub fn setup_local_venv_windows(program_files_dir: &std::path::Path) -> Result<P
     } else {
         return Err(format!(".venv not found at {:?}", src_venv));
     }
-    
+
+    // Copy apps_venv
+    let src_apps_venv = program_files_dir.join("apps_venv");
+    let local_apps_venv = local_dir.join("apps_venv");
+    if src_apps_venv.exists() {
+        println!("   📁 Copying apps_venv...");
+        if local_apps_venv.exists() {
+            fs::remove_dir_all(&local_apps_venv)
+                .map_err(|e| format!("Failed to remove old local apps_venv: {}", e))?;
+        }
+        copy_dir_recursive(&src_apps_venv, &local_apps_venv)?;
+        println!("   ✅ apps_venv copied");
+    }
+
     // Copy cpython folder
     let cpython_folder = find_cpython_folder(program_files_dir)?;
     let src_cpython = program_files_dir.join(&cpython_folder);
@@ -293,7 +306,20 @@ pub fn setup_local_venv_linux(system_lib_dir: &std::path::Path) -> Result<PathBu
     } else {
         return Err(format!(".venv not found at {:?}", src_venv));
     }
-    
+
+    // Copy apps_venv
+    let src_apps_venv = system_lib_dir.join("apps_venv");
+    let local_apps_venv = local_dir.join("apps_venv");
+    if src_apps_venv.exists() {
+        println!("   📁 Copying apps_venv...");
+        if local_apps_venv.exists() {
+            fs::remove_dir_all(&local_apps_venv)
+                .map_err(|e| format!("Failed to remove old local apps_venv: {}", e))?;
+        }
+        copy_dir_recursive(&src_apps_venv, &local_apps_venv)?;
+        println!("   ✅ apps_venv copied");
+    }
+
     // Copy cpython folder
     let cpython_folder = find_cpython_folder(system_lib_dir)?;
     let src_cpython = system_lib_dir.join(&cpython_folder);
@@ -392,7 +418,20 @@ pub fn setup_local_venv_macos(bundle_dir: &std::path::Path) -> Result<PathBuf, S
     } else {
         return Err(format!(".venv not found at {:?}", src_venv));
     }
-    
+
+    // Copy apps_venv
+    let src_apps_venv = bundle_dir.join("apps_venv");
+    let local_apps_venv = local_dir.join("apps_venv");
+    if src_apps_venv.exists() {
+        println!("   📁 Copying apps_venv...");
+        if local_apps_venv.exists() {
+            fs::remove_dir_all(&local_apps_venv)
+                .map_err(|e| format!("Failed to remove old local apps_venv: {}", e))?;
+        }
+        copy_dir_recursive(&src_apps_venv, &local_apps_venv)?;
+        println!("   ✅ apps_venv copied");
+    }
+
     let cpython_folder = find_cpython_folder(bundle_dir)?;
     let src_cpython = bundle_dir.join(&cpython_folder);
     let dst_cpython = local_dir.join(&cpython_folder);
@@ -541,8 +580,21 @@ pub fn is_app_translocation_path(_path: &std::path::Path) -> bool {
 }
 
 pub fn patching_pyvenv_cfg(uv_folder: &std::path::Path, cpython_folder: &str) -> Result<(), String> {
-    let pyvenv_cfg_path = uv_folder.join(".venv").join("pyvenv.cfg");
-    
+    // Patch .venv (required)
+    patch_single_pyvenv_cfg(uv_folder, ".venv", cpython_folder)?;
+
+    // Patch apps_venv (optional — may not exist in older builds)
+    let apps_venv_cfg = uv_folder.join("apps_venv").join("pyvenv.cfg");
+    if apps_venv_cfg.exists() {
+        patch_single_pyvenv_cfg(uv_folder, "apps_venv", cpython_folder)?;
+    }
+
+    Ok(())
+}
+
+fn patch_single_pyvenv_cfg(uv_folder: &std::path::Path, venv_name: &str, cpython_folder: &str) -> Result<(), String> {
+    let pyvenv_cfg_path = uv_folder.join(venv_name).join("pyvenv.cfg");
+
     // Check if file exists before trying to patch it
     if !pyvenv_cfg_path.exists() {
         return Err(format!(
@@ -550,7 +602,7 @@ pub fn patching_pyvenv_cfg(uv_folder: &std::path::Path, cpython_folder: &str) ->
             pyvenv_cfg_path
         ));
     }
-    
+
     println!("🔧 Patching pyvenv.cfg at {:?}", pyvenv_cfg_path);
 
     let content = std::fs::read_to_string(&pyvenv_cfg_path)
@@ -578,7 +630,7 @@ pub fn patching_pyvenv_cfg(uv_folder: &std::path::Path, cpython_folder: &str) ->
         Ok(_) => Ok(()),
         Err(e) => {
             let error_msg = format!("Unable to write patched pyvenv.cfg: {}", e);
-    
+
             // Check if we're in AppTranslocation and the error is read-only
             #[cfg(target_os = "macos")]
             {
@@ -586,7 +638,7 @@ pub fn patching_pyvenv_cfg(uv_folder: &std::path::Path, cpython_folder: &str) ->
                     return Err(format!("APP_TRANSLOCATION_ERROR: {}", error_msg));
                 }
             }
-            
+
             Err(error_msg)
         }
     }

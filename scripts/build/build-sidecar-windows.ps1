@@ -39,6 +39,14 @@ Push-Location uv-wrapper
     # Creates .venv for daemon and apps_venv for apps runtime
     target/release/uv-bundle.exe --install-dir ..\$DST_DIR --python-version 3.12 --dependencies "reachy-mini" --apps-dependencies "reachy-mini" --reachy-mini-source $ReachyMiniSource
 
+    # Copy cpython shared libs into apps_venv so Python can find them at runtime
+    $CpythonDir = Get-ChildItem -Path "..\$DST_DIR" -Directory -Filter "cpython-3.12*" | Select-Object -First 1
+    if ($CpythonDir -and (Test-Path "..\$DST_DIR\apps_venv")) {
+        Write-Host "Copying cpython libs into apps_venv/lib/..."
+        Copy-Item -Path "$($CpythonDir.FullName)\lib\*" -Destination "..\$DST_DIR\apps_venv\lib\" -Recurse -Force
+        Write-Host "cpython libs copied to apps_venv/lib/"
+    }
+
     cargo build --release --bin uv-trampoline
     Copy-Item target/release/uv-trampoline.exe ../$DST_DIR/uv-trampoline-$TRIPLET.exe -Force
 Pop-Location

@@ -643,17 +643,15 @@ fn main() -> ExitCode {
                                     "-".to_string() // Fallback to adhoc
                                 };
                                 
-                                            // Find .venv directory (working_dir is already set to Contents/Resources in production)
-                                            let venv_dir = working_dir.join(".venv");
-                                            
-                                            if venv_dir.exists() {
-                                    // Re-sign all binaries with entitlements
-                                    // Now works with both Developer ID AND adhoc (with disable-library-validation)
-                                                if let Err(e) = resign_all_venv_binaries(&venv_dir, &signing_identity) {
-                                                    eprintln!("⚠️  Failed to re-sign binaries after pip install: {}", e);
-                                                    // Don't fail the pip install, just log the error
-                                    }
-                                }
+                                            // Re-sign all Python venvs (working_dir is already set to Contents/Resources in production)
+                                            for venv_name in &[".venv", "apps_venv"] {
+                                                let venv_dir = working_dir.join(venv_name);
+                                                if venv_dir.exists() {
+                                                    if let Err(e) = resign_all_venv_binaries(&venv_dir, &signing_identity) {
+                                                        eprintln!("⚠️  Failed to re-sign binaries in {} after pip install: {}", venv_name, e);
+                                                    }
+                                                }
+                                            }
                             }
                         }
                     }
