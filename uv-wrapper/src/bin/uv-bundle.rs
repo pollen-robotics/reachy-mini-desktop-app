@@ -16,6 +16,10 @@ struct Args {
     #[arg(short, long, value_delimiter = ' ', num_args = 1..)]
     dependencies: Vec<String>,
 
+    /// Dependencies to install in the apps venv (apps_venv)
+    #[arg(long, value_delimiter = ' ', num_args = 1..)]
+    apps_dependencies: Vec<String>,
+
     /// Source for reachy-mini package: 'pypi' (default) or a GitHub branch name (e.g., 'develop', 'main')
     #[arg(long, default_value = "pypi")]
     reachy_mini_source: String,
@@ -70,81 +74,128 @@ fn main() {
     ))
     .expect("Failed to install python");
 
-    // Creating a venv
-    #[cfg(not(target_os = "windows"))]
-    run_command("UV_PYTHON_INSTALL_DIR=. UV_WORKING_DIR=. ./uv venv")
-        .expect("Failed to create virtual environment");
-    #[cfg(target_os = "windows")]
-    run_command("$env:UV_PYTHON_INSTALL_DIR = '.'; $env:UV_WORKING_DIR = '.'; ./uv.exe venv")
-        .expect("Failed to create virtual environment");
+    // Replace reachy-mini with GitHub version if a branch is specified (not "pypi")
+    let is_github_source = args.reachy_mini_source != "pypi";
+    let github_url = if is_github_source {
+        Some(format!(
+            "git+https://github.com/pollen-robotics/reachy_mini.git@{}",
+            args.reachy_mini_source
+        ))
+    } else {
+        None
+    };
 
-    // Installing dependencies
-    if !args.dependencies.is_empty() {
-        let mut deps = args.dependencies;
-        
-        // Replace reachy-mini with GitHub version if a branch is specified (not "pypi")
-        let is_github_source = args.reachy_mini_source != "pypi";
-        if is_github_source {
-            let branch = &args.reachy_mini_source;
-            let github_url = format!("git+https://github.com/pollen-robotics/reachy_mini.git@{}", branch);
-            deps = deps
-                .iter()
-                .map(|dep| {
-                    // Replace reachy-mini[...] with git+https://...@<branch>[...]
-                    if dep.starts_with("reachy-mini") {
-                        if let Some(extras_start) = dep.find('[') {
-                            // Has extras like [placo_kinematics]
-                            let extras = &dep[extras_start..];
-                            format!("{}{}", github_url, extras)
-                        } else {
-                            // No extras
-                            github_url.clone()
-                        }
+    // Creating the daemon venv (.venv) and installing dependencies
+    create_venv_and_install(".venv", args.dependencies, &github_url);
+
+    #[cfg(not(target_os = "windows"))]
+    prewarm_imports(".venv");
+
+    // Creating the apps venv (apps_venv) and installing dependencies
+    if !args.apps_dependencies.is_empty() {
+        create_venv_and_install("apps_venv", args.apps_dependencies, &github_url);
+
+        #[cfg(not(target_os = "windows"))]
+        prewarm_imports("apps_venv");
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn prewarm_imports(venv_name: &str) {
+    // Pre-warm GStreamer registry cache (stored in <venv>/.cache/gstreamer-1.0/).
+    // Without this, first launch scans 256 plugins which takes 2+ minutes.
+    // GST_REGISTRY_FORK=no prevents the forked scanner (even slower).
+    println!("🔥 Pre-warming GStreamer registry cache for {}...", venv_name);
+    run_command(&format!(
+        "GST_REGISTRY_FORK=no {}/bin/python3 -c \"import gi; gi.require_version('Gst', '1.0'); from gi.repository import Gst; Gst.init([])\" 2>/dev/null || true",
+        venv_name
+    )).ok();
+
+    // Pre-warm reachy_mini import to trigger any first-import setup (bytecode caching, etc.)
+    println!("🔥 Pre-warming reachy_mini import for {}...", venv_name);
+    run_command(&format!(
+        "{}/bin/python3 -c \"import reachy_mini\" 2>/dev/null || true",
+        venv_name
+    )).ok();
+}
+
+fn resolve_deps(deps: Vec<String>, github_url: &Option<String>) -> Vec<String> {
+    match github_url {
+        Some(url) => deps
+            .into_iter()
+            .map(|dep| {
+                if dep.starts_with("reachy-mini") {
+                    if let Some(extras_start) = dep.find('[') {
+                        let extras = &dep[extras_start..];
+                        format!("{}{}", url, extras)
                     } else {
-                        dep.clone()
+                        url.clone()
                     }
-                })
-                .collect();
-        }
-        
-        let deps_str = deps.join(" ");
+                } else {
+                    dep
+                }
+            })
+            .collect(),
+        None => deps,
+    }
+}
+
+fn create_venv_and_install(venv_name: &str, deps: Vec<String>, github_url: &Option<String>) {
+    let is_github_source = github_url.is_some();
+
+    // Create the venv
+    println!("📦 Creating venv: {}", venv_name);
+    #[cfg(not(target_os = "windows"))]
+    run_command(&format!(
+        "UV_PYTHON_INSTALL_DIR=. UV_WORKING_DIR=. ./uv venv {}",
+        venv_name
+    ))
+    .expect(&format!("Failed to create virtual environment: {}", venv_name));
+    #[cfg(target_os = "windows")]
+    run_command(&format!(
+        "$env:UV_PYTHON_INSTALL_DIR = '.'; $env:UV_WORKING_DIR = '.'; ./uv.exe venv {}",
+        venv_name
+    ))
+    .expect(&format!("Failed to create virtual environment: {}", venv_name));
+
+    // Install dependencies
+    if !deps.is_empty() {
+        let resolved = resolve_deps(deps, github_url);
+        let deps_str = resolved.join(" ");
+
         #[cfg(not(target_os = "windows"))]
         {
-            // For GitHub installs, configure git to skip LFS smudge to avoid errors with missing LFS files
             let git_lfs_skip = if is_github_source {
                 "GIT_LFS_SKIP_SMUDGE=1 "
             } else {
                 ""
             };
             run_command(&format!(
-                "{}{}UV_PYTHON_INSTALL_DIR=. UV_WORKING_DIR=. ./uv pip install {}",
+                "{}{}VIRTUAL_ENV={} UV_PYTHON_INSTALL_DIR=. UV_WORKING_DIR=. ./uv pip install --python {}/bin/python3 {}",
                 git_lfs_skip,
-                if cfg!(target_os = "macos") { "MACOSX_DEPLOYMENT_TARGET=10.15 " } else { "" },
+                if cfg!(target_os = "macos") {
+                    "MACOSX_DEPLOYMENT_TARGET=10.15 "
+                } else {
+                    ""
+                },
+                venv_name,
+                venv_name,
                 deps_str
             ))
-            .expect("Failed to install dependencies");
-
-            // Pre-warm GStreamer registry cache (stored in .venv/.cache/gstreamer-1.0/).
-            // Without this, first launch scans 256 plugins which takes 2+ minutes.
-            // GST_REGISTRY_FORK=no prevents the forked scanner (even slower).
-            run_command(
-                "GST_REGISTRY_FORK=no .venv/bin/python3 -c \"import gi; gi.require_version('Gst', '1.0'); from gi.repository import Gst; Gst.init([])\" 2>/dev/null || true"
-            ).ok();
+            .expect(&format!("Failed to install dependencies in {}", venv_name));
         }
         #[cfg(target_os = "windows")]
         {
-            // For GitHub installs, configure git to skip LFS smudge to avoid errors with missing LFS files
             let git_lfs_skip = if is_github_source {
                 "$env:GIT_LFS_SKIP_SMUDGE='1'; "
             } else {
                 ""
             };
             run_command(&format!(
-                "{}$env:UV_PYTHON_INSTALL_DIR = '.'; $env:UV_WORKING_DIR = '.'; ./uv.exe pip install {}",
-                git_lfs_skip, deps_str
+                "{}$env:VIRTUAL_ENV='{}'; $env:UV_PYTHON_INSTALL_DIR = '.'; $env:UV_WORKING_DIR = '.'; ./uv.exe pip install --python {}\\Scripts\\python.exe {}",
+                git_lfs_skip, venv_name, venv_name, deps_str
             ))
-            .expect("Failed to install dependencies");
+            .expect(&format!("Failed to install dependencies in {}", venv_name));
         }
     }
 }
-

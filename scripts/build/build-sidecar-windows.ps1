@@ -36,7 +36,8 @@ Push-Location uv-wrapper
     # Use REACHY_MINI_SOURCE env var if set, default to 'pypi'
     $ReachyMiniSource = if ($env:REACHY_MINI_SOURCE) { $env:REACHY_MINI_SOURCE } else { "pypi" }
     # Install reachy-mini (no mujoco - simulation uses lightweight kinematics)
-    target/release/uv-bundle.exe --install-dir ..\$DST_DIR --python-version 3.12 --dependencies "reachy-mini" --reachy-mini-source $ReachyMiniSource
+    # Creates .venv for daemon and apps_venv for apps runtime
+    target/release/uv-bundle.exe --install-dir ..\$DST_DIR --python-version 3.12 --dependencies "reachy-mini" --apps-dependencies "reachy-mini" --reachy-mini-source $ReachyMiniSource
 
     cargo build --release --bin uv-trampoline
     Copy-Item target/release/uv-trampoline.exe ../$DST_DIR/uv-trampoline-$TRIPLET.exe -Force

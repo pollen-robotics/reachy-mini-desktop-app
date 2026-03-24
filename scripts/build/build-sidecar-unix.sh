@@ -60,10 +60,12 @@ REACHY_MINI_SOURCE="${REACHY_MINI_SOURCE:-pypi}"
 
 echo "📦 Installing sidecar with REACHY_MINI_SOURCE=$REACHY_MINI_SOURCE..."
 # Install reachy-mini (no mujoco - simulation uses lightweight kinematics)
+# Creates .venv for daemon and apps_venv for apps runtime
 ./target/release/uv-bundle \
     --install-dir "../$DST_DIR" \
     --python-version 3.12 \
     --dependencies "reachy-mini" \
+    --apps-dependencies "reachy-mini" \
     --reachy-mini-source "$REACHY_MINI_SOURCE"
 
 # Build uv-trampoline
