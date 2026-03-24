@@ -158,6 +158,27 @@ fn create_venv_and_install(venv_name: &str, deps: Vec<String>, github_url: &Opti
     ))
     .expect(&format!("Failed to create virtual environment: {}", venv_name));
 
+    // Remove EXTERNALLY-MANAGED marker so runtime pip installs work
+    // (uv venv adds this marker, but apps need to install packages at runtime)
+    let externally_managed = std::path::Path::new(venv_name)
+        .join("lib")
+        .join("python3.12")
+        .join("EXTERNALLY-MANAGED");
+    if externally_managed.exists() {
+        std::fs::remove_file(&externally_managed).ok();
+        println!("🗑️  Removed EXTERNALLY-MANAGED marker from {}", venv_name);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let externally_managed_win = std::path::Path::new(venv_name)
+            .join("Lib")
+            .join("EXTERNALLY-MANAGED");
+        if externally_managed_win.exists() {
+            std::fs::remove_file(&externally_managed_win).ok();
+            println!("🗑️  Removed EXTERNALLY-MANAGED marker from {}", venv_name);
+        }
+    }
+
     // Install dependencies
     if !deps.is_empty() {
         let resolved = resolve_deps(deps, github_url);
