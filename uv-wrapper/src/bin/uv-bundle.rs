@@ -88,36 +88,13 @@ fn main() {
     // Creating the daemon venv (.venv) and installing dependencies
     create_venv_and_install(".venv", args.dependencies, &github_url);
 
-    #[cfg(not(target_os = "windows"))]
-    prewarm_imports(".venv");
-
     // Creating the apps venv (apps_venv) and installing dependencies
     if !args.apps_dependencies.is_empty() {
         create_venv_and_install("apps_venv", args.apps_dependencies, &github_url);
-
-        #[cfg(not(target_os = "windows"))]
-        prewarm_imports("apps_venv");
     }
 }
 
-#[cfg(not(target_os = "windows"))]
-fn prewarm_imports(venv_name: &str) {
-    // Pre-warm GStreamer registry cache (stored in <venv>/.cache/gstreamer-1.0/).
-    // Without this, first launch scans 256 plugins which takes 2+ minutes.
-    // GST_REGISTRY_FORK=no prevents the forked scanner (even slower).
-    println!("🔥 Pre-warming GStreamer registry cache for {}...", venv_name);
-    run_command(&format!(
-        "GST_REGISTRY_FORK=no {}/bin/python3 -c \"import gi; gi.require_version('Gst', '1.0'); from gi.repository import Gst; Gst.init([])\" 2>/dev/null || true",
-        venv_name
-    )).ok();
 
-    // Pre-warm reachy_mini import to trigger any first-import setup (bytecode caching, etc.)
-    println!("🔥 Pre-warming reachy_mini import for {}...", venv_name);
-    run_command(&format!(
-        "{}/bin/python3 -c \"import reachy_mini\" 2>/dev/null || true",
-        venv_name
-    )).ok();
-}
 
 fn resolve_deps(deps: Vec<String>, github_url: &Option<String>) -> Vec<String> {
     match github_url {

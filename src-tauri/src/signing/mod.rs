@@ -1,9 +1,14 @@
 #[cfg(target_os = "macos")]
 use std::path::PathBuf;
 
-/// Re-sign Python binaries (.so, .dylib) in .venv after pip install
+/// Re-sign Python binaries (.so, .dylib) in .venv and apps_venv after pip install
 /// This fixes the Team ID mismatch issue on macOS where pip-installed binaries
 /// are not signed with the same Team ID as the app bundle
+///
+/// Signs both .venv and apps_venv in all discovered locations:
+/// - Application Support/com.pollen-robotics.reachy-mini/ (persists across updates)
+/// - App bundle Contents/Resources/ (production)
+/// - binaries/ or target/debug/ (dev mode)
 ///
 /// Runs asynchronously in a background thread to avoid blocking the UI
 #[cfg(target_os = "macos")]
@@ -16,98 +21,88 @@ pub async fn sign_python_binaries() -> Result<String, String> {
     let result = tauri::async_runtime::spawn_blocking(move || {
         log::info!("[tauri] Starting Python binaries re-signing...");
 
-        // 1. Find app bundle path or dev mode path
         let exe_path = env::current_exe()
             .map_err(|e| format!("Failed to get current executable path: {}", e))?;
 
-        // Try to find .venv in different locations:
-        // - Production: Contents/Resources/.venv (in .app bundle)
-        // - Dev mode: target/debug/.venv or current_dir/.venv
-        let venv_dir = if exe_path.to_string_lossy().contains(".app/Contents/MacOS") {
-            // Production mode: in app bundle
-            let app_bundle = exe_path
-                .parent() // Contents/MacOS
-                .and_then(|p| p.parent()) // Contents
-                .and_then(|p| p.parent()) // .app bundle
-                .ok_or("Failed to find app bundle path")?;
+        // Collect all directories that may contain .venv / apps_venv
+        let mut base_dirs: Vec<PathBuf> = Vec::new();
 
+        // Always check Application Support (used at runtime in both dev and prod)
+        if let Some(data_dir) = dirs::data_dir() {
+            let app_support_dir = data_dir.join("com.pollen-robotics.reachy-mini");
+            if app_support_dir.exists() {
+                log::info!(
+                    "[tauri] Found Application Support dir: {}",
+                    app_support_dir.display()
+                );
+                base_dirs.push(app_support_dir);
+            }
+        }
+
+        if exe_path.to_string_lossy().contains(".app/Contents/MacOS") {
+            // Production mode: also check app bundle Resources
+            let app_bundle = exe_path
+                .parent()
+                .and_then(|p| p.parent())
+                .and_then(|p| p.parent())
+                .ok_or("Failed to find app bundle path")?;
             let resources_dir = app_bundle.join("Contents/Resources");
-            resources_dir.join(".venv")
+            if resources_dir.exists() {
+                base_dirs.push(resources_dir);
+            }
         } else {
-            // Dev mode: try to find .venv relative to current dir or target/debug
+            // Dev mode: also check binaries/ dir
             let current_dir = env::current_dir()
                 .map_err(|e| format!("Failed to get current directory: {}", e))?;
 
-            // Try multiple locations in dev mode:
-            // 1. binaries/.venv (if we're in src-tauri/)
-            // 2. src-tauri/binaries/.venv (if we're in project root)
-            // 3. target/debug/.venv
-            // 4. current_dir/.venv
-
-            // Check if we're in src-tauri/ directory by checking the last component
             let is_in_src_tauri = current_dir
                 .file_name()
                 .and_then(|name| name.to_str())
                 .map(|name| name == "src-tauri")
                 .unwrap_or(false);
 
-            // Try multiple locations in dev mode:
-            let binaries_venv = if is_in_src_tauri {
-                // We're in src-tauri/, look for binaries/.venv
-                current_dir.join("binaries/.venv")
+            let binaries_dir = if is_in_src_tauri {
+                current_dir.join("binaries")
             } else {
-                // We're in project root, look for src-tauri/binaries/.venv
-                current_dir.join("src-tauri/binaries/.venv")
+                current_dir.join("src-tauri/binaries")
             };
 
-            if binaries_venv.exists() {
-                log::info!("[tauri] Found .venv at: {}", binaries_venv.display());
-                binaries_venv
-            } else {
-                let target_venv = if is_in_src_tauri {
-                    current_dir.join("target/debug/.venv")
-                } else {
-                    current_dir.join("src-tauri/target/debug/.venv")
-                };
+            if binaries_dir.exists() {
+                base_dirs.push(binaries_dir);
+            }
+        }
 
-                if target_venv.exists() {
-                    log::info!("[tauri] Found .venv at: {}", target_venv.display());
-                    target_venv
-                } else {
-                    // Fallback: try current_dir/.venv
-                    let fallback_venv = current_dir.join(".venv");
-                    log::info!(
-                        "[tauri] Trying fallback .venv at: {}",
-                        fallback_venv.display()
-                    );
-                    fallback_venv
+        // Collect all venv dirs (.venv and apps_venv) from discovered base dirs
+        let venv_names = [".venv", "apps_venv"];
+        let mut venv_dirs: Vec<PathBuf> = Vec::new();
+        for base_dir in &base_dirs {
+            for name in &venv_names {
+                let venv_path = base_dir.join(name);
+                if venv_path.exists() {
+                    log::info!("[tauri] Will sign venv: {}", venv_path.display());
+                    venv_dirs.push(venv_path);
                 }
             }
-        };
+        }
 
-        if !venv_dir.exists() {
+        if venv_dirs.is_empty() {
             return Err(format!(
-                "Python virtual environment (.venv) not found at: {}",
-                venv_dir.display()
+                "No Python venvs (.venv or apps_venv) found in: {:?}",
+                base_dirs
             ));
         }
 
-        log::info!("[tauri] Using .venv at: {}", venv_dir.display());
-
-        // For signing identity detection, we still need the app bundle in production
-        // In dev mode, we'll use adhoc signature
+        // Detect signing identity
         let app_bundle_for_signing = if exe_path.to_string_lossy().contains(".app/Contents/MacOS") {
             exe_path
                 .parent()
                 .and_then(|p| p.parent())
                 .and_then(|p| p.parent())
         } else {
-            None // Dev mode: no app bundle
+            None
         };
 
-        // 2. Detect signing identity from app bundle (production) or use adhoc (dev)
         let signing_identity = if let Some(app_bundle) = app_bundle_for_signing {
-            // Production mode: try to detect signing identity
             let detect_output = Command::new("codesign")
                 .arg("-d")
                 .arg("-v")
@@ -116,9 +111,7 @@ pub async fn sign_python_binaries() -> Result<String, String> {
 
             match detect_output {
                 Ok(output) => {
-                    // Try to extract identity from verbose output
                     let output_str = String::from_utf8_lossy(&output.stderr);
-                    // Look for "Authority=" line
                     let identity = output_str
                         .lines()
                         .find(|line| line.contains("Authority="))
@@ -132,7 +125,6 @@ pub async fn sign_python_binaries() -> Result<String, String> {
                         log::info!("[tauri] Detected signing identity: {}", id);
                         id
                     } else {
-                        // Fallback: try to get from security find-identity
                         let sec_output = Command::new("security")
                             .arg("find-identity")
                             .arg("-v")
@@ -143,14 +135,10 @@ pub async fn sign_python_binaries() -> Result<String, String> {
                         match sec_output {
                             Ok(sec_out) => {
                                 let sec_str = String::from_utf8_lossy(&sec_out.stdout);
-                                // Look for Developer ID Application
                                 let dev_id = sec_str
                                     .lines()
                                     .find(|line| line.contains("Developer ID Application"))
-                                    .and_then(|line| {
-                                        // Extract identity from line like: "   1) ABC123... \"Developer ID Application: Name (TEAM_ID)\""
-                                        line.split('"').nth(1).map(|s| s.to_string())
-                                    });
+                                    .and_then(|line| line.split('"').nth(1).map(|s| s.to_string()));
 
                                 if let Some(id) = dev_id {
                                     log::info!("[tauri] Found Developer ID: {}", id);
@@ -159,14 +147,14 @@ pub async fn sign_python_binaries() -> Result<String, String> {
                                     log::info!(
                                         "[tauri] No Developer ID found, using adhoc signature"
                                     );
-                                    "-".to_string() // Adhoc signature
+                                    "-".to_string()
                                 }
                             }
                             Err(_) => {
                                 log::info!(
                                     "[tauri] Failed to detect identity, using adhoc signature"
                                 );
-                                "-".to_string() // Adhoc signature
+                                "-".to_string()
                             }
                         }
                     }
@@ -175,17 +163,15 @@ pub async fn sign_python_binaries() -> Result<String, String> {
                     log::info!(
                         "[tauri] Failed to detect identity from app bundle, using adhoc signature"
                     );
-                    "-".to_string() // Adhoc signature
+                    "-".to_string()
                 }
             }
         } else {
-            // Dev mode: use adhoc signature
             log::info!("[tauri] Dev mode detected, using adhoc signature");
             "-".to_string()
         };
 
-        // 3. Find python-entitlements.plist in Resources
-        // This file contains disable-library-validation entitlement required for Python
+        // Find python-entitlements.plist
         let python_entitlements = if exe_path.to_string_lossy().contains(".app/Contents/MacOS") {
             let app_bundle = exe_path
                 .parent()
@@ -208,7 +194,6 @@ pub async fn sign_python_binaries() -> Result<String, String> {
                 None
             }
         } else {
-            // Dev mode: look for it in src-tauri/
             let current_dir = env::current_dir().ok();
             if let Some(dir) = current_dir {
                 let paths_to_try = vec![
@@ -222,107 +207,31 @@ pub async fn sign_python_binaries() -> Result<String, String> {
             }
         };
 
-        // 4. Find and sign all binaries in .venv
-        // IMPORTANT: Sign in order: libpython first, then executables, then extensions
-        // Python binaries need disable-library-validation entitlement!
-        let mut signed_count = 0;
-        let mut error_count = 0;
+        // Sign all discovered venvs
+        let mut total_signed = 0;
+        let mut total_errors = 0;
 
-        // Priority 1: Sign libpython*.dylib FIRST (critical for Python to load)
-        // Apply entitlements to libpython for disable-library-validation
-        let libpython_dylib = venv_dir.join("lib/libpython3.12.dylib");
-        if libpython_dylib.exists() {
-            log::info!("[tauri] Signing libpython3.12.dylib with entitlements (priority)...");
-            if sign_binary_with_entitlements(
-                &libpython_dylib,
-                &signing_identity,
-                python_entitlements.as_ref(),
-            )? {
-                signed_count += 1;
-            } else {
-                error_count += 1;
-            }
+        for venv_dir in &venv_dirs {
+            log::info!("[tauri] Signing binaries in: {}", venv_dir.display());
+            let (signed, errors) =
+                sign_venv_binaries(venv_dir, &signing_identity, python_entitlements.as_ref())?;
+            total_signed += signed;
+            total_errors += errors;
         }
 
-        // Priority 2: Sign Python executables (python3, python3.12)
-        // Apply entitlements to python3 for disable-library-validation
-        let python_bin = venv_dir.join("bin/python3");
-        if python_bin.exists() {
-            log::info!("[tauri] Signing python3 executable with entitlements...");
-            if sign_binary_with_entitlements(
-                &python_bin,
-                &signing_identity,
-                python_entitlements.as_ref(),
-            )? {
-                signed_count += 1;
-            } else {
-                error_count += 1;
-            }
-        }
-
-        // Also sign python3.12 if it exists and is different from python3
-        let python312_bin = venv_dir.join("bin/python3.12");
-        if python312_bin.exists() && python312_bin != python_bin {
-            log::info!("[tauri] Signing python3.12 executable with entitlements...");
-            if sign_binary_with_entitlements(
-                &python312_bin,
-                &signing_identity,
-                python_entitlements.as_ref(),
-            )? {
-                signed_count += 1;
-            } else {
-                error_count += 1;
-            }
-        }
-
-        // Priority 3: Sign all other .dylib files (including libpython in other locations)
-        let dylib_files = find_files(&venv_dir, "*.dylib")
-            .map_err(|e| format!("Failed to find .dylib files: {}", e))?;
-
-        for dylib_file in dylib_files {
-            // Skip libpython3.12.dylib if already signed above
-            if dylib_file == libpython_dylib {
-                continue;
-            }
-            // Apply entitlements to all libpython*.dylib files
-            let use_entitlements = dylib_file
-                .file_name()
-                .map(|n: &std::ffi::OsStr| n.to_string_lossy().starts_with("libpython"))
-                .unwrap_or(false);
-
-            if use_entitlements {
-                if sign_binary_with_entitlements(
-                    &dylib_file,
-                    &signing_identity,
-                    python_entitlements.as_ref(),
-                )? {
-                    signed_count += 1;
-                } else {
-                    error_count += 1;
-                }
-            } else if sign_binary(&dylib_file, &signing_identity)? {
-                signed_count += 1;
-            } else {
-                error_count += 1;
-            }
-        }
-
-        // Priority 4: Sign all .so files (Python extensions)
-        let so_files = find_files(&venv_dir, "*.so")
-            .map_err(|e| format!("Failed to find .so files: {}", e))?;
-
-        for so_file in so_files {
-            if sign_binary(&so_file, &signing_identity)? {
-                signed_count += 1;
-            } else {
-                error_count += 1;
-            }
-        }
-
-        let result_msg = if error_count == 0 {
-            format!("Successfully signed {} Python binaries", signed_count)
+        let result_msg = if total_errors == 0 {
+            format!(
+                "Successfully signed {} Python binaries across {} venvs",
+                total_signed,
+                venv_dirs.len()
+            )
         } else {
-            format!("Signed {} binaries, {} failed", signed_count, error_count)
+            format!(
+                "Signed {} binaries, {} failed across {} venvs",
+                total_signed,
+                total_errors,
+                venv_dirs.len()
+            )
         };
 
         log::info!("[tauri] {}", result_msg);
@@ -332,6 +241,152 @@ pub async fn sign_python_binaries() -> Result<String, String> {
     .map_err(|e| format!("Failed to execute signing task: {}", e))?;
 
     result
+}
+
+/// Sign all binaries within a single venv directory.
+/// Uses a `.last_signed` marker file for incremental signing — only files
+/// modified after the marker are signed. If no marker exists, signs everything.
+/// Returns (signed_count, skipped_count, error_count).
+#[cfg(target_os = "macos")]
+fn sign_venv_binaries(
+    venv_dir: &PathBuf,
+    signing_identity: &str,
+    python_entitlements: Option<&PathBuf>,
+) -> Result<(u32, u32), String> {
+    use std::fs;
+    use std::time::SystemTime;
+
+    let marker_path = venv_dir.join(".last_signed");
+    let marker_mtime = if marker_path.exists() {
+        fs::metadata(&marker_path)
+            .ok()
+            .and_then(|m| m.modified().ok())
+    } else {
+        None
+    };
+
+    if let Some(t) = marker_mtime {
+        log::info!(
+            "[tauri]   Incremental signing (marker exists) for {}",
+            venv_dir.display()
+        );
+        let age = SystemTime::now().duration_since(t).unwrap_or_default();
+        log::info!("[tauri]   Marker age: {}s", age.as_secs());
+    } else {
+        log::info!(
+            "[tauri]   Full signing (no marker) for {}",
+            venv_dir.display()
+        );
+    }
+
+    /// Check if a file needs signing (modified after marker, or no marker)
+    fn needs_signing(path: &PathBuf, marker_mtime: Option<SystemTime>) -> bool {
+        let Some(marker_time) = marker_mtime else {
+            return true; // No marker = sign everything
+        };
+        std::fs::metadata(path)
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .map(|file_mtime| file_mtime > marker_time)
+            .unwrap_or(true)
+    }
+
+    let mut signed_count = 0;
+    let mut error_count = 0;
+
+    // Priority 1: Sign libpython*.dylib FIRST (critical for Python to load)
+    let libpython_dylib = venv_dir.join("lib/libpython3.12.dylib");
+    if libpython_dylib.exists() && needs_signing(&libpython_dylib, marker_mtime) {
+        log::info!("[tauri]   Signing libpython3.12.dylib with entitlements (priority)...");
+        if sign_binary_with_entitlements(&libpython_dylib, signing_identity, python_entitlements)? {
+            signed_count += 1;
+        } else {
+            error_count += 1;
+        }
+    }
+
+    // Priority 2: Sign Python executables (python3, python3.12)
+    let python_bin = venv_dir.join("bin/python3");
+    if python_bin.exists() && needs_signing(&python_bin, marker_mtime) {
+        log::info!("[tauri]   Signing python3 executable with entitlements...");
+        if sign_binary_with_entitlements(&python_bin, signing_identity, python_entitlements)? {
+            signed_count += 1;
+        } else {
+            error_count += 1;
+        }
+    }
+
+    let python312_bin = venv_dir.join("bin/python3.12");
+    if python312_bin.exists()
+        && python312_bin != python_bin
+        && needs_signing(&python312_bin, marker_mtime)
+    {
+        log::info!("[tauri]   Signing python3.12 executable with entitlements...");
+        if sign_binary_with_entitlements(&python312_bin, signing_identity, python_entitlements)? {
+            signed_count += 1;
+        } else {
+            error_count += 1;
+        }
+    }
+
+    // Priority 3: Sign all other .dylib files
+    let dylib_files = find_files(venv_dir, "*.dylib")
+        .map_err(|e| format!("Failed to find .dylib files: {}", e))?;
+
+    for dylib_file in dylib_files {
+        if dylib_file == libpython_dylib {
+            continue;
+        }
+        if !needs_signing(&dylib_file, marker_mtime) {
+            continue;
+        }
+        let use_entitlements = dylib_file
+            .file_name()
+            .map(|n: &std::ffi::OsStr| n.to_string_lossy().starts_with("libpython"))
+            .unwrap_or(false);
+
+        if use_entitlements {
+            if sign_binary_with_entitlements(&dylib_file, signing_identity, python_entitlements)? {
+                signed_count += 1;
+            } else {
+                error_count += 1;
+            }
+        } else if sign_binary(&dylib_file, signing_identity)? {
+            signed_count += 1;
+        } else {
+            error_count += 1;
+        }
+    }
+
+    // Priority 4: Sign all .so files (Python extensions)
+    let so_files =
+        find_files(venv_dir, "*.so").map_err(|e| format!("Failed to find .so files: {}", e))?;
+
+    for so_file in so_files {
+        if !needs_signing(&so_file, marker_mtime) {
+            continue;
+        }
+        if sign_binary(&so_file, signing_identity)? {
+            signed_count += 1;
+        } else {
+            error_count += 1;
+        }
+    }
+
+    // Update marker after successful signing
+    if error_count == 0 {
+        fs::File::create(&marker_path)
+            .map_err(|e| format!("Failed to create .last_signed marker: {}", e))?;
+        log::info!("[tauri]   Updated .last_signed marker");
+    }
+
+    log::info!(
+        "[tauri]   Venv {}: signed={}, errors={}",
+        venv_dir.display(),
+        signed_count,
+        error_count
+    );
+    Ok((signed_count, error_count))
 }
 
 #[cfg(not(target_os = "macos"))]

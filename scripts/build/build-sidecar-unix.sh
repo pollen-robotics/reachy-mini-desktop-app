@@ -79,6 +79,35 @@ if [ -n "$CPYTHON_DIR" ] && [ -d "$CPYTHON_DIR/lib" ] && [ -d "../$DST_DIR/apps_
     echo "✅ cpython libs copied to apps_venv/lib/"
 fi
 
+# macOS: Ad-hoc sign all native binaries (.dylib, .so) in venvs
+# Only needed for local dev builds — CI uses Tauri bundler's proper code signing
+# Skip if CI env var is set (GitHub Actions, etc.)
+if [ "$(uname)" = "Darwin" ] && [ -z "$CI" ]; then
+    echo "🔏 Signing native binaries in venvs..."
+    for VENV in "../$DST_DIR/.venv" "../$DST_DIR/apps_venv"; do
+        if [ -d "$VENV" ]; then
+            find "$VENV" \( -name "*.dylib" -o -name "*.so" \) -type f | while read -r binary; do
+                codesign --force --sign - "$binary" 2>/dev/null && echo "  Signed: $(basename "$binary")" || true
+            done
+        fi
+    done
+    # Also sign python executables
+    for VENV in "../$DST_DIR/.venv" "../$DST_DIR/apps_venv"; do
+        for pybin in "$VENV/bin/python3" "$VENV/bin/python3.12"; do
+            if [ -f "$pybin" ]; then
+                codesign --force --sign - "$pybin" 2>/dev/null && echo "  Signed: $(basename "$pybin")" || true
+            fi
+        done
+    done
+    # Touch .last_signed markers so runtime signing is incremental
+    for VENV in "../$DST_DIR/.venv" "../$DST_DIR/apps_venv"; do
+        if [ -d "$VENV" ]; then
+            touch "$VENV/.last_signed"
+        fi
+    done
+    echo "✅ Native binaries signed"
+fi
+
 # Build uv-trampoline
 echo "🔨 Building uv-trampoline..."
 # Use TARGET_TRIPLET for cross-compilation if provided
