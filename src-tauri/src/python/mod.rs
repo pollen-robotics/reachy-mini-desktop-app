@@ -46,6 +46,7 @@ pub fn build_daemon_args(sim_mode: bool, preload_datasets: bool) -> Result<Vec<S
 
 // Helper to build arguments for the standalone bundled daemon binary
 // (PyInstaller on Linux, potentially other single-binary launchers later).
+#[cfg(target_os = "linux")]
 pub fn build_daemon_flags(sim_mode: bool, preload_datasets: bool) -> Vec<String> {
     let mut args = vec![
         "--desktop-app-daemon".to_string(),

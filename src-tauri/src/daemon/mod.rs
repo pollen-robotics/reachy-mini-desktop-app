@@ -121,6 +121,7 @@ pub const MAX_LOGS: usize = 50;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SidecarLauncher {
     UvTrampoline,
+    #[cfg(target_os = "linux")]
     BundledDaemon,
 }
 
@@ -482,7 +483,9 @@ pub fn spawn_and_monitor_sidecar(
     state: &State<DaemonState>,
     sim_mode: bool,
 ) -> Result<(), String> {
-    use crate::python::{build_daemon_args, build_daemon_flags};
+    use crate::python::build_daemon_args;
+    #[cfg(target_os = "linux")]
+    use crate::python::build_daemon_flags;
     use tauri_plugin_shell::ShellExt;
 
     let process_lock = state
@@ -496,6 +499,23 @@ pub fn spawn_and_monitor_sidecar(
     drop(process_lock);
 
     let preload_datasets = state.preload_datasets;
+
+    // On Windows/macOS, always use uv-trampoline (venv-based launcher)
+    // BundledDaemon (PyInstaller) is only available on Linux
+    #[cfg(not(target_os = "linux"))]
+    let (launcher, sidecar_cmd, daemon_args) = {
+        (
+            SidecarLauncher::UvTrampoline,
+            app_handle
+                .shell()
+                .sidecar("uv-trampoline")
+                .map_err(|e| e.to_string())?,
+            build_daemon_args(sim_mode, preload_datasets)?,
+        )
+    };
+
+    // On Linux, try PyInstaller bundled daemon first, fallback to uv-trampoline
+    #[cfg(target_os = "linux")]
     let (launcher, sidecar_cmd, daemon_args) =
         match app_handle.shell().sidecar("reachy-mini-daemon") {
             Ok(cmd) => (
@@ -625,9 +645,12 @@ pub fn spawn_and_monitor_sidecar(
 
                         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-                        use crate::python::{build_daemon_args, build_daemon_flags};
+                        use crate::python::build_daemon_args;
+                        #[cfg(target_os = "linux")]
+                        use crate::python::build_daemon_flags;
                         use tauri_plugin_shell::ShellExt;
 
+                        #[cfg(target_os = "linux")]
                         let (sidecar_cmd, daemon_args) = match launcher {
                             SidecarLauncher::BundledDaemon => {
                                 match app_handle_clone.shell().sidecar("reachy-mini-daemon") {
@@ -671,6 +694,35 @@ pub fn spawn_and_monitor_sidecar(
                                         );
                                         continue;
                                     }
+                                }
+                            }
+                        };
+
+                        #[cfg(not(target_os = "linux"))]
+                        let (sidecar_cmd, daemon_args) = {
+                            let args = match build_daemon_args(sim_mode, false) {
+                                Ok(args) => args,
+                                Err(e) => {
+                                    log::error!("[tauri] Failed to build daemon args: {}", e);
+                                    let _ = crate::daemon::transition_and_emit(
+                                        &daemon_state,
+                                        crate::daemon::DaemonStatus::Crashed,
+                                        &app_handle_clone,
+                                    );
+                                    continue;
+                                }
+                            };
+
+                            match app_handle_clone.shell().sidecar("uv-trampoline") {
+                                Ok(cmd) => (cmd, args),
+                                Err(e) => {
+                                    log::error!("[tauri] Failed to get sidecar: {}", e);
+                                    let _ = crate::daemon::transition_and_emit(
+                                        &daemon_state,
+                                        crate::daemon::DaemonStatus::Crashed,
+                                        &app_handle_clone,
+                                    );
+                                    continue;
                                 }
                             }
                         };
