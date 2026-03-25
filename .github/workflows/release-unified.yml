@@ -1251,7 +1251,7 @@ jobs:
             --key-id "$APPLE_API_KEY" \
             --issuer "$APPLE_API_ISSUER" \
             --wait \
-            --timeout 60m 2>&1) || NOTARIZATION_EXIT_CODE=$?
+            --timeout 120m 2>&1) || NOTARIZATION_EXIT_CODE=$?
 
           echo "$NOTARIZATION_OUTPUT"
 
@@ -1396,7 +1396,7 @@ jobs:
             --key-id "$APPLE_API_KEY" \
             --issuer "$APPLE_API_ISSUER" \
             --wait \
-            --timeout 60m 2>&1) || NOTARIZATION_EXIT_CODE=$?
+            --timeout 120m 2>&1) || NOTARIZATION_EXIT_CODE=$?
 
           echo "$NOTARIZATION_OUTPUT"
 
