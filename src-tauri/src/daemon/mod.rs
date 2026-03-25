@@ -496,6 +496,23 @@ pub fn spawn_and_monitor_sidecar(
     drop(process_lock);
 
     let preload_datasets = state.preload_datasets;
+
+    // On Windows/macOS, always use uv-trampoline (venv-based launcher)
+    // BundledDaemon (PyInstaller) is only available on Linux
+    #[cfg(not(target_os = "linux"))]
+    let (launcher, sidecar_cmd, daemon_args) = {
+        (
+            SidecarLauncher::UvTrampoline,
+            app_handle
+                .shell()
+                .sidecar("uv-trampoline")
+                .map_err(|e| e.to_string())?,
+            build_daemon_args(sim_mode, preload_datasets)?,
+        )
+    };
+
+    // On Linux, try PyInstaller bundled daemon first, fallback to uv-trampoline
+    #[cfg(target_os = "linux")]
     let (launcher, sidecar_cmd, daemon_args) =
         match app_handle.shell().sidecar("reachy-mini-daemon") {
             Ok(cmd) => (
