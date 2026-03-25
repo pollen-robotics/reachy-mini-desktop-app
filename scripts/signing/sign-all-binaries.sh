@@ -149,6 +149,52 @@ if [ -d "$RESOURCES_DIR" ]; then
         
     fi
     
+    # Sign all binaries in apps_venv (same structure as .venv)
+    if [ -d "$RESOURCES_DIR/apps_venv" ]; then
+        echo "📦 Signing all binaries in apps_venv..."
+
+        # Sign all .dylib
+        find "$RESOURCES_DIR/apps_venv" -name "*.dylib" -type f | while read -r dylib; do
+            sign_binary "$dylib"
+        done
+
+        # Sign all .so (native Python extensions)
+        find "$RESOURCES_DIR/apps_venv" -name "*.so" -type f | while read -r so_file; do
+            sign_binary "$so_file"
+        done
+
+        # Sign executable binaries in apps_venv/bin with entitlements for Python
+        if [ -d "$RESOURCES_DIR/apps_venv/bin" ]; then
+            SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+            PYTHON_ENTITLEMENTS="$SCRIPT_DIR/python-entitlements.plist"
+
+            find "$RESOURCES_DIR/apps_venv/bin" -type f | while read -r binary; do
+                if basename "$binary" | grep -qE "^python[0-9.]*$"; then
+                    echo "   Applying entitlements to Python executable: $binary"
+                    sign_binary "$binary" "$PYTHON_ENTITLEMENTS"
+                else
+                    if [ -x "$binary" ]; then
+                        sign_binary "$binary"
+                    fi
+                fi
+            done
+        fi
+
+        # Sign libpython*.dylib with entitlements, then other executables
+        if [ -d "$RESOURCES_DIR/apps_venv/lib" ]; then
+            find "$RESOURCES_DIR/apps_venv/lib" -name "libpython*.dylib" -type f | while read -r dylib; do
+                echo "   Applying entitlements to Python library: $dylib"
+                sign_binary "$dylib" "$PYTHON_ENTITLEMENTS"
+            done
+
+            find "$RESOURCES_DIR/apps_venv/lib" -type f -perm +111 | while read -r binary; do
+                if ! basename "$binary" | grep -qE "^libpython.*\.dylib$"; then
+                    sign_binary "$binary"
+                fi
+            done
+        fi
+    fi
+
     # Sign binaries in cpython (for all architectures)
     # Apply entitlements to Python executables and libraries
     for cpython_dir in "$RESOURCES_DIR"/cpython-*; do
