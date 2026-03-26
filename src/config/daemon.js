@@ -227,6 +227,7 @@ function isLikelySystemPopupTimeout(error, duration, timeoutMs) {
 
 export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions = {}) {
   const { silent = false, label = null, fireAndForget = false } = logOptions;
+  const { signal: externalSignal, ...forwardedOptions } = options;
 
   // Extract endpoint from URL (handle both local and remote URLs)
   const currentBaseUrl = getBaseUrl();
@@ -257,8 +258,7 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions 
     timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     // Combine external signal with timeout signal if provided
-    if (options.signal) {
-      const externalSignal = options.signal;
+    if (externalSignal) {
       if (externalSignal.aborted) {
         controller.abort();
       } else {
@@ -269,15 +269,14 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions 
 
   try {
     const response = await fetch(url, {
+      ...forwardedOptions,
       method: options.method || 'GET',
       headers: options.headers,
       body: options.body,
-      signal: controller?.signal,
+      signal: controller?.signal || externalSignal,
     });
 
     if (timeoutId) clearTimeout(timeoutId);
-    const duration = Date.now() - startTime;
-
     // Log result if not silent
     if (!shouldBeSilent) {
       if (label) {
@@ -349,7 +348,6 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs, logOptions 
 
     // Log standard error if not silent
     if (!shouldBeSilent) {
-      const logLabel = label || `${method} ${baseEndpoint}`;
       const errorMsg =
         error.name === 'AbortError' || error.name === 'TimeoutError' ? 'timeout' : error.message;
       logApiCall(method, baseEndpoint, false, errorMsg);

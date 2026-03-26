@@ -526,6 +526,7 @@ export default function InstalledAppsSection({
           >
             {installedApps.map(app => {
               const isRemoving = isJobRunning(app.name, 'remove');
+              const displayName = app.displayName || app.name;
 
               const isThisAppCurrent =
                 currentApp && currentApp.info && currentApp.info.name === app.name;
@@ -539,8 +540,6 @@ export default function InstalledAppsSection({
               const isStartingOrRunning = isStarting || isCurrentlyRunning;
 
               const author = app.extra?.id?.split('/')?.[0] || app.extra?.author || null;
-              const hfUrl =
-                app.url || (app.extra?.id ? `https://huggingface.co/spaces/${app.extra.id}` : null);
 
               const isMenuOpen = menuAppName === app.name;
 
@@ -659,7 +658,7 @@ export default function InstalledAppsSection({
                               minWidth: 0,
                             }}
                           >
-                            {app.name}
+                            {displayName}
                           </Typography>
 
                           {hasAppError && (
