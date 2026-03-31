@@ -25,7 +25,13 @@ import {
 /**
  * Settings Overlay for 3D Viewer Configuration
  */
-export default function SettingsOverlay({ open, onClose, darkMode }) {
+export default function SettingsOverlay({
+  open,
+  onClose,
+  darkMode,
+  initialUpdateInfo = null,
+  autoShowUpdateConfirm = false,
+}) {
   const { connectionMode, remoteHost, robotStatus, blacklistRobot, resetAll, clearApps } =
     useAppStore();
   const isWifiMode = connectionMode === 'wifi';
@@ -565,12 +571,20 @@ export default function SettingsOverlay({ open, onClose, darkMode }) {
   // Initial fetch when overlay opens
   useEffect(() => {
     if (open) {
-      checkForUpdate();
+      if (initialUpdateInfo) {
+        // Use pre-fetched update info from startup notification
+        setUpdateInfo(initialUpdateInfo);
+        if (autoShowUpdateConfirm && initialUpdateInfo.is_available) {
+          setShowUpdateConfirm(true);
+        }
+      } else {
+        checkForUpdate();
+      }
       if (isWifiMode) {
         fetchWifiStatus();
       }
     }
-  }, [open, isWifiMode, checkForUpdate, fetchWifiStatus]);
+  }, [open, isWifiMode, checkForUpdate, fetchWifiStatus, initialUpdateInfo, autoShowUpdateConfirm]);
 
   // Auto-refresh WiFi networks every 3 seconds (WiFi mode only)
   useEffect(() => {

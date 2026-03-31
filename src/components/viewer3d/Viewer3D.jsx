@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef, memo, useCallback } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
-import { IconButton, Switch, Tooltip, Box, Typography } from '@mui/material';
+import { IconButton, Switch, Tooltip, Box, Typography, Button } from '@mui/material';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import GridOnIcon from '@mui/icons-material/GridOn';
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
@@ -15,6 +15,11 @@ import { ROBOT_STATUS } from '../../constants/robotStatus';
 import { arraysEqual } from '../../utils/arraysEqual';
 import SettingsOverlay from './SettingsOverlay';
 import { FPSMeter } from '../FPSMeter';
+import FullscreenOverlay from '../FullscreenOverlay';
+import PulseButton from '../PulseButton';
+import { invoke } from '@tauri-apps/api/core';
+import { buildApiUrl, fetchWithTimeout, DAEMON_CONFIG } from '../../config/daemon';
+import reachyUpdateBoxSvg from '../../assets/reachy-update-box.svg';
 
 /**
  * WebGL Context Cleanup Component
@@ -218,6 +223,12 @@ export default function RobotViewer3D({
   const [isTransparent, setIsTransparent] = useState(initialMode === 'xray');
   const [showSettingsOverlay, setShowSettingsOverlay] = useState(false);
 
+  // Startup update notification state
+  const [showStartupUpdateModal, setShowStartupUpdateModal] = useState(false);
+  const [startupUpdateInfo, setStartupUpdateInfo] = useState(null);
+  const [pendingUpdateInfo, setPendingUpdateInfo] = useState(null);
+  const wasActiveRef = useRef(false);
+
   // ✅ Get state from store
   const darkMode = useAppStore(state => state.darkMode);
   const isBusy = useAppStore(selectIsBusy);
@@ -232,6 +243,64 @@ export default function RobotViewer3D({
           ? '#1a1a1a'
           : '#e0e0e0'
         : backgroundColor;
+
+  // Check for update once when daemon becomes active (startup notification)
+  useEffect(() => {
+    if (isActive && !wasActiveRef.current && !hideControls) {
+      wasActiveRef.current = true;
+
+      const timer = setTimeout(async () => {
+        try {
+          if (!navigator.onLine) return;
+
+          const preRelease = (() => {
+            try {
+              const stored = localStorage.getItem('preReleaseUpdates');
+              return stored ? JSON.parse(stored) : false;
+            } catch {
+              return false;
+            }
+          })();
+
+          const { connectionMode } = useAppStore.getState();
+          let updateData = null;
+
+          if (connectionMode === 'wifi') {
+            const response = await fetchWithTimeout(
+              buildApiUrl(`/update/available?pre_release=${preRelease}`),
+              {},
+              DAEMON_CONFIG.TIMEOUTS.COMMAND,
+              { label: 'Startup update check', silent: true }
+            );
+            if (response.ok) {
+              const data = await response.json();
+              updateData = data.update?.reachy_mini || null;
+            }
+          } else if (connectionMode !== 'external') {
+            updateData = await invoke('check_daemon_update', { preRelease });
+          }
+
+          if (updateData?.is_available) {
+            setStartupUpdateInfo(updateData);
+            setShowStartupUpdateModal(true);
+          }
+        } catch {
+          // Silent fail - startup update check is non-critical
+        }
+      }, 3000);
+
+      return () => clearTimeout(timer);
+    }
+
+    if (!isActive) {
+      wasActiveRef.current = false;
+    }
+  }, [isActive, hideControls]);
+
+  const handleCloseSettings = useCallback(() => {
+    setShowSettingsOverlay(false);
+    setPendingUpdateInfo(null);
+  }, []);
 
   // ✨ Determine robot status for tag (with state machine)
   const getStatusTag = () => {
@@ -562,9 +631,91 @@ export default function RobotViewer3D({
       {/* Settings Overlay */}
       <SettingsOverlay
         open={showSettingsOverlay}
-        onClose={() => setShowSettingsOverlay(false)}
+        onClose={handleCloseSettings}
         darkMode={darkMode}
+        initialUpdateInfo={pendingUpdateInfo}
+        autoShowUpdateConfirm={!!pendingUpdateInfo}
       />
+
+      {/* Startup Update Notification */}
+      <FullscreenOverlay
+        open={showStartupUpdateModal}
+        onClose={() => setShowStartupUpdateModal(false)}
+        darkMode={darkMode}
+        zIndex={10000}
+        backdropOpacity={0.8}
+        backdropBlur={10}
+        debugName="StartupUpdateNotification"
+        centeredX={true}
+        centeredY={true}
+        showCloseButton={true}
+      >
+        <Box
+          sx={{
+            width: '100%',
+            maxWidth: 380,
+            mx: 'auto',
+            px: 3,
+            textAlign: 'center',
+          }}
+        >
+          <Box sx={{ mb: 3 }}>
+            <img
+              src={reachyUpdateBoxSvg}
+              alt="Update available"
+              style={{ width: 120, height: 120 }}
+            />
+          </Box>
+
+          <Typography variant="h5" sx={{ fontWeight: 600, color: 'text.primary', mb: 1.5 }}>
+            Update Available
+          </Typography>
+
+          <Typography sx={{ color: 'text.secondary', fontSize: 14, lineHeight: 1.6, mb: 1 }}>
+            A new version is ready to install.
+          </Typography>
+
+          <Typography sx={{ fontSize: 15, fontWeight: 500, mb: 4 }}>
+            <span style={{ color: darkMode ? '#888' : '#999' }}>
+              {startupUpdateInfo?.current_version}
+            </span>
+            {' → '}
+            <span style={{ color: darkMode ? '#fff' : '#222', fontWeight: 700 }}>
+              {startupUpdateInfo?.available_version}
+            </span>
+          </Typography>
+
+          <Box sx={{ display: 'flex', gap: 3, justifyContent: 'center', alignItems: 'center' }}>
+            <Button
+              onClick={() => setShowStartupUpdateModal(false)}
+              variant="text"
+              sx={{
+                color: 'text.secondary',
+                textTransform: 'none',
+                textDecoration: 'underline',
+                textUnderlineOffset: '3px',
+                '&:hover': {
+                  bgcolor: 'transparent',
+                  textDecoration: 'underline',
+                },
+              }}
+            >
+              Later
+            </Button>
+            <PulseButton
+              onClick={() => {
+                setShowStartupUpdateModal(false);
+                setPendingUpdateInfo(startupUpdateInfo);
+                setShowSettingsOverlay(true);
+              }}
+              darkMode={darkMode}
+              sx={{ minWidth: 160 }}
+            >
+              Update now
+            </PulseButton>
+          </Box>
+        </Box>
+      </FullscreenOverlay>
     </div>
   );
 }
