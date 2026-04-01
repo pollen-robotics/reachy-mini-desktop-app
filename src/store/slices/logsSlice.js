@@ -4,7 +4,7 @@
  * Note: We don't import DAEMON_CONFIG here to avoid circular dependencies
  * (daemon.js imports useStore which imports slices)
  *
- * Filtering is handled by the centralized logFilters utility.
+ * Filtering happens at display time in useLogProcessing.
  */
 
 // Default max logs (same as DAEMON_CONFIG.LOGS values)
@@ -44,20 +44,6 @@ export const createLogsSlice = (set, get) => ({
       }
       return { logs: safeLogs };
     }),
-
-  // Append a single sidecar log line (from sidecar-stderr/stdout events).
-  // These are transient Tauri events not stored in the Rust buffer,
-  // so we capture them directly in the frontend store.
-  addSidecarLog: message => {
-    if (!message) return;
-    const now = Date.now();
-    set(state => {
-      const entry = `${now}|${message}`;
-      const newLogs = [...state.logs, entry];
-      // Keep max 500 entries
-      return { logs: newLogs.length > 500 ? newLogs.slice(-500) : newLogs };
-    });
-  },
 
   // Add frontend log
   addFrontendLog: (message, level = 'info') => {

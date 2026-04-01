@@ -36,12 +36,10 @@ export const useLogProcessing = (
 
     const hasActiveFilters = daemonLogFilters.length > 0;
 
-    // First pass: when filters are active, let all daemon logs through (final pass filters by category).
-    // When no filters active, use centralized shouldFilterLog to hide noisy internals.
+    // Always apply noise filtering (shouldFilterLog hides internal system noise).
+    // Category filtering happens as a final pass after sorting.
     const filteredLogs = safeLogs.filter(log => {
       try {
-        if (hasActiveFilters) return true;
-
         const message =
           typeof log === 'string'
             ? log

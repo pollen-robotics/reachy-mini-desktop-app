@@ -89,7 +89,6 @@ function App() {
   const { isUsbConnected, usbPortName, checkUsbRobot } = useUsbDetection();
   const { sendCommand, playRecordedMove } = useRobotCommands(); // Note: isCommandRunning comes from store
   const { logs, fetchLogs } = useLogs();
-  const addSidecarLog = useAppStore(state => state.addSidecarLog);
   const isWindowVisible = useWindowVisible();
 
   // 🍞 Global toast for deep link feedback
@@ -270,31 +269,6 @@ function App() {
   // Daemon health check (GET /api/daemon/status, USB 3s / WiFi 5s)
   // 4 consecutive timeouts → transitionTo.crashed()
   useDaemonHealthCheck(isActive);
-
-  // Capture ALL sidecar events into the log store (lite/USB mode).
-  // This ensures uvicorn/api logs are available for the category filters.
-  useEffect(() => {
-    let unlistenStderr;
-    let unlistenStdout;
-    const setup = async () => {
-      try {
-        const { listen } = await import('@tauri-apps/api/event');
-        unlistenStderr = await listen('sidecar-stderr', event => {
-          if (event.payload) addSidecarLog(event.payload);
-        });
-        unlistenStdout = await listen('sidecar-stdout', event => {
-          if (event.payload) addSidecarLog(event.payload);
-        });
-      } catch {
-        // Not in Tauri
-      }
-    };
-    setup();
-    return () => {
-      if (unlistenStderr) unlistenStderr();
-      if (unlistenStdout) unlistenStdout();
-    };
-  }, [addSidecarLog]);
 
   // 🚀 Unified WebSocket for ALL robot state
   // Streams at 20Hz: head_pose, head_joints, body_yaw, antennas, passive_joints, control_mode, doa

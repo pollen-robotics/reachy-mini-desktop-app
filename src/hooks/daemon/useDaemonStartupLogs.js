@@ -5,7 +5,7 @@ import { listen } from '@tauri-apps/api/event';
  * Hook to listen to sidecar logs during daemon startup
  * Provides real-time feedback to the user about what's happening
  *
- * Filtering is handled by the centralized logFilters utility.
+ * Captures all sidecar output; filtering happens at display time in useLogProcessing.
  *
  * @param {boolean} isStarting - Whether daemon is currently starting
  * @returns {object} { logs, hasError, lastMessage }
