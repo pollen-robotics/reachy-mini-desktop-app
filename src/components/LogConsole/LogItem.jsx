@@ -33,7 +33,7 @@ export const LogItem = React.memo(
 
       const isFrontend = log.source === 'frontend';
       const isApp = log.source === 'app';
-      const isDaemonRemote = log.source === 'daemon';
+      const isDaemon = log.source === 'daemon';
       const isApi = log.source === 'api';
       const message = log.message;
       const logLevel = log.level || 'info';
@@ -54,7 +54,7 @@ export const LogItem = React.memo(
       return {
         isFrontend,
         isApp,
-        isDaemonRemote,
+        isDaemon,
         isApi,
         displayMessage,
         isSuccess,
@@ -109,7 +109,7 @@ export const LogItem = React.memo(
     const {
       isFrontend,
       isApp,
-      isDaemonRemote,
+      isDaemon,
       isApi,
       displayMessage,
       isSuccess,
@@ -145,7 +145,7 @@ export const LogItem = React.memo(
                       ? '#ff9500'
                       : isApi
                         ? '#34d399'
-                        : isDaemonRemote
+                        : isDaemon
                           ? '#60a5fa'
                           : isFrontend
                             ? '#5db3ff'
@@ -162,7 +162,7 @@ export const LogItem = React.memo(
                       ? '#ff6600'
                       : isApi
                         ? '#059669'
-                        : isDaemonRemote
+                        : isDaemon
                           ? '#2563eb'
                           : isFrontend
                             ? '#0055cc'

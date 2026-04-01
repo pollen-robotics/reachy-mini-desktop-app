@@ -34,6 +34,7 @@ function LogConsole({
   darkMode = false,
   includeStoreLogs = true,
   remoteLogs = EMPTY_ARRAY,
+  daemonLogFilters = EMPTY_ARRAY,
   sx = {},
   maxHeight = null,
   height = null,
@@ -48,13 +49,17 @@ function LogConsole({
   const frontendLogs = useAppStore(state => (includeStoreLogs ? state.frontendLogs : EMPTY_ARRAY));
   const appLogs = useAppStore(state => (includeStoreLogs ? state.appLogs : EMPTY_ARRAY));
 
-  // Process and normalize all logs (remoteLogs bypass shouldFilterLog via appLogs path)
+  // Memoize combined app + remote logs to avoid new array ref on every render
+  const combinedAppLogs = useMemo(() => [...appLogs, ...remoteLogs], [appLogs, remoteLogs]);
+
+  // Process and normalize all logs
   const normalizedLogs = useLogProcessing(
     logs,
     frontendLogs,
-    [...appLogs, ...remoteLogs],
+    combinedAppLogs,
     includeStoreLogs,
-    simpleStyle
+    simpleStyle,
+    daemonLogFilters
   );
 
   // Calculate heights

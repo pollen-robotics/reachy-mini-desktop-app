@@ -7,8 +7,6 @@
  * Filtering is handled by the centralized logFilters utility.
  */
 
-import { filterLogs } from '../../utils/logging/logFilters';
-
 // Default max logs (same as DAEMON_CONFIG.LOGS values)
 const MAX_FRONTEND_LOGS = 500;
 const MAX_APP_LOGS = 500;
@@ -31,24 +29,35 @@ export const logsInitialState = {
 export const createLogsSlice = (set, get) => ({
   ...logsInitialState,
 
-  // Set daemon logs - filter confusing messages and merge intelligently
+  // Set daemon logs — stored unfiltered, filtering happens at display time in useLogProcessing
   setLogs: newLogs =>
     set(state => {
-      // Filter out confusing internal logs using centralized filter
-      const filteredLogs = filterLogs(newLogs);
-
+      const safeLogs = Array.isArray(newLogs) ? newLogs : [];
       if (
-        state.logs === filteredLogs ||
+        state.logs === safeLogs ||
         (Array.isArray(state.logs) &&
-          Array.isArray(filteredLogs) &&
-          state.logs.length === filteredLogs.length &&
+          state.logs.length === safeLogs.length &&
           state.logs.length > 0 &&
-          state.logs[state.logs.length - 1] === filteredLogs[filteredLogs.length - 1])
+          state.logs[state.logs.length - 1] === safeLogs[safeLogs.length - 1])
       ) {
         return state;
       }
-      return { logs: filteredLogs };
+      return { logs: safeLogs };
     }),
+
+  // Append a single sidecar log line (from sidecar-stderr/stdout events).
+  // These are transient Tauri events not stored in the Rust buffer,
+  // so we capture them directly in the frontend store.
+  addSidecarLog: message => {
+    if (!message) return;
+    const now = Date.now();
+    set(state => {
+      const entry = `${now}|${message}`;
+      const newLogs = [...state.logs, entry];
+      // Keep max 500 entries
+      return { logs: newLogs.length > 500 ? newLogs.slice(-500) : newLogs };
+    });
+  },
 
   // Add frontend log
   addFrontendLog: (message, level = 'info') => {

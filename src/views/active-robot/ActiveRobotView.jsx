@@ -572,6 +572,7 @@ function ActiveRobotView({
                 <LogConsole
                   logs={logs}
                   remoteLogs={remoteLogs}
+                  daemonLogFilters={daemonLogFilters}
                   darkMode={darkMode}
                   lines={4}
                   onExpand={() => setLogsFullscreenOpen(true)}
@@ -673,7 +674,13 @@ function ActiveRobotView({
               ))}
             </Box>
             <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-              <LogConsole logs={logs} remoteLogs={remoteLogs} darkMode={darkMode} height="100%" />
+              <LogConsole
+                logs={logs}
+                remoteLogs={remoteLogs}
+                daemonLogFilters={daemonLogFilters}
+                darkMode={darkMode}
+                height="100%"
+              />
             </Box>
           </Box>
         </FullscreenOverlay>

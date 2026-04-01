@@ -2,13 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Box, Typography, ToggleButton, ToggleButtonGroup, IconButton } from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import VerticalAlignBottomIcon from '@mui/icons-material/VerticalAlignBottom';
+import { categorizeLogSource } from '../../components/LogConsole/utils';
 
-/**
- * Log categories derived from Python logger names:
- *   - daemon: reachy_mini.*, print() output, or anything without a recognized prefix
- *   - api:    uvicorn.access, uvicorn.error
- *   - app:    reachy_mini.apps.*, or lines from running app processes
- */
 const CATEGORIES = {
   all: { label: 'All', color: '#888' },
   daemon: { label: 'Daemon', color: '#60a5fa' },
@@ -17,18 +12,6 @@ const CATEGORIES = {
 };
 
 const MAX_LOGS = 2000;
-
-// Lines to filter out entirely (system noise from journalctl)
-function categorize(line) {
-  const lower = line.toLowerCase();
-  // uvicorn access/error logs → API
-  if (lower.includes('uvicorn.access') || lower.includes('uvicorn.error')) return 'api';
-  // App manager or running app logs
-  if (lower.includes('reachy_mini.apps') || lower.includes('_app.') || lower.includes('[app]'))
-    return 'app';
-  // Everything else is daemon (including bare prints with no logger prefix)
-  return 'daemon';
-}
 
 function parseLevel(line) {
   if (line.includes(' - ERROR - ') || line.includes(' ERROR ')) return 'error';
@@ -89,7 +72,7 @@ export default function LogViewerWindow() {
   );
 
   const addLog = useCallback(line => {
-    const cat = categorize(line);
+    const cat = categorizeLogSource(line);
     const level = parseLevel(line);
     const time = formatTime();
     setLogs(prev => {

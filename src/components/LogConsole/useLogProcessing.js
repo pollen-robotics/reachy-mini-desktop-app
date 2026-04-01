@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { DAEMON_CONFIG } from '../../config/daemon';
-import { normalizeLog, formatTimestamp } from './utils';
+import { normalizeLog, formatTimestamp, categorizeLogSource } from './utils';
 import { shouldFilterLog } from '../../utils/logging/logFilters';
 
 /**
@@ -8,7 +8,14 @@ import { shouldFilterLog } from '../../utils/logging/logFilters';
  *
  * Filtering is handled by the centralized logFilters utility.
  */
-export const useLogProcessing = (logs, frontendLogs, appLogs, includeStoreLogs, simpleStyle) => {
+export const useLogProcessing = (
+  logs,
+  frontendLogs,
+  appLogs,
+  includeStoreLogs,
+  simpleStyle,
+  daemonLogFilters = []
+) => {
   return useMemo(() => {
     // Validate inputs
     const safeLogs = Array.isArray(logs) ? logs : [];
@@ -27,9 +34,14 @@ export const useLogProcessing = (logs, frontendLogs, appLogs, includeStoreLogs, 
         .filter(Boolean);
     }
 
-    // Filter out confusing logs using centralized filter
+    const hasActiveFilters = daemonLogFilters.length > 0;
+
+    // First pass: when filters are active, let all daemon logs through (final pass filters by category).
+    // When no filters active, use centralized shouldFilterLog to hide noisy internals.
     const filteredLogs = safeLogs.filter(log => {
       try {
+        if (hasActiveFilters) return true;
+
         const message =
           typeof log === 'string'
             ? log
@@ -164,12 +176,24 @@ export const useLogProcessing = (logs, frontendLogs, appLogs, includeStoreLogs, 
       return true;
     });
 
+    // Apply category filter when daemon log filters are active.
+    // Uses content-based categorization (not the stored source) to correctly classify
+    // logs regardless of which hook/store path they came through.
+    // Frontend logs always pass through.
+    const categoryFiltered = hasActiveFilters
+      ? filteredSortedLogs.filter(log => {
+          if (log.source === 'frontend') return true;
+          const cat = categorizeLogSource(log.message || '');
+          return daemonLogFilters.includes(cat);
+        })
+      : filteredSortedLogs;
+
     // Limit to MAX_DISPLAY
     const finalLogs =
-      includeStoreLogs && filteredSortedLogs.length > DAEMON_CONFIG.LOGS.MAX_DISPLAY
-        ? filteredSortedLogs.slice(-DAEMON_CONFIG.LOGS.MAX_DISPLAY)
-        : filteredSortedLogs;
+      includeStoreLogs && categoryFiltered.length > DAEMON_CONFIG.LOGS.MAX_DISPLAY
+        ? categoryFiltered.slice(-DAEMON_CONFIG.LOGS.MAX_DISPLAY)
+        : categoryFiltered;
 
     return finalLogs;
-  }, [logs, frontendLogs, appLogs, includeStoreLogs, simpleStyle]);
+  }, [logs, frontendLogs, appLogs, includeStoreLogs, simpleStyle, daemonLogFilters]);
 };

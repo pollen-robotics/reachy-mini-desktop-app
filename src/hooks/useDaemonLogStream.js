@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import useAppStore from '../store/useAppStore';
+import { categorizeLogSource } from '../components/LogConsole/utils';
 
 /**
  * Streams daemon logs from the remote robot via WebSocket.
@@ -11,16 +12,10 @@ import useAppStore from '../store/useAppStore';
 
 const MAX_REMOTE_LOGS = 2000;
 
-function categorize(line) {
-  if (line.includes('uvicorn.access') || line.includes('uvicorn.error')) return 'api';
-  if (line.includes('reachy_mini.apps') || line.includes('_app.') || line.includes('[app]'))
-    return 'app';
-  return 'daemon';
-}
-
 function parseLevel(line) {
   if (line.includes(' - ERROR - ') || line.includes(' ERROR ')) return 'error';
   if (line.includes(' - WARNING - ') || line.includes(' WARNING ')) return 'warning';
+  if (line.includes(' - DEBUG - ')) return 'debug';
   return 'info';
 }
 
@@ -54,7 +49,7 @@ export default function useDaemonLogStream(enabledCategories) {
         ws.onmessage = event => {
           if (!event.data || !event.data.trim()) return;
           const line = event.data;
-          const cat = categorize(line);
+          const cat = categorizeLogSource(line);
           const level = parseLevel(line);
           const now = Date.now();
           setAllLogs(prev => {

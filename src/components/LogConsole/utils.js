@@ -47,6 +47,21 @@ export const formatTimestamp = timestamp => {
 };
 
 /**
+ * Categorize a log line by its source based on logger name prefixes.
+ * Returns 'daemon', 'api', or 'app'.
+ */
+export function categorizeLogSource(message) {
+  if (message.includes('uvicorn.access') || message.includes('uvicorn.error')) return 'api';
+  if (
+    message.includes('reachy_mini.apps') ||
+    message.includes('_app.') ||
+    message.includes('[app]')
+  )
+    return 'app';
+  return 'daemon';
+}
+
+/**
  * Normalize a log entry to a consistent format
  * Robust version with validation and error handling
  */
@@ -71,7 +86,7 @@ export const normalizeLog = log => {
 
       return {
         message,
-        source: log.source || 'daemon',
+        source: log.source || categorizeLogSource(message),
         timestamp: log.timestamp
           ? formatTimestamp(log.timestamp)
           : formatTimestamp(timestampNumeric),
@@ -102,7 +117,7 @@ export const normalizeLog = log => {
 
       return {
         message: message.slice(0, 10000), // Max 10KB
-        source: 'daemon',
+        source: categorizeLogSource(message),
         timestamp: timestampNumeric > 0 ? formatTimestamp(timestampNumeric) : '',
         timestampNumeric,
         level: 'info',

@@ -1,6 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { shouldFilterLog } from '../../utils/logging/logFilters';
 
 /**
  * Hook to listen to sidecar logs during daemon startup
@@ -56,8 +55,8 @@ export function useDaemonStartupLogs(isStarting) {
           // Clean up prefix if present
           const cleanLine = logLine.replace(/^Sidecar stdout:\s*/, '').trim();
 
-          // Skip empty lines or filtered logs (use centralized filter)
-          if (!cleanLine || shouldFilterLog(cleanLine)) {
+          // Skip empty lines only — filtering is handled at display time by useLogProcessing
+          if (!cleanLine) {
             return;
           }
 
@@ -90,8 +89,8 @@ export function useDaemonStartupLogs(isStarting) {
           // Clean up prefix if present
           const cleanLine = logLine.replace(/^Sidecar stderr:\s*/, '').trim();
 
-          // Skip empty lines or filtered logs (use centralized filter)
-          if (!cleanLine || shouldFilterLog(cleanLine)) {
+          // Skip empty lines only — filtering is handled at display time by useLogProcessing
+          if (!cleanLine) {
             return;
           }
 
