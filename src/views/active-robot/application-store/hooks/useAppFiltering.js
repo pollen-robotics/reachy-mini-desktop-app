@@ -5,6 +5,7 @@ const EXCLUDED_TAGS = new Set([
   'reachy_mini',
   'reachy-mini',
   'reachy_mini_python_app',
+  'reachy_mini_js_app',
   'static',
   'docker',
   'region:us',
