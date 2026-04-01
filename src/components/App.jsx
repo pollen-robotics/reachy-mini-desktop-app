@@ -235,8 +235,8 @@ function App() {
 
   // 🔄 Automatic update system
   // Tries to fetch latest.json directly - if it works, we have internet + we know if there's an update
-  // In dev mode, skip automatic check but still show the view for minimum time
-  const isDev = isDevMode();
+  // In dev mode, the check runs too: if the update server is unreachable (common in dev),
+  // useUpdater silently swallows the error (see isMissingUpdateServer guard).
   const {
     updateAvailable,
     isChecking,
@@ -246,15 +246,12 @@ function App() {
     checkForUpdates,
     installUpdate,
   } = useUpdater({
-    autoCheck: !isDev, // Disable auto check in dev mode
+    autoCheck: true,
     checkInterval: DAEMON_CONFIG.UPDATE_CHECK.INTERVAL,
-    silent: false,
   });
 
   // ✨ Update view state management with useReducer
-  // Handles all cases: dev mode, production mode, minimum display time, errors
   const shouldShowUpdateView = useUpdateViewState({
-    isDev,
     isChecking,
     updateAvailable,
     isDownloading,

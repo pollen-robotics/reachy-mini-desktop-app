@@ -588,8 +588,10 @@ JSON_DIR="$OUTPUT_DIR/$PLATFORM/$VERSION"
 mkdir -p "$JSON_DIR"
 
 # File name according to platform (must match the actual filenames uploaded to GitHub Releases)
-# Use the actual bundle file name that was created
-FILE_NAME=$(basename "$BUNDLE_FILE")
+# Use the actual bundle file name that was created.
+# GitHub Releases converts spaces to dots in asset names, so we must do the same
+# to ensure the download URLs in latest.json match the actual asset URLs.
+FILE_NAME=$(basename "$BUNDLE_FILE" | tr ' ' '.')
 
 # Log what we're using
 if [[ "$PLATFORM" == darwin-* ]]; then

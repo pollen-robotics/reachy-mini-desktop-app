@@ -7,6 +7,7 @@ on:
       - main
     paths:
       - 'docs/**'
+      - '!docs/latest.json'
 
 permissions:
   contents: read
@@ -26,6 +27,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Fetch latest.json from current GitHub Pages
+        # The repo's docs/latest.json may be stale. The source of truth is
+        # whatever the release workflow last deployed to GitHub Pages.
+        # We fetch it and overwrite the repo copy so we never regress.
+        run: |
+          PAGES_URL="https://pollen-robotics.github.io/reachy-mini-desktop-app/latest.json"
+          echo "Fetching current latest.json from GitHub Pages..."
+          if curl -sf "$PAGES_URL" -o docs/latest.json; then
+            echo "✅ Restored latest.json from GitHub Pages ($(jq -r .version docs/latest.json))"
+          else
+            echo "⚠️ Could not fetch from GitHub Pages, keeping repo version"
+          fi
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
