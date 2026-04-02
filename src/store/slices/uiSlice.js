@@ -36,6 +36,7 @@ export const uiInitialState = {
   showFirstTimeWifiSetup: false, // true when showing first time WiFi setup view
   showBluetoothSupportView: false, // true when showing Bluetooth support/reset view
   showSetupChoice: false, // true when showing setup choice overlay (WiFi vs Bluetooth)
+  showFirstWakeUp: false, // true when showing first wake-up diagnostic wizard
   // BLE state
   bleStatus: 'disconnected', // 'disconnected' | 'scanning' | 'connecting' | 'connected'
   bleDevices: [],
@@ -93,6 +94,9 @@ export const createUISlice = (set, get) => ({
 
   // First time WiFi setup view management
   setShowFirstTimeWifiSetup: value => set({ showFirstTimeWifiSetup: value }),
+
+  // First wake-up diagnostic wizard
+  setShowFirstWakeUp: value => set({ showFirstWakeUp: value }),
 
   // Bluetooth support view management
   setShowBluetoothSupportView: value => set({ showBluetoothSupportView: value }),

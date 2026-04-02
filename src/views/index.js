@@ -8,6 +8,7 @@ export { default as FirstTimeWifiSetupView } from './first-time-wifi-setup';
 export { default as BluetoothSupportView } from './bluetooth-support';
 export { SetupChoiceView } from './setup-choice';
 export { default as StartingView } from './starting';
+export { default as FirstWakeUpView } from './first-wake-up';
 export { default as ActiveRobotView } from './active-robot/ActiveRobotView';
 export { default as ActiveRobotModule } from './active-robot/ActiveRobotModule';
 export { default as ClosingView } from './closing';

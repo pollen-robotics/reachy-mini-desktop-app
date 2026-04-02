@@ -9,11 +9,33 @@ import { DAEMON_CONFIG, fetchWithTimeout, buildApiUrl, getWsBaseUrl } from '../.
  * Wrapper around HardwareScanView that handles the transition logic
  */
 function StartingView({ startupError, startDaemon }) {
-  const { darkMode, transitionTo, setHardwareError } = useAppStore();
+  const { darkMode, transitionTo, setHardwareError, setShowFirstWakeUp } = useAppStore();
 
   const handleScanComplete = useCallback(async () => {
     setHardwareError(null);
 
+    // Check if first wake-up diagnostic is needed (endpoint may not exist yet)
+    try {
+      const statusRes = await fetchWithTimeout(
+        buildApiUrl('/api/first-wake-up/status'),
+        {},
+        DAEMON_CONFIG.TIMEOUTS.COMMAND,
+        { silent: true }
+      );
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        if (!statusData.is_completed) {
+          // First wake-up not done yet: show diagnostic wizard
+          setShowFirstWakeUp(true);
+          transitionTo.ready();
+          return;
+        }
+      }
+    } catch {
+      // Endpoint doesn't exist yet or not reachable: skip first wake-up check
+    }
+
+    // Normal flow: enable motors + wake up animation
     try {
       await fetchWithTimeout(
         buildApiUrl('/api/motors/set_mode/enabled'),
@@ -84,7 +106,7 @@ function StartingView({ startupError, startDaemon }) {
     }
 
     transitionTo.ready();
-  }, [transitionTo, setHardwareError]);
+  }, [transitionTo, setHardwareError, setShowFirstWakeUp]);
 
   return (
     <Box
