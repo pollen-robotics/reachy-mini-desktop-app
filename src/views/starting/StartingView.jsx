@@ -25,14 +25,20 @@ function StartingView({ startupError, startDaemon }) {
       if (statusRes.ok) {
         const statusData = await statusRes.json();
         if (!statusData.is_completed) {
-          // First wake-up not done yet: show diagnostic wizard
           setShowFirstWakeUp(true);
           transitionTo.ready();
           return;
         }
       }
     } catch {
-      // Endpoint doesn't exist yet or not reachable: skip first wake-up check
+      // Endpoint doesn't exist yet: check URL param override for dev testing
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('force-first-wake-up') === 'true') {
+        console.log('[StartingView] Forcing first wake-up wizard (dev override)');
+        setShowFirstWakeUp(true);
+        transitionTo.ready();
+        return;
+      }
     }
 
     // Normal flow: enable motors + wake up animation
