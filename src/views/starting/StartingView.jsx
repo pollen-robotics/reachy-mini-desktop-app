@@ -14,7 +14,9 @@ function StartingView({ startupError, startDaemon }) {
   const handleScanComplete = useCallback(async () => {
     setHardwareError(null);
 
-    // Check if first wake-up diagnostic is needed (endpoint may not exist yet)
+    // Check if first wake-up diagnostic is needed
+    // If endpoint exists: respect its response. If not: default to showing the wizard.
+    let needsFirstWakeUp = true; // Default: show wizard (safe default for first-time users)
     try {
       const statusRes = await fetchWithTimeout(
         buildApiUrl('/api/first-wake-up/status'),
@@ -24,21 +26,23 @@ function StartingView({ startupError, startDaemon }) {
       );
       if (statusRes.ok) {
         const statusData = await statusRes.json();
-        if (!statusData.is_completed) {
-          setShowFirstWakeUp(true);
-          transitionTo.ready();
-          return;
-        }
+        needsFirstWakeUp = !statusData.is_completed;
       }
     } catch {
-      // Endpoint doesn't exist yet: check URL param override for dev testing
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('force-first-wake-up') === 'true') {
-        console.log('[StartingView] Forcing first wake-up wizard (dev override)');
-        setShowFirstWakeUp(true);
-        transitionTo.ready();
-        return;
-      }
+      // Endpoint doesn't exist yet: show wizard by default
+      console.log('[StartingView] /api/first-wake-up/status not available, showing wizard');
+    }
+
+    // Skip wizard with URL param ?skip-first-wake-up=true (dev override)
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('skip-first-wake-up') === 'true') {
+      needsFirstWakeUp = false;
+    }
+
+    if (needsFirstWakeUp) {
+      setShowFirstWakeUp(true);
+      transitionTo.ready();
+      return;
     }
 
     // Normal flow: enable motors + wake up animation
