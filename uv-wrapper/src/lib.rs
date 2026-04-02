@@ -117,6 +117,80 @@ pub fn needs_venv_rebuild(data_dir: &PathBuf) -> bool {
     }
 }
 
+/// Check if a venv contains a stale EXTERNALLY-MANAGED marker.
+fn has_externally_managed_marker(data_dir: &PathBuf, venv_name: &str) -> bool {
+    let venv_dir = data_dir.join(venv_name);
+    if !venv_dir.exists() {
+        return false;
+    }
+
+    if cfg!(target_os = "windows") {
+        venv_dir.join("Lib").join("EXTERNALLY-MANAGED").exists()
+    } else {
+        let lib_dir = venv_dir.join("lib");
+        fs::read_dir(&lib_dir)
+            .ok()
+            .and_then(|entries| {
+                entries
+                    .filter_map(|e| e.ok())
+                    .find(|e| e.file_name().to_string_lossy().starts_with("python3"))
+                    .map(|e| e.path().join("EXTERNALLY-MANAGED").exists())
+            })
+            .unwrap_or(false)
+    }
+}
+
+/// If any venv has a stale EXTERNALLY-MANAGED marker, remove both venvs
+/// so that bootstrap recreates them cleanly.
+/// Returns true if venvs were removed.
+pub fn fix_externally_managed_venvs(data_dir: &PathBuf) -> bool {
+    if !has_externally_managed_marker(data_dir, ".venv")
+        && !has_externally_managed_marker(data_dir, "apps_venv")
+    {
+        return false;
+    }
+
+    println!("[fix] Found EXTERNALLY-MANAGED marker in venv, removing Python environment...");
+
+    // Remove uv, venvs, and cpython installations so bootstrap starts completely fresh.
+    // - uv: an old version may be the cause of the stale marker
+    // - cpython: binaries were signed with the previous app identity and macOS will SIGKILL them
+    if let Ok(entries) = fs::read_dir(data_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            let should_remove = name_str == ".venv"
+                || name_str == "apps_venv"
+                || name_str.starts_with("cpython-");
+            if should_remove && entry.path().is_dir() {
+                if let Err(e) = fs::remove_dir_all(entry.path()) {
+                    eprintln!("[fix] Failed to remove {}: {}", name_str, e);
+                } else {
+                    println!("[fix] Removed {}", name_str);
+                }
+            }
+        }
+    }
+
+    // Remove uv/uvx binaries so bootstrap downloads a fresh version
+    for bin_name in &["uv", "uvx"] {
+        let bin_path = data_dir.join(if cfg!(target_os = "windows") {
+            format!("{}.exe", bin_name)
+        } else {
+            bin_name.to_string()
+        });
+        if bin_path.exists() {
+            if let Err(e) = fs::remove_file(&bin_path) {
+                eprintln!("[fix] Failed to remove {}: {}", bin_name, e);
+            } else {
+                println!("[fix] Removed {}", bin_name);
+            }
+        }
+    }
+
+    true
+}
+
 /// Download and install uv into the data directory.
 pub fn download_uv(data_dir: &PathBuf) -> Result<(), String> {
     let uv_path = uv_exe_path(data_dir);

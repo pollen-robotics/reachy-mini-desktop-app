@@ -41,9 +41,6 @@ export const invoke = async (command, args = {}) => {
     stop_app: { method: 'POST', url: '/api/apps/stop' },
     list_apps: { method: 'GET', url: '/api/apps/list' },
 
-    // Sign binaries (macOS specific - no-op in web mode)
-    sign_python_binaries: { method: 'GET', url: null, noop: true },
-
     // Environment reset (Tauri-only - no-op in web mode)
     reset_apps_venv: { method: 'GET', url: null, noop: true },
     reset_python_env: { method: 'GET', url: null, noop: true },

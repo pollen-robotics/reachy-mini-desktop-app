@@ -1327,6 +1327,15 @@ jobs:
             releases/**
           retention-days: 30
 
+      - name: Upload .deb package (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.platform }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
+          retention-days: 30
+
       - name: Create GitHub Release
         if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin' && github.event.inputs.dry_run != 'true'
         uses: softprops/action-gh-release@v2

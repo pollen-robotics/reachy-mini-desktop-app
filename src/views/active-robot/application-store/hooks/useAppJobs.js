@@ -340,18 +340,8 @@ export function useAppJobs(setActiveJobs, fetchAvailableApps) {
             return updated;
           });
 
-          // Step 2: Sign binaries (macOS), refresh apps list, then mark completed
+          // Step 2: Refresh apps list, then mark completed
           const refreshAndComplete = async () => {
-            // macOS: Re-sign new binaries in apps_venv before the app can be launched
-            // This runs during 'refreshing' state so the UI still shows a spinner
-            if (finalStatus === 'completed') {
-              try {
-                await invoke('sign_python_binaries');
-              } catch (err) {
-                console.warn('[AppJobs] Failed to re-sign Python binaries:', err);
-              }
-            }
-
             // Short delay to let daemon update its DB
             await new Promise(resolve =>
               setTimeout(resolve, DAEMON_CONFIG.APP_INSTALLATION.REFRESH_DELAY)

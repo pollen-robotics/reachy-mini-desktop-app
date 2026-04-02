@@ -11,7 +11,6 @@ mod paths;
 mod permissions;
 mod python;
 mod reset;
-mod signing;
 mod update;
 mod usb;
 mod wifi;
@@ -385,7 +384,6 @@ pub fn run() {
             usb::check_usb_robot,
             window::apply_transparent_titlebar,
             window::close_window,
-            signing::sign_python_binaries,
             permissions::open_camera_settings,
             permissions::open_microphone_settings,
             permissions::open_wifi_settings,
