@@ -356,7 +356,8 @@ pub fn run() {
         .manage(local_proxy_state)
         .manage(discovery_state)
         .setup(
-            move |#[cfg(target_os = "macos")] app, #[cfg(not(target_os = "macos"))] _app| {
+            move |#[cfg(any(target_os = "macos", target_os = "linux"))] app,
+                  #[cfg(not(any(target_os = "macos", target_os = "linux")))] _app| {
                 // 🔌 Start USB device monitor (Windows: event-driven, no polling, no terminal flicker)
                 if let Err(e) = usb::start_monitor() {
                     log::warn!("Failed to start USB monitor: {}", e);
@@ -369,6 +370,13 @@ pub fn run() {
                         window::setup_content_process_handler(&win);
                     }
                     permissions::request_all_permissions();
+                }
+
+                #[cfg(target_os = "linux")]
+                {
+                    if let Some(win) = app.get_webview_window("main") {
+                        window::setup_fixed_window_size(&win);
+                    }
                 }
 
                 Ok(())

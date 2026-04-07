@@ -1,13 +1,15 @@
 /**
- * Hook for Wake Me Up API communication.
- * Talks to the daemon (localhost:8000) for first-wake-up status,
- * and to the Wake Me Up app API for diagnostic features.
+ * Hook for first wake-up wizard API communication.
+ * All robot control goes through the daemon (localhost:8000).
+ *
+ * Motor control pattern (matches useWakeSleep):
+ * 1. POST /api/motors/set_mode/enabled|disabled
+ * 2. Verify with GET /api/motors/status
+ * 3. POST /api/move/play/{name} for built-in moves
+ * 4. POST /api/move/play/recorded-move-dataset/{dataset}/{move} for emotions/dances
  */
-import { useCallback, useRef, useState, useEffect } from 'react';
+import { useCallback } from 'react';
 import { fetchWithTimeout, buildApiUrl, DAEMON_CONFIG } from '../../config/daemon';
-
-const WAKE_UP_APP_PORT = 8042;
-const WAKE_UP_BASE = `http://localhost:${WAKE_UP_APP_PORT}`;
 
 const SLEEP_POSITION_DEGREES = {
   body_rotation: 5.0,
@@ -70,26 +72,6 @@ function detectMotorSwaps(motorsData) {
 }
 
 export function useFirstWakeUpApi() {
-  const [wakeUpAppReady, setWakeUpAppReady] = useState(false);
-  const audioPollingRef = useRef(null);
-
-  // Check if first wake-up is completed (daemon endpoint)
-  const checkFirstWakeUpStatus = useCallback(async () => {
-    try {
-      const res = await fetchWithTimeout(
-        buildApiUrl('/api/first-wake-up/status'),
-        {},
-        DAEMON_CONFIG.TIMEOUTS.COMMAND,
-        { silent: true }
-      );
-      if (!res.ok) return { is_completed: false };
-      const data = await res.json();
-      return { is_completed: data.is_completed ?? false };
-    } catch {
-      return { is_completed: false };
-    }
-  }, []);
-
   // Mark first wake-up as completed (daemon endpoint)
   const setFirstWakeUpCompleted = useCallback(async () => {
     try {
@@ -162,7 +144,6 @@ export function useFirstWakeUpApi() {
       return {
         motors: results,
         all_ok: allOk,
-        has_errors: !allOk,
         detected_swaps: swaps,
         has_swaps: swaps.length > 0,
       };
@@ -172,53 +153,54 @@ export function useFirstWakeUpApi() {
     }
   }, []);
 
-  // Motor control
+  // Motor control (matches useWakeSleep pattern: POST + verify status)
   const enableMotors = useCallback(async () => {
-    await fetchWithTimeout(
+    const response = await fetchWithTimeout(
       buildApiUrl('/api/motors/set_mode/enabled'),
       { method: 'POST' },
       DAEMON_CONFIG.TIMEOUTS.COMMAND,
-      { silent: true }
+      { label: 'Enable motors' }
     );
+    if (!response.ok) {
+      throw new Error(`Failed to enable motors (${response.status})`);
+    }
+
+    const statusResponse = await fetchWithTimeout(
+      buildApiUrl('/api/motors/status'),
+      { method: 'GET' },
+      DAEMON_CONFIG.TIMEOUTS.COMMAND,
+      { label: 'Check motor status' }
+    );
+    return await statusResponse.json();
   }, []);
 
-  const disableMotors = useCallback(async () => {
-    await fetchWithTimeout(
-      buildApiUrl('/api/motors/set_mode/disabled'),
+  // Play a built-in move (wake_up)
+  const playMove = useCallback(async moveName => {
+    const response = await fetchWithTimeout(
+      buildApiUrl(`/api/move/play/${moveName}`),
       { method: 'POST' },
       DAEMON_CONFIG.TIMEOUTS.COMMAND,
-      { silent: true }
+      { label: `Play ${moveName}` }
     );
+    if (!response.ok) {
+      throw new Error(`Failed to play ${moveName} (${response.status})`);
+    }
+    return await response.json();
   }, []);
 
-  // Play a recorded move via daemon
-  const playMove = useCallback(async moveName => {
-    try {
-      const res = await fetchWithTimeout(
-        buildApiUrl(`/api/move/play/${moveName}`),
-        { method: 'POST' },
-        DAEMON_CONFIG.TIMEOUTS.COMMAND,
-        { silent: true }
-      );
-      if (!res.ok) return null;
-      return await res.json();
-    } catch {
-      return null;
+  // Play a recorded move from a dataset (emotions, dances)
+  // Endpoint: /api/move/play/recorded-move-dataset/{dataset}/{move}
+  const playRecordedMove = useCallback(async (dataset, move) => {
+    const response = await fetchWithTimeout(
+      buildApiUrl(`/api/move/play/recorded-move-dataset/${dataset}/${move}`),
+      { method: 'POST' },
+      DAEMON_CONFIG.TIMEOUTS.COMMAND,
+      { label: `Play ${move}` }
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to play ${move} (${response.status})`);
     }
-  }, []);
-
-  // Play goto sleep
-  const gotoSleep = useCallback(async () => {
-    try {
-      await fetchWithTimeout(
-        buildApiUrl('/api/move/play/sleep'),
-        { method: 'POST' },
-        DAEMON_CONFIG.TIMEOUTS.COMMAND,
-        { silent: true }
-      );
-    } catch (err) {
-      console.error('[FirstWakeUp] goto sleep failed:', err);
-    }
+    return await response.json();
   }, []);
 
   // Volume control
@@ -230,19 +212,23 @@ export function useFirstWakeUpApi() {
         DAEMON_CONFIG.TIMEOUTS.COMMAND,
         { silent: true }
       );
-      if (!res.ok) return 0.5;
+      if (!res.ok) return 50;
       const data = await res.json();
-      return data.volume ?? 0.5;
+      return data.volume ?? 50;
     } catch {
-      return 0.5;
+      return 50;
     }
   }, []);
 
   const setVolume = useCallback(async volume => {
     try {
       await fetchWithTimeout(
-        buildApiUrl(`${DAEMON_CONFIG.ENDPOINTS.VOLUME_SET}?volume=${volume}`),
-        { method: 'POST' },
+        buildApiUrl(DAEMON_CONFIG.ENDPOINTS.VOLUME_SET),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ volume: Math.round(volume) }),
+        },
         DAEMON_CONFIG.TIMEOUTS.COMMAND,
         { silent: true }
       );
@@ -251,78 +237,28 @@ export function useFirstWakeUpApi() {
     }
   }, []);
 
-  // Play a sound through the daemon
+  // Play a test sound via the daemon's dedicated audio endpoint (no motors needed)
   const playTestSound = useCallback(async () => {
     try {
       await fetchWithTimeout(
-        buildApiUrl('/api/move/play/wake_up'),
+        buildApiUrl('/api/volume/test-sound'),
         { method: 'POST' },
         DAEMON_CONFIG.TIMEOUTS.COMMAND,
-        { silent: true }
+        { label: 'Play test sound' }
       );
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error('[FirstWakeUp] test sound failed:', err);
     }
-  }, []);
-
-  // Camera feed URL
-  const getCameraFeedUrl = useCallback(() => {
-    return buildApiUrl('/api/camera/feed');
-  }, []);
-
-  // Audio level polling (uses daemon's microphone endpoint or Wake Me Up app)
-  const startAudioPolling = useCallback(onLevel => {
-    if (audioPollingRef.current) return;
-
-    const poll = async () => {
-      try {
-        const res = await fetch(buildApiUrl('/api/volume/microphone/current'), {
-          cache: 'no-store',
-          signal: AbortSignal.timeout(1000),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          onLevel(data.volume ?? data.level ?? 0);
-        }
-      } catch {
-        // Ignore polling errors
-      }
-    };
-
-    poll();
-    audioPollingRef.current = setInterval(poll, 100);
-  }, []);
-
-  const stopAudioPolling = useCallback(() => {
-    if (audioPollingRef.current) {
-      clearInterval(audioPollingRef.current);
-      audioPollingRef.current = null;
-    }
-  }, []);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (audioPollingRef.current) {
-        clearInterval(audioPollingRef.current);
-      }
-    };
   }, []);
 
   return {
-    wakeUpAppReady,
-    checkFirstWakeUpStatus,
     setFirstWakeUpCompleted,
     checkSleepPosition,
     enableMotors,
-    disableMotors,
     playMove,
-    gotoSleep,
+    playRecordedMove,
     getVolume,
     setVolume,
     playTestSound,
-    getCameraFeedUrl,
-    startAudioPolling,
-    stopAudioPolling,
   };
 }

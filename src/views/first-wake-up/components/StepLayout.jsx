@@ -1,23 +1,7 @@
 import React from 'react';
-import { Box, Typography, IconButton } from '@mui/material';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import { Box, Typography } from '@mui/material';
 
-/**
- * Shared layout wrapper for first wake-up steps.
- * Provides consistent structure: title, subtitle, content area, footer.
- */
-export default function StepLayout({
-  darkMode,
-  icon,
-  title,
-  subtitle,
-  stepNumber,
-  totalSteps = 6,
-  children,
-  footer,
-  onBack,
-  showBack = true,
-}) {
+export default function StepLayout({ darkMode, illustration, title, subtitle, children }) {
   const textPrimary = darkMode ? '#f5f5f5' : '#1e293b';
   const textSecondary = darkMode ? '#888' : '#64748b';
 
@@ -28,13 +12,36 @@ export default function StepLayout({
         flexDirection: 'column',
         alignItems: 'center',
         width: '100%',
-        height: '100%',
-        position: 'relative',
+        flex: 1,
+        minHeight: 0,
       }}
     >
-      {/* Header */}
-      <Box sx={{ textAlign: 'center', mb: 2 }}>
-        {icon && <Typography sx={{ fontSize: 40, mb: 1, lineHeight: 1 }}>{icon}</Typography>}
+      {/* Header - fixed height so interactive card always starts at the same Y */}
+      <Box
+        sx={{
+          height: 220,
+          flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+          textAlign: 'center',
+          pb: 2,
+        }}
+      >
+        {illustration && (
+          <Box
+            component="img"
+            src={illustration}
+            alt=""
+            sx={{
+              width: 100,
+              height: 'auto',
+              mb: 1.5,
+              opacity: darkMode ? 0.85 : 1,
+            }}
+          />
+        )}
         <Typography
           variant="h2"
           sx={{
@@ -54,7 +61,6 @@ export default function StepLayout({
               color: textSecondary,
               lineHeight: 1.5,
               maxWidth: 340,
-              mx: 'auto',
             }}
           >
             {subtitle}
@@ -62,7 +68,7 @@ export default function StepLayout({
         )}
       </Box>
 
-      {/* Content */}
+      {/* Interactive content - bordered frame */}
       <Box
         sx={{
           flex: 1,
@@ -72,48 +78,14 @@ export default function StepLayout({
           alignItems: 'center',
           justifyContent: 'center',
           minHeight: 0,
+          p: 2,
+          borderRadius: '12px',
+          border: '1px solid',
+          borderColor: darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+          bgcolor: darkMode ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)',
         }}
       >
         {children}
-      </Box>
-
-      {/* Footer */}
-      {footer && (
-        <Box sx={{ mt: 2, width: '100%', display: 'flex', justifyContent: 'center' }}>{footer}</Box>
-      )}
-
-      {/* Bottom bar: back button + step indicator */}
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          width: '100%',
-          mt: 2,
-          pt: 1,
-        }}
-      >
-        {showBack && onBack ? (
-          <IconButton
-            size="small"
-            onClick={onBack}
-            sx={{
-              color: textSecondary,
-              fontSize: 12,
-              '&:hover': { color: '#FF9500' },
-            }}
-          >
-            <ArrowBackIcon sx={{ fontSize: 16 }} />
-          </IconButton>
-        ) : (
-          <Box sx={{ width: 32 }} />
-        )}
-
-        {stepNumber != null && (
-          <Typography sx={{ fontSize: 11, fontWeight: 500, color: textSecondary }}>
-            Step {stepNumber} of {totalSteps}
-          </Typography>
-        )}
       </Box>
     </Box>
   );

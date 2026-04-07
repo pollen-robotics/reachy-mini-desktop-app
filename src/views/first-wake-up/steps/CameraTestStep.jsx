@@ -1,43 +1,93 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Box, Typography, Button, CircularProgress } from '@mui/material';
+import { Box, Typography, Button, CircularProgress, keyframes } from '@mui/material';
 import StepLayout from '../components/StepLayout';
+import TroubleshootLayout from '../components/TroubleshootLayout';
+import {
+  primaryButtonSx,
+  troubleshootLinkSx,
+  textSecondary as getTextSecondary,
+  ACCENT,
+} from '../theme';
+import { useWebRTCStreamContext } from '../../../contexts/WebRTCStreamContext';
+import useAppStore from '../../../store/useAppStore';
+import reachyMicrophone from '../../../assets/reachy-microphone.svg';
 
-export default function CameraTestStep({ darkMode, api, onNext, onBack }) {
-  const [loading, setLoading] = useState(true);
+function getCameraTips(connectionMode) {
+  const tips = ['Make sure nothing is covering the camera lens'];
+  if (connectionMode === 'wifi') {
+    tips.push('Make sure you are on the same network as the robot');
+  }
+  tips.push(
+    'Update and reboot the robot',
+    'If the issue persists, check the FAQ',
+    'Still having issues? Write a message in the support channel on Discord'
+  );
+  return tips;
+}
+
+const eyeOpen = keyframes`
+  0%   { clip-path: ellipse(100% 0% at 50% 50%); }
+  100% { clip-path: ellipse(100% 50% at 50% 50%); }
+`;
+
+const eyeBlink = keyframes`
+  0%, 100% { clip-path: ellipse(100% 50% at 50% 50%); }
+  50%       { clip-path: ellipse(100% 5% at 50% 50%); }
+`;
+
+export default function CameraTestStep({ darkMode, onNext }) {
+  const { connectionMode } = useAppStore();
+  const { stream, isConnected } = useWebRTCStreamContext();
+
+  const videoRef = useRef(null);
+  const [ready, setReady] = useState(false);
   const [error, setError] = useState(false);
-  const imgRef = useRef(null);
-  const textSecondary = darkMode ? '#888' : '#64748b';
-  const feedUrl = api.getCameraFeedUrl();
+  const [showTroubleshoot, setShowTroubleshoot] = useState(false);
+  const textSecondary = getTextSecondary(darkMode);
 
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      if (loading) {
-        setError(true);
-        setLoading(false);
+    if (!videoRef.current || !stream) return;
+    videoRef.current.srcObject = stream;
+    videoRef.current.play().catch(() => {});
+  }, [stream]);
+
+  useEffect(() => {
+    if (isConnected && stream) {
+      const tracks = stream.getVideoTracks();
+      if (tracks.length > 0) {
+        setReady(true);
+        setError(false);
+        return;
       }
-    }, 10000);
-
+    }
+    if (!isConnected && !stream) return;
+    const timeout = setTimeout(() => {
+      if (!ready) setError(true);
+    }, 12000);
     return () => clearTimeout(timeout);
-  }, [loading]);
+  }, [isConnected, stream, ready]);
 
-  const handleLoad = useCallback(() => {
-    setLoading(false);
-    setError(false);
-  }, []);
+  const handleShowTroubleshoot = useCallback(() => setShowTroubleshoot(true), []);
+  const handleBackToTest = useCallback(() => setShowTroubleshoot(false), []);
 
-  const handleError = useCallback(() => {
-    setLoading(false);
-    setError(true);
-  }, []);
+  if (showTroubleshoot) {
+    return (
+      <TroubleshootLayout
+        darkMode={darkMode}
+        title="Camera problem"
+        tips={getCameraTips(connectionMode)}
+        connectionMode={connectionMode}
+        onBack={handleBackToTest}
+      />
+    );
+  }
 
   return (
     <StepLayout
       darkMode={darkMode}
-      icon="📷"
+      illustration={reachyMicrophone}
       title="Let's Look Around!"
       subtitle="Check if you can see the camera feed below."
-      stepNumber={5}
-      onBack={onBack}
     >
       <Box
         sx={{
@@ -48,7 +98,6 @@ export default function CameraTestStep({ darkMode, api, onNext, onBack }) {
           width: '100%',
         }}
       >
-        {/* Camera feed */}
         <Box
           sx={{
             width: '100%',
@@ -56,7 +105,7 @@ export default function CameraTestStep({ darkMode, api, onNext, onBack }) {
             aspectRatio: '4/3',
             borderRadius: '12px',
             overflow: 'hidden',
-            bgcolor: '#000',
+            bgcolor: darkMode ? '#1a1a1a' : '#f0f0f0',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -64,55 +113,40 @@ export default function CameraTestStep({ darkMode, api, onNext, onBack }) {
             borderColor: darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0',
           }}
         >
-          {loading && !error && <CircularProgress size={32} sx={{ color: '#FF9500' }} />}
+          {!ready && !error && <CircularProgress size={32} sx={{ color: ACCENT }} />}
           {error && (
             <Typography sx={{ color: '#888', fontSize: 13 }}>Camera feed not available</Typography>
           )}
           <Box
-            component="img"
-            ref={imgRef}
-            src={feedUrl}
-            onLoad={handleLoad}
-            onError={handleError}
+            component="video"
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
             sx={{
               width: '100%',
               height: '100%',
               objectFit: 'cover',
-              display: loading || error ? 'none' : 'block',
+              display: ready ? 'block' : 'none',
+              animation: ready
+                ? `${eyeOpen} 1s ease-out forwards, ${eyeBlink} 0.25s ease-in-out 1.2s, ${eyeBlink} 0.25s ease-in-out 1.5s, ${eyeBlink} 0.3s ease-in-out 2.3s`
+                : 'none',
+              animationFillMode: 'forwards',
+              clipPath: 'ellipse(100% 0% at 50% 50%)',
             }}
           />
         </Box>
 
         <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
-          <Button
-            onClick={onNext}
-            sx={{
-              fontSize: 12,
-              color: textSecondary,
-              textTransform: 'none',
-              textDecoration: 'underline',
-              '&:hover': { color: '#FF9500' },
-            }}
-          >
+          <Button onClick={handleShowTroubleshoot} sx={troubleshootLinkSx(darkMode)}>
             Camera doesn't work
           </Button>
 
           <Button
-            variant="contained"
+            variant="outlined"
             onClick={onNext}
-            disableElevation
-            sx={{
-              px: 3,
-              py: 1,
-              borderRadius: '8px',
-              fontSize: 13,
-              fontWeight: 600,
-              textTransform: 'none',
-              background: 'linear-gradient(135deg, #FF9500, #FFB333)',
-              '&:hover': {
-                background: 'linear-gradient(135deg, #FFB333, #FFCC66)',
-              },
-            }}
+            disabled={!ready}
+            sx={{ ...primaryButtonSx, px: 3, py: 1 }}
           >
             Camera works ✓
           </Button>

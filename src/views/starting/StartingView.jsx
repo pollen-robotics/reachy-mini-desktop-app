@@ -40,6 +40,7 @@ function StartingView({ startupError, startDaemon }) {
     }
 
     if (needsFirstWakeUp) {
+      // Robot stays sleeping - MotorTestStep will enable motors + play wake_up
       setShowFirstWakeUp(true);
       transitionTo.ready();
       return;
