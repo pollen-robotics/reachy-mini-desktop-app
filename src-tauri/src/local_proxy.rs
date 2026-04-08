@@ -6,6 +6,10 @@
 //! This bypasses browser Private Network Access (PNA) restrictions.
 //!
 //! The proxy only runs when in WiFi mode (when a target host is set).
+//!
+//! When the target host changes (switching robots), all existing connections are
+//! killed via a generation counter so that HTTP keep-alive pipes don't forward
+//! requests to the old robot.
 
 use futures_util::{SinkExt, StreamExt};
 use std::collections::HashMap;
@@ -14,7 +18,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{watch, Mutex, RwLock};
 use tokio::task::JoinHandle;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
@@ -48,14 +52,29 @@ pub struct LocalProxyState {
     pub target_host: RwLock<Option<String>>,
     /// Handles to running proxy tasks (so we can abort them)
     proxy_handles: Mutex<Vec<JoinHandle<()>>>,
+    /// Generation counter — incremented on each stop to kill stale connection handlers.
+    /// Connection handlers select on `changed()` and terminate when it fires,
+    /// ensuring HTTP keep-alive pipes don't survive a target switch.
+    generation: watch::Sender<u64>,
 }
 
 impl LocalProxyState {
     pub fn new() -> Self {
+        let (tx, _rx) = watch::channel(0u64);
         Self {
             target_host: RwLock::new(None),
             proxy_handles: Mutex::new(Vec::new()),
+            generation: tx,
         }
+    }
+
+    /// Subscribe to the generation counter. The returned receiver will fire
+    /// on `changed()` when the proxy is stopped (i.e. target is switching).
+    fn subscribe_generation(&self) -> watch::Receiver<u64> {
+        let mut rx = self.generation.subscribe();
+        // Mark current value as seen so changed() only fires on NEW increments
+        rx.borrow_and_update();
+        rx
     }
 }
 
@@ -100,7 +119,7 @@ async fn start_local_proxy(state: Arc<LocalProxyState>) {
     );
 }
 
-/// Stop all running proxy servers
+/// Stop all running proxy servers and signal active connections to terminate.
 async fn stop_local_proxy(state: &Arc<LocalProxyState>) {
     let mut handles = state.proxy_handles.lock().await;
 
@@ -108,12 +127,17 @@ async fn stop_local_proxy(state: &Arc<LocalProxyState>) {
         return;
     }
 
-    // Abort all proxy tasks
+    // Bump generation — this wakes all connection handlers via their
+    // watch::Receiver::changed() branch, causing them to drop their
+    // TCP/WebSocket pipes to the old target host.
+    let _ = state.generation.send_modify(|v| *v += 1);
+
+    // Abort listener tasks (they hold the TcpListener / UdpSocket)
     for handle in handles.drain(..) {
         handle.abort();
     }
 
-    log::info!("[proxy] Proxy stopped");
+    log::info!("[proxy] Proxy stopped (all connections killed)");
 }
 
 /// Start a TCP proxy server for a specific port
@@ -138,8 +162,11 @@ async fn start_tcp_proxy(state: Arc<LocalProxyState>, port: u16) {
         match listener.accept().await {
             Ok((stream, addr)) => {
                 let state_clone = state.clone();
+                let shutdown_rx = state.subscribe_generation();
                 tokio::spawn(async move {
-                    if let Err(e) = handle_tcp_connection(stream, state_clone, addr, port).await {
+                    if let Err(e) =
+                        handle_tcp_connection(stream, state_clone, addr, port, shutdown_rx).await
+                    {
                         log::error!("[proxy] TCP error from {} on port {}: {}", addr, port, e);
                     }
                 });
@@ -298,6 +325,7 @@ async fn handle_tcp_connection(
     state: Arc<LocalProxyState>,
     addr: std::net::SocketAddr,
     port: u16,
+    shutdown_rx: watch::Receiver<u64>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let target_host = match get_target_host(&state).await {
         Some(h) => h,
@@ -322,9 +350,9 @@ async fn handle_tcp_connection(
     let is_websocket = request_str.to_lowercase().contains("upgrade: websocket");
 
     if is_websocket {
-        handle_websocket(stream, &target_host, addr, port).await
+        handle_websocket(stream, &target_host, addr, port, shutdown_rx).await
     } else {
-        handle_http(stream, &target_host, addr, port).await
+        handle_http(stream, &target_host, addr, port, shutdown_rx).await
     }
 }
 
@@ -334,6 +362,7 @@ async fn handle_websocket(
     target_host: &str,
     addr: std::net::SocketAddr,
     port: u16,
+    mut shutdown_rx: watch::Receiver<u64>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
     use tokio_tungstenite::tungstenite::protocol::CloseFrame;
@@ -429,6 +458,9 @@ async fn handle_websocket(
     tokio::select! {
         _ = local_to_remote => {},
         _ = remote_to_local => {},
+        _ = shutdown_rx.changed() => {
+            log::info!("[proxy] WS {} killed (target changed)", addr);
+        },
     }
 
     Ok(())
@@ -440,6 +472,7 @@ async fn handle_http(
     target_host: &str,
     addr: std::net::SocketAddr,
     port: u16,
+    mut shutdown_rx: watch::Receiver<u64>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Connect to remote server on the same port
     let remote_addr = format!("{}:{}", target_host, port);
@@ -505,6 +538,9 @@ async fn handle_http(
                 }
             }
         }
+        _ = shutdown_rx.changed() => {
+            log::info!("[proxy] HTTP {} killed (target changed)", addr);
+        }
     }
 
     Ok(())
@@ -536,6 +572,10 @@ fn is_private_network_host(host: &str) -> bool {
 
 /// Set the target host for the proxy and start the proxy.
 /// Validates that the host is a private/local network address.
+/// If the proxy is already running (e.g. switching between robots),
+/// it is stopped first — this kills all existing TCP/WebSocket connections
+/// via the generation counter, preventing stale HTTP keep-alive pipes
+/// from forwarding requests to the old robot.
 pub async fn set_target_host(state: &Arc<LocalProxyState>, host: String) -> Result<(), String> {
     if host.is_empty() {
         return Err("Proxy target host cannot be empty".to_string());
@@ -547,6 +587,9 @@ pub async fn set_target_host(state: &Arc<LocalProxyState>, host: String) -> Resu
             host
         ));
     }
+
+    // Stop existing proxy first to kill stale connections to the previous host.
+    stop_local_proxy(state).await;
 
     {
         let mut target = state.target_host.write().await;

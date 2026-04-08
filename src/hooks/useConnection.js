@@ -149,10 +149,8 @@ export function useConnection() {
     }
 
     try {
-      // Clear local proxy target
-      try {
-        await invoke('clear_local_proxy_target');
-      } catch (e) {}
+      // stopDaemon handles clear_local_proxy_target internally for WiFi mode
+      // (after graceful shutdown so HTTP requests can still reach the remote daemon)
       await stopDaemon();
       return true;
     } catch (e) {

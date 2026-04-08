@@ -7,11 +7,12 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-DEB_DIR="$SCRIPT_DIR/../target/release/bundle/deb"
+TARGET_DIR="$SCRIPT_DIR/../target"
 
-DEB_FILE=$(find "$DEB_DIR" -name "*.deb" 2>/dev/null | head -1)
+# Find the most recently modified .deb under any target subdirectory
+DEB_FILE=$(find "$TARGET_DIR" -path "*/bundle/deb/*.deb" -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)
 if [ -z "$DEB_FILE" ]; then
-    echo "❌ No .deb file found in $DEB_DIR"
+    echo "❌ No .deb file found under $TARGET_DIR/**/bundle/deb/"
     echo "   Run 'yarn tauri build' first."
     exit 1
 fi

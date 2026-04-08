@@ -1,7 +1,9 @@
 use std::env;
-use std::path::PathBuf;
 use std::process::{Command, ExitCode};
+#[cfg(target_os = "macos")]
 use std::fs;
+#[cfg(target_os = "macos")]
+use std::path::PathBuf;
 
 use uv_wrapper::{get_data_dir, bootstrap, venv_exists, uv_exe_path, needs_upgrade, upgrade_venvs, fix_externally_managed_venvs};
 
@@ -66,13 +68,13 @@ fn sign_python_entitlements(dir: &PathBuf) {
 
         match result {
             Ok(output) if output.status.success() => {
-                println!("   ✅ Signed: {}", rel_path);
+                log::debug!("   ✅ Signed: {}", rel_path);
             }
             Ok(output) => {
-                eprintln!("   ⚠️  Failed to sign {}: {}", rel_path, String::from_utf8_lossy(&output.stderr));
+                log::debug!("   ⚠️  Failed to sign {}: {}", rel_path, String::from_utf8_lossy(&output.stderr));
             }
             Err(e) => {
-                eprintln!("   ⚠️  Error signing {}: {}", rel_path, e);
+                log::debug!("   ⚠️  Error signing {}: {}", rel_path, e);
             }
         }
     }

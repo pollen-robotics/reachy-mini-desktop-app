@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { fetchWithTimeout, buildApiUrl, DAEMON_CONFIG } from '@config/daemon';
 import { openUrl } from '@utils/tauriCompat';
+import useAppStore from '../../store/useAppStore';
 
 const AUTH_POLL_INTERVAL = 2000;
 const AUTH_POLL_TIMEOUT = 5 * 60 * 1000; // 5 minutes
@@ -9,6 +10,10 @@ const AUTH_POLL_TIMEOUT = 5 * 60 * 1000; // 5 minutes
  * Hugging Face authentication hook.
  * Manages OAuth login via system browser, polling for completion, and logout.
  * Auth state lives on the daemon — this hook mirrors it via /api/hf-auth/*.
+ *
+ * For WiFi mode: passes the remoteHost as ?host= param so the daemon builds
+ * the OAuth callback URL with the correct IP (instead of reachy-mini.local
+ * which may not resolve on all networks).
  */
 export function useHfAuth() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -47,7 +52,6 @@ export function useHfAuth() {
         if (mountedRef.current) {
           setIsAuthenticated(data.is_logged_in);
           setUsername(data.username || null);
-          // Use avatar from daemon if available, otherwise build from username
           if (data.avatar_url) {
             setAvatarUrl(data.avatar_url);
           } else if (data.username) {
@@ -78,8 +82,15 @@ export function useHfAuth() {
     setError(null);
 
     try {
+      // Tell the daemon to use localhost:8000 for the OAuth callback URL.
+      // The desktop app's local proxy forwards localhost:8000 to the robot,
+      // so the browser's OAuth redirect lands on the proxy regardless of
+      // whether reachy-mini.local resolves.
+      const { connectionMode } = useAppStore.getState();
+      const proxyParam = connectionMode === 'wifi' ? '?use_localhost=true' : '';
+
       const response = await fetchWithTimeout(
-        buildApiUrl('/api/hf-auth/oauth/start'),
+        buildApiUrl(`/api/hf-auth/oauth/start${proxyParam}`),
         {},
         DAEMON_CONFIG.TIMEOUTS.COMMAND,
         { label: 'HF OAuth start' }

@@ -4,10 +4,20 @@
       "deb": {
         "depends": [
           "libwebkit2gtk-4.1-0",
-          "libportaudio2"
+          "libportaudio2",
+          "gstreamer1.0-plugins-good (>= 1.22)",
+          "gstreamer1.0-plugins-bad (>= 1.22)",
+          "gstreamer1.0-alsa (>= 1.22)",
+          "gstreamer1.0-nice",
+          "libnice10",
+          "libgirepository1.0-dev",
+          "python3-gi",
+          "python3-gi-cairo"
         ],
         "files": {
-          "/usr/share/reachy-mini-control/99-reachy-mini.rules": "linux/99-reachy-mini.rules"
+          "/usr/share/reachy-mini-control/99-reachy-mini.rules": "linux/99-reachy-mini.rules",
+          "/usr/share/reachy-mini-control/gstreamer-plugins/libgstrswebrtc.so": "linux/gstreamer-plugins/x86_64/libgstrswebrtc.so",
+          "/usr/share/reachy-mini-control/gstreamer-plugins/libgstrsrtp.so": "linux/gstreamer-plugins/x86_64/libgstrsrtp.so"
         }
       }
     }
