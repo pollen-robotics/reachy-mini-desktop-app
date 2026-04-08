@@ -5,12 +5,12 @@ import StepLayout from '../components/StepLayout';
 import TroubleshootLayout from '../components/TroubleshootLayout';
 import {
   primaryButtonSx,
-  troubleshootLinkSx,
+  dangerButtonSx,
   textSecondary as getTextSecondary,
   ACCENT,
 } from '../theme';
 import useAppStore from '../../../store/useAppStore';
-import reachyBuste from '../../../assets/reachy-buste.svg';
+import reachyMicrophone from '../../../assets/reachy-microphone.svg';
 
 function getSpeakerTips(connectionMode) {
   const tips = ['Check if the volume is high enough (under 50% the sound is barely audible)'];
@@ -20,11 +20,6 @@ function getSpeakerTips(connectionMode) {
   if (connectionMode === 'wifi') {
     tips.push('Make sure you are on the same network as the robot');
   }
-  tips.push(
-    'Update and reboot the robot',
-    'If the issue persists, check the FAQ',
-    'Still having issues? Write a message in the support channel on Discord'
-  );
   return tips;
 }
 
@@ -111,7 +106,6 @@ export default function SpeakerTestStep({ darkMode, api, onNext }) {
         darkMode={darkMode}
         title="Speaker problem"
         tips={getSpeakerTips(connectionMode)}
-        connectionMode={connectionMode}
         onBack={handleBackToTest}
       />
     );
@@ -120,9 +114,14 @@ export default function SpeakerTestStep({ darkMode, api, onNext }) {
   return (
     <StepLayout
       darkMode={darkMode}
-      illustration={reachyBuste}
+      illustration={reachyMicrophone}
       title="Can You Hear Me?"
-      subtitle="Adjust the volume and play a test sound."
+      subtitle={
+        <>
+          I'd love to chat with you! <b>Adjust my volume</b> and <b>play a test sound</b> to make
+          sure you can hear me loud and clear.
+        </>
+      }
     >
       <Box
         sx={{
@@ -151,28 +150,32 @@ export default function SpeakerTestStep({ darkMode, api, onNext }) {
         )}
 
         {!isPlaying && hasPlayed && (
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
+            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
               <Button
-                onClick={handlePlay}
-                sx={{
-                  fontSize: 12,
-                  color: ACCENT,
-                  textTransform: 'none',
-                  fontWeight: 500,
-                  '&:hover': { textDecoration: 'underline' },
-                }}
+                variant="outlined"
+                onClick={handleShowTroubleshoot}
+                sx={{ ...dangerButtonSx }}
               >
-                Replay Sound
+                I don't hear it
               </Button>
-
               <Button variant="outlined" onClick={onNext} sx={{ ...primaryButtonSx, px: 3, py: 1 }}>
                 I hear the sound ✓
               </Button>
             </Box>
 
-            <Button onClick={handleShowTroubleshoot} sx={troubleshootLinkSx(darkMode)}>
-              No sound
+            <Button
+              onClick={handlePlay}
+              sx={{
+                fontSize: 12,
+                color: ACCENT,
+                textTransform: 'none',
+                fontWeight: 500,
+                textDecoration: 'underline',
+                '&:hover': { opacity: 0.8 },
+              }}
+            >
+              Replay sound
             </Button>
           </Box>
         )}

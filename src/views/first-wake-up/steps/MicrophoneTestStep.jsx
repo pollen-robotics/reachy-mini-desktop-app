@@ -12,7 +12,7 @@ import { useWebRTCStreamContext } from '../../../contexts/WebRTCStreamContext';
 import useAudioAnalyser from '../../../hooks/media/useAudioAnalyser';
 import FrequencyBars from '../components/FrequencyBars';
 import useAppStore from '../../../store/useAppStore';
-import sleepingReachy from '../../../assets/sleeping-reachy.svg';
+import reachyMicrophone from '../../../assets/reachy-microphone.svg';
 
 const DETECTION_THRESHOLD = 0.45;
 const DETECTION_DURATION_REQUIRED = 4;
@@ -26,12 +26,7 @@ function getMicTips(connectionMode) {
   if (connectionMode === 'wifi') {
     tips.push('Make sure you are on the same network as the robot');
   }
-  tips.push(
-    'If running on Linux, you may need to configure audio permissions',
-    'Update and reboot the robot',
-    'If the issue persists, check the FAQ',
-    'Still having issues? Write a message in the support channel on Discord'
-  );
+  tips.push('If running on Linux, you may need to configure audio permissions');
   return tips;
 }
 
@@ -52,8 +47,13 @@ export default function MicrophoneTestStep({ darkMode, onNext }) {
 
   const accumulatedRef = useRef(0);
   const lastTickRef = useRef(null);
+  const successTimerRef = useRef(null);
 
   const detected = level > DETECTION_THRESHOLD;
+
+  useEffect(() => {
+    return () => clearTimeout(successTimerRef.current);
+  }, []);
 
   useEffect(() => {
     if (complete) return;
@@ -72,7 +72,7 @@ export default function MicrophoneTestStep({ darkMode, onNext }) {
       if (accumulatedRef.current >= DETECTION_DURATION_REQUIRED) {
         setComplete(true);
         setProgress(1);
-        setTimeout(onNext, 800);
+        successTimerRef.current = setTimeout(onNext, 800);
       }
     } else {
       if (lastTickRef.current != null) {
@@ -95,7 +95,6 @@ export default function MicrophoneTestStep({ darkMode, onNext }) {
         darkMode={darkMode}
         title="Microphone problem"
         tips={getMicTips(connectionMode)}
-        connectionMode={connectionMode}
         onBack={handleBackToTest}
       />
     );
@@ -104,9 +103,14 @@ export default function MicrophoneTestStep({ darkMode, onNext }) {
   return (
     <StepLayout
       darkMode={darkMode}
-      illustration={sleepingReachy}
-      title="Microphone Check"
-      subtitle="Rub Reachy Mini's head gently or speak near it to test the microphone."
+      illustration={reachyMicrophone}
+      title="Can I Hear You?"
+      subtitle={
+        <>
+          Now it's your turn to talk! <b>Rub my head</b> gently or <b>say something</b> near me. I
+          need to make sure my microphone picks up sounds around me.
+        </>
+      }
     >
       <Box
         sx={{

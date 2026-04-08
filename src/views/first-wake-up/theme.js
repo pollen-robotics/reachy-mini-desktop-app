@@ -31,6 +31,24 @@ export const successButtonSx = {
   '&:hover': { borderColor: '#4ade80', backgroundColor: 'rgba(34, 197, 94, 0.06)' },
 };
 
+export const DANGER = '#ef4444';
+export const DANGER_HOVER = '#f87171';
+
+export const dangerButtonSx = {
+  px: 3,
+  py: 1,
+  borderRadius: '8px',
+  fontSize: 13,
+  fontWeight: 600,
+  textTransform: 'none',
+  color: DANGER,
+  borderColor: DANGER,
+  '&:hover': { borderColor: DANGER_HOVER, backgroundColor: 'rgba(239, 68, 68, 0.06)' },
+};
+
+export const DISCORD_URL = 'https://discord.gg/pollen-robotics';
+export const FAQ_URL = 'https://huggingface.co/docs/reachy_mini/troubleshooting';
+
 export const troubleshootLinkSx = darkMode => ({
   fontSize: 12,
   color: darkMode ? '#888' : '#64748b',

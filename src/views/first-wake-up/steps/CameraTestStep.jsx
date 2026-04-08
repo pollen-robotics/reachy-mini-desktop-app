@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Box, Typography, Button, CircularProgress, keyframes } from '@mui/material';
+import { Box, Typography, Button, keyframes } from '@mui/material';
 import StepLayout from '../components/StepLayout';
 import TroubleshootLayout from '../components/TroubleshootLayout';
 import {
@@ -10,18 +10,12 @@ import {
 } from '../theme';
 import { useWebRTCStreamContext } from '../../../contexts/WebRTCStreamContext';
 import useAppStore from '../../../store/useAppStore';
-import reachyMicrophone from '../../../assets/reachy-microphone.svg';
 
 function getCameraTips(connectionMode) {
   const tips = ['Make sure nothing is covering the camera lens'];
   if (connectionMode === 'wifi') {
     tips.push('Make sure you are on the same network as the robot');
   }
-  tips.push(
-    'Update and reboot the robot',
-    'If the issue persists, check the FAQ',
-    'Still having issues? Write a message in the support channel on Discord'
-  );
   return tips;
 }
 
@@ -35,6 +29,51 @@ const eyeBlink = keyframes`
   50%       { clip-path: ellipse(100% 5% at 50% 50%); }
 `;
 
+function StaticNoise({ width = 360, height = 270 }) {
+  const canvasRef = useRef(null);
+  const rafRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    const imageData = ctx.createImageData(w, h);
+    const data = imageData.data;
+
+    function draw() {
+      for (let i = 0; i < data.length; i += 4) {
+        const v = Math.random() * 255;
+        data[i] = v;
+        data[i + 1] = v;
+        data[i + 2] = v;
+        data[i + 3] = 40;
+      }
+      ctx.putImageData(imageData, 0, 0);
+      rafRef.current = requestAnimationFrame(draw);
+    }
+
+    draw();
+    return () => cancelAnimationFrame(rafRef.current);
+  }, []);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={width}
+      height={height}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        width: '100%',
+        height: '100%',
+        borderRadius: '12px',
+      }}
+    />
+  );
+}
+
 export default function CameraTestStep({ darkMode, onNext }) {
   const { connectionMode } = useAppStore();
   const { stream, isConnected } = useWebRTCStreamContext();
@@ -45,11 +84,16 @@ export default function CameraTestStep({ darkMode, onNext }) {
   const [showTroubleshoot, setShowTroubleshoot] = useState(false);
   const textSecondary = getTextSecondary(darkMode);
 
-  useEffect(() => {
-    if (!videoRef.current || !stream) return;
-    videoRef.current.srcObject = stream;
-    videoRef.current.play().catch(() => {});
-  }, [stream]);
+  const videoCallbackRef = useCallback(
+    node => {
+      videoRef.current = node;
+      if (node && stream) {
+        node.srcObject = stream;
+        node.play().catch(() => {});
+      }
+    },
+    [stream]
+  );
 
   useEffect(() => {
     if (isConnected && stream) {
@@ -76,7 +120,6 @@ export default function CameraTestStep({ darkMode, onNext }) {
         darkMode={darkMode}
         title="Camera problem"
         tips={getCameraTips(connectionMode)}
-        connectionMode={connectionMode}
         onBack={handleBackToTest}
       />
     );
@@ -85,9 +128,14 @@ export default function CameraTestStep({ darkMode, onNext }) {
   return (
     <StepLayout
       darkMode={darkMode}
-      illustration={reachyMicrophone}
-      title="Let's Look Around!"
-      subtitle="Check if you can see the camera feed below."
+      illustration={null}
+      title="Let Me See!"
+      subtitle={
+        <>
+          Almost done! Let's check if my <b>camera</b> is working. You should see a <b>live feed</b>{' '}
+          from my point of view below.
+        </>
+      }
     >
       <Box
         sx={{
@@ -100,26 +148,39 @@ export default function CameraTestStep({ darkMode, onNext }) {
       >
         <Box
           sx={{
+            position: 'relative',
             width: '100%',
             maxWidth: 360,
             aspectRatio: '4/3',
             borderRadius: '12px',
             overflow: 'hidden',
-            bgcolor: darkMode ? '#1a1a1a' : '#f0f0f0',
+            bgcolor: darkMode ? '#111' : '#1a1a1a',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            border: '1px solid',
-            borderColor: darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0',
           }}
         >
-          {!ready && !error && <CircularProgress size={32} sx={{ color: ACCENT }} />}
-          {error && (
-            <Typography sx={{ color: '#888', fontSize: 13 }}>Camera feed not available</Typography>
+          {!ready && <StaticNoise />}
+
+          {!ready && (
+            <Typography
+              sx={{
+                position: 'relative',
+                zIndex: 1,
+                color: 'rgba(255,255,255,0.7)',
+                fontSize: 13,
+                fontWeight: 500,
+                textAlign: 'center',
+                px: 2,
+              }}
+            >
+              {error ? 'No signal' : 'Connecting...'}
+            </Typography>
           )}
+
           <Box
             component="video"
-            ref={videoRef}
+            ref={videoCallbackRef}
             autoPlay
             playsInline
             muted

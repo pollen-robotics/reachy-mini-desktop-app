@@ -1,27 +1,22 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Box, Typography, Button, LinearProgress } from '@mui/material';
 import StepLayout from '../components/StepLayout';
 import TroubleshootLayout from '../components/TroubleshootLayout';
 import {
   primaryButtonSx,
-  successButtonSx,
-  troubleshootLinkSx,
+  dangerButtonSx,
   textSecondary as getTextSecondary,
+  ACCENT,
   ACCENT_GRADIENT,
 } from '../theme';
 import useAppStore from '../../../store/useAppStore';
-import reachyBuste from '../../../assets/reachy-buste.svg';
+import reachyMicrophone from '../../../assets/reachy-microphone.svg';
 
 function getMotorTips(connectionMode) {
   const tips = ['Check if the antennas are correctly plugged in (not inverted)'];
   if (connectionMode === 'wifi') {
     tips.push('Make sure you are on the same network as the robot');
   }
-  tips.push(
-    'Update and reboot the robot',
-    'If the issue persists, check the FAQ',
-    'Still having issues? Write a message in the support channel on Discord'
-  );
   return tips;
 }
 
@@ -36,30 +31,49 @@ export default function MotorTestStep({ darkMode, api, onNext, onRobotWoken }) {
   const [showTroubleshoot, setShowTroubleshoot] = useState(false);
   const textSecondary = getTextSecondary(darkMode);
 
+  const intervalRef = useRef(null);
+  const delayRef = useRef(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      clearInterval(intervalRef.current);
+      clearTimeout(delayRef.current);
+    };
+  }, []);
+
   const handlePlay = useCallback(async () => {
     setPlaying(true);
     setProgress(0);
 
     const start = Date.now();
-    const timer = setInterval(() => {
+    intervalRef.current = setInterval(() => {
       const elapsed = Date.now() - start;
       setProgress(Math.min(elapsed / MOVE_DURATION, 1));
-      if (elapsed >= MOVE_DURATION) clearInterval(timer);
+      if (elapsed >= MOVE_DURATION) clearInterval(intervalRef.current);
     }, PROGRESS_INTERVAL);
 
     try {
       await api.enableMotors();
-      await new Promise(r => setTimeout(r, 300));
+      await new Promise(r => {
+        delayRef.current = setTimeout(r, 300);
+      });
       await api.playMove('wake_up');
       if (onRobotWoken) onRobotWoken();
-      await new Promise(r => setTimeout(r, MOVE_DURATION));
+      await new Promise(r => {
+        delayRef.current = setTimeout(r, MOVE_DURATION);
+      });
     } catch (err) {
       console.error('[MotorTest] Movement failed:', err);
     } finally {
-      clearInterval(timer);
-      setProgress(1);
-      setPlaying(false);
-      setHasPlayed(true);
+      clearInterval(intervalRef.current);
+      if (mountedRef.current) {
+        setProgress(1);
+        setPlaying(false);
+        setHasPlayed(true);
+      }
     }
   }, [api, onRobotWoken]);
 
@@ -72,7 +86,6 @@ export default function MotorTestStep({ darkMode, api, onNext, onRobotWoken }) {
         darkMode={darkMode}
         title="Motors problem"
         tips={getMotorTips(connectionMode)}
-        connectionMode={connectionMode}
         onBack={handleBackToTest}
       />
     );
@@ -81,9 +94,14 @@ export default function MotorTestStep({ darkMode, api, onNext, onRobotWoken }) {
   return (
     <StepLayout
       darkMode={darkMode}
-      illustration={reachyBuste}
-      title="Stretch Time!"
-      subtitle="We'll play a quick movement to check the motors."
+      illustration={reachyMicrophone}
+      title="Let Me Stretch!"
+      subtitle={
+        <>
+          Time to wake up! I'll do a little stretch to make sure all my <b>motors</b> are working
+          properly. <b>Stand back</b> and watch me move!
+        </>
+      }
     >
       <Box
         sx={{
@@ -131,25 +149,31 @@ export default function MotorTestStep({ darkMode, api, onNext, onRobotWoken }) {
 
         {!playing && hasPlayed && (
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
-            <Typography sx={{ fontSize: 13, color: textSecondary, textAlign: 'center' }}>
-              Did the robot move correctly?
-            </Typography>
-
-            <Box sx={{ display: 'flex', gap: 1.5 }}>
-              <Button variant="outlined" onClick={onNext} sx={successButtonSx}>
-                Yes ✓
-              </Button>
+            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
               <Button
                 variant="outlined"
-                onClick={handlePlay}
-                sx={{ ...primaryButtonSx, px: 3, py: 1 }}
+                onClick={handleShowTroubleshoot}
+                sx={{ ...dangerButtonSx }}
               >
-                Retry
+                Something went wrong
+              </Button>
+              <Button variant="outlined" onClick={onNext} sx={{ ...primaryButtonSx, px: 3, py: 1 }}>
+                Looks good ✓
               </Button>
             </Box>
 
-            <Button onClick={handleShowTroubleshoot} sx={troubleshootLinkSx(darkMode)}>
-              Something went wrong
+            <Button
+              onClick={handlePlay}
+              sx={{
+                fontSize: 12,
+                color: ACCENT,
+                textTransform: 'none',
+                fontWeight: 500,
+                textDecoration: 'underline',
+                '&:hover': { opacity: 0.8 },
+              }}
+            >
+              Retry movement
             </Button>
           </Box>
         )}
