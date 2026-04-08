@@ -1,8 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Box, Button, Chip, keyframes } from '@mui/material';
-import UsbIcon from '@mui/icons-material/Usb';
-import WifiIcon from '@mui/icons-material/Wifi';
+import { Box, Button, keyframes } from '@mui/material';
 import useAppStore from '../../store/useAppStore';
 import FullscreenOverlay from '../../components/FullscreenOverlay';
 import { WebRTCStreamProvider } from '../../contexts/WebRTCStreamContext';
@@ -52,38 +50,6 @@ function ProgressBar({ current, total, darkMode }) {
   );
 }
 
-function ConnectionBadge({ darkMode }) {
-  const { connectionMode } = useAppStore();
-  const isUsb = connectionMode === 'usb';
-  const isWifi = connectionMode === 'wifi';
-  if (!isUsb && !isWifi) return null;
-
-  const Icon = isUsb ? UsbIcon : WifiIcon;
-  const label = isUsb ? 'USB' : 'WiFi';
-
-  return (
-    <Chip
-      icon={<Icon sx={{ fontSize: 14 }} />}
-      label={label}
-      size="small"
-      variant="outlined"
-      sx={{
-        position: 'fixed',
-        top: 16,
-        left: 16,
-        zIndex: 10000001,
-        WebkitAppRegion: 'no-drag',
-        fontSize: 11,
-        fontWeight: 600,
-        height: 24,
-        borderColor: darkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)',
-        color: darkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.3)',
-        '& .MuiChip-icon': { color: darkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.3)' },
-      }}
-    />
-  );
-}
-
 export default function FirstWakeUpView({ onComplete }) {
   const { darkMode } = useAppStore();
   const api = useFirstWakeUpApi();
@@ -126,35 +92,32 @@ export default function FirstWakeUpView({ onComplete }) {
         <ProgressBar current={activeStep} total={TOTAL_STEPS} darkMode={darkMode} />
 
         {createPortal(
-          <>
-            <ConnectionBadge darkMode={darkMode} />
-            <Button
-              variant="outlined"
-              onClick={handleComplete}
-              sx={{
-                position: 'fixed',
-                top: 16,
-                right: 16,
-                zIndex: 10000001,
-                WebkitAppRegion: 'no-drag',
-                fontSize: 12,
-                fontWeight: 500,
-                textTransform: 'none',
-                px: 2,
-                py: 0.5,
-                borderRadius: '8px',
-                color: darkMode ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.25)',
-                borderColor: darkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)',
-                '&:hover': {
-                  color: darkMode ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)',
-                  borderColor: darkMode ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.2)',
-                  backgroundColor: 'transparent',
-                },
-              }}
-            >
-              Skip setup
-            </Button>
-          </>,
+          <Button
+            variant="outlined"
+            onClick={handleComplete}
+            sx={{
+              position: 'fixed',
+              top: 16,
+              right: 16,
+              zIndex: 10000001,
+              WebkitAppRegion: 'no-drag',
+              fontSize: 12,
+              fontWeight: 500,
+              textTransform: 'none',
+              px: 2,
+              py: 0.5,
+              borderRadius: '8px',
+              color: darkMode ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.25)',
+              borderColor: darkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)',
+              '&:hover': {
+                color: darkMode ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)',
+                borderColor: darkMode ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.2)',
+                backgroundColor: 'transparent',
+              },
+            }}
+          >
+            Skip setup
+          </Button>,
           document.body
         )}
 
