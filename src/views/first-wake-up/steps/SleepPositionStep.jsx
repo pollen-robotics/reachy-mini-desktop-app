@@ -6,21 +6,23 @@ import { textSecondary as getTextSecondary, SUCCESS, ACCENT } from '../theme';
 import useAppStore from '../../../store/useAppStore';
 import reachyMicrophone from '../../../assets/reachy-microphone.svg';
 
+// Derived from daemon SLEEP_HEAD_JOINT_POSITIONS (radians) and SLEEP_ANTENNAS_JOINT_POSITIONS
+// Source: reachy_mini/daemon/backend/abstract.py
 const SLEEP_POSITION_DEGREES = {
-  body_rotation: 5.0,
-  stewart_1: -23.0,
-  stewart_2: 58.5,
-  stewart_3: -11.0,
-  stewart_4: 9.5,
-  stewart_5: -58.0,
-  stewart_6: 23.0,
-  right_antenna: -159.5,
-  left_antenna: 159.5,
+  body_rotation: 0.0,
+  stewart_1: -56.4,
+  stewart_2: 72.3,
+  stewart_3: -14.0,
+  stewart_4: 11.8,
+  stewart_5: -70.8,
+  stewart_6: 57.5,
+  right_antenna: -174.7,
+  left_antenna: 174.7,
 };
 
-const POSITION_ERROR_THRESHOLD = 10.0;
-const POSITION_ERROR_THRESHOLD_BASE = 10.0;
-const POSITION_ERROR_THRESHOLD_ANTENNAS = 5.0;
+const POSITION_ERROR_THRESHOLD = 15.0;
+const POSITION_ERROR_THRESHOLD_BASE = 20.0;
+const POSITION_ERROR_THRESHOLD_ANTENNAS = 19.5;
 const SWAP_DETECTION_THRESHOLD = 15.0;
 
 function radToDeg(rad) {
