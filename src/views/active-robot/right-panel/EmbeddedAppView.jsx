@@ -154,8 +154,24 @@ export default function EmbeddedAppView({ darkMode = false }) {
         flexDirection: 'column',
         height: '100%',
         minHeight: 0,
+        position: 'relative',
       }}
     >
+      {/* Left-edge gradient for depth, matching left column shadow */}
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          bottom: 0,
+          width: '12px',
+          background: darkMode
+            ? 'linear-gradient(to right, rgba(0, 0, 0, 0.25) 0%, rgba(0, 0, 0, 0) 100%)'
+            : 'linear-gradient(to right, rgba(0, 0, 0, 0.06) 0%, rgba(0, 0, 0, 0) 100%)',
+          pointerEvents: 'none',
+          zIndex: 2,
+        }}
+      />
       {/* Toolbar */}
       <Box
         sx={{
@@ -243,6 +259,7 @@ export default function EmbeddedAppView({ darkMode = false }) {
         <iframe
           src={iframeSrc}
           title={currentAppName || 'App'}
+          allow="microphone; camera; autoplay"
           style={{
             width: '100%',
             height: '100%',
