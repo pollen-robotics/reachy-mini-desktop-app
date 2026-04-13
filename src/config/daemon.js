@@ -88,7 +88,7 @@ export const DAEMON_CONFIG = {
   // Update check intervals
   UPDATE_CHECK: {
     INTERVAL: 3600000, // Check for updates every hour (1h)
-    STARTUP_DELAY: 2000, // Delay before first check on startup (2s)
+    STARTUP_DELAY: 500, // Short delay to let the webview settle before network call
     RETRY_DELAY: 1000, // Delay between retry attempts (1s)
     CHECK_TIMEOUT: 30000, // Timeout for check() call (30s) - prevents infinite blocking
   },

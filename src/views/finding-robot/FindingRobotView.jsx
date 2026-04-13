@@ -13,6 +13,8 @@ import {
   DialogContentText,
   DialogActions,
   Button,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import UsbOutlinedIcon from '@mui/icons-material/UsbOutlined';
 import PulseButton from '@components/PulseButton';
@@ -279,6 +281,7 @@ export default function FindingRobotView() {
   const [settingsAnchor, setSettingsAnchor] = useState(null);
   const [isResetting, setIsResetting] = useState(false);
   const [pendingReset, setPendingReset] = useState(null); // 'apps' | 'full' | null
+  const [manualIp, setManualIp] = useState('');
 
   const handleResetAppsVenv = useCallback(() => {
     setSettingsAnchor(null);
@@ -312,7 +315,7 @@ export default function FindingRobotView() {
   }, [pendingReset, showToast, clearApps]);
 
   // Block interactions during connection state changes
-  const isBusy = isConnecting || isDisconnecting;
+  const isBusy = isConnecting || isDisconnecting || isResetting;
 
   // Animated ellipsis dots
   useEffect(() => {
@@ -429,7 +432,14 @@ export default function FindingRobotView() {
    * Uses unified connect() from useConnection - same API for all modes
    */
   const handleStart = useCallback(async () => {
-    if (!selectedMode || isBusy) return;
+    if (isBusy) return;
+    if (!selectedMode && !manualIp.trim()) return;
+
+    // Manual IP always takes priority — connect as WiFi regardless of selected mode
+    if (manualIp.trim()) {
+      await connect(ConnectionMode.WIFI, { host: manualIp.trim() });
+      return;
+    }
 
     // 🔌 Unified connection API - same for USB, WiFi, and Simulation
     switch (selectedMode) {
@@ -437,19 +447,25 @@ export default function FindingRobotView() {
         await connect(ConnectionMode.USB, { portName: usbRobot.portName });
         break;
       case ConnectionMode.WIFI:
-        await connect(ConnectionMode.WIFI, { host: wifiRobots.selectedRobot?.displayHost });
+        {
+          const host = wifiRobots.selectedRobot?.displayHost;
+          if (!host) return;
+          await connect(ConnectionMode.WIFI, { host });
+        }
         break;
       case ConnectionMode.SIMULATION:
         await connect(ConnectionMode.SIMULATION);
         break;
     }
-  }, [selectedMode, isBusy, usbRobot, wifiRobots, connect]);
+  }, [selectedMode, isBusy, usbRobot, wifiRobots, manualIp, connect]);
 
   const canStart =
-    selectedMode &&
-    ((selectedMode === ConnectionMode.USB && usbRobot.available) ||
-      (selectedMode === ConnectionMode.WIFI && wifiRobots.available && wifiRobots.selectedRobot) ||
-      selectedMode === ConnectionMode.SIMULATION);
+    // Manual IP always allows starting (as WiFi)
+    manualIp.trim() ||
+    (selectedMode &&
+      ((selectedMode === ConnectionMode.USB && usbRobot.available) ||
+        (selectedMode === ConnectionMode.WIFI && wifiRobots.selectedRobot) ||
+        selectedMode === ConnectionMode.SIMULATION));
 
   return (
     <Box
@@ -861,12 +877,68 @@ export default function FindingRobotView() {
           </Select>
         )}
 
+        {/* Manual IP entry — always visible for WiFi connection */}
+        <TextField
+          value={manualIp}
+          onChange={e => {
+            setManualIp(e.target.value);
+            // Auto-select WiFi mode when user starts typing an IP
+            if (e.target.value.trim() && selectedMode !== ConnectionMode.WIFI) {
+              handleSelectMode(ConnectionMode.WIFI);
+            }
+          }}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && manualIp.trim()) {
+              if (selectedMode !== ConnectionMode.WIFI) {
+                handleSelectMode(ConnectionMode.WIFI);
+              }
+              handleStart();
+            }
+          }}
+          placeholder="Connect by IP address..."
+          size="small"
+          variant="outlined"
+          disabled={isBusy}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <WifiOutlinedIcon sx={{ fontSize: 16, color: darkMode ? '#555' : '#bbb' }} />
+              </InputAdornment>
+            ),
+          }}
+          sx={{
+            width: '100%',
+            maxWidth: 380,
+            mb: 2.5,
+            '& .MuiOutlinedInput-root': {
+              fontSize: 13,
+              color: darkMode ? '#e0e0e0' : '#333',
+              bgcolor: darkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+              borderRadius: '10px',
+              '& fieldset': {
+                borderColor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+              },
+              '&:hover fieldset': {
+                borderColor: darkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)',
+              },
+              '&.Mui-focused fieldset': {
+                borderColor: '#FF9500',
+                borderWidth: 1,
+              },
+            },
+            '& .MuiInputBase-input::placeholder': {
+              color: darkMode ? '#555' : '#bbb',
+              opacity: 1,
+            },
+          }}
+        />
+
         {/* Start Button - Primary Outlined */}
         <PulseButton
           onClick={handleStart}
           disabled={!canStart || isBusy}
           endIcon={
-            isBusy ? (
+            isConnecting || isDisconnecting ? (
               <CircularProgress size={18} sx={{ color: 'inherit' }} />
             ) : (
               <PlayArrowOutlinedIcon sx={{ fontSize: 22 }} />
@@ -875,7 +947,7 @@ export default function FindingRobotView() {
           darkMode={darkMode}
           sx={{ minWidth: 140, minHeight: 44 }}
         >
-          {isBusy ? (isDisconnecting ? 'Stopping...' : 'Connecting...') : 'Start'}
+          {isConnecting ? 'Connecting...' : isDisconnecting ? 'Stopping...' : 'Start'}
         </PulseButton>
 
         {/* Setup / troubleshooting links */}

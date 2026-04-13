@@ -20,10 +20,10 @@ class ErrorBoundary extends React.Component {
 
     try {
       const { telemetry } = require('../utils/telemetry');
-      telemetry.capture('app_render_crash', {
-        error: error?.message,
+      telemetry.appCrash({
+        error_type: 'react_render_crash',
+        error_message: error?.message,
         stack: error?.stack?.slice(0, 500),
-        componentStack: info.componentStack?.slice(0, 500),
       });
     } catch {
       // Telemetry unavailable — swallow silently

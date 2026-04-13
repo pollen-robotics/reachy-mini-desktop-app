@@ -295,99 +295,48 @@ elif [[ "$PLATFORM" == windows-* ]]; then
         exit 1
     fi
     
-    echo -e "${BLUE}📦 Found MSI: ${BUNDLE_FILE}${NC}"
+    echo -e "${GREEN}✅ Found MSI: ${BUNDLE_FILE}${NC}"
     
-    # Tauri updater expects .msi.zip format for Windows
-    # Create a ZIP archive of the MSI file
-    MSI_BASENAME=$(basename "$BUNDLE_FILE")
-    ZIP_FILE="$OUTPUT_DIR/${MSI_BASENAME}.zip"
-    
-    echo -e "${BLUE}📦 Creating ZIP archive for updater: ${ZIP_FILE}${NC}"
-    
-    # Use zip command (available on Windows Git Bash and Linux/macOS)
-    if command -v zip &> /dev/null; then
-        (cd "$(dirname "$BUNDLE_FILE")" && zip -j "$ZIP_FILE" "$MSI_BASENAME")
-    else
-        # Fallback: use PowerShell on Windows
-        # Convert Unix-style paths to Windows paths for PowerShell
-        echo -e "${YELLOW}   zip not found, trying PowerShell...${NC}"
-        if command -v cygpath &> /dev/null; then
-            WIN_BUNDLE_FILE=$(cygpath -w "$BUNDLE_FILE")
-            WIN_ZIP_FILE=$(cygpath -w "$ZIP_FILE")
-        else
-            # Manual conversion: /d/path -> D:\path
-            WIN_BUNDLE_FILE=$(echo "$BUNDLE_FILE" | sed 's|^/\([a-z]\)/|\U\1:\\|' | sed 's|/|\\|g')
-            WIN_ZIP_FILE=$(echo "$ZIP_FILE" | sed 's|^/\([a-z]\)/|\U\1:\\|' | sed 's|/|\\|g')
-        fi
-        echo -e "${BLUE}   Windows paths: ${WIN_BUNDLE_FILE} -> ${WIN_ZIP_FILE}${NC}"
-        powershell -Command "Compress-Archive -Path '$WIN_BUNDLE_FILE' -DestinationPath '$WIN_ZIP_FILE' -Force"
-    fi
-    
-    if [ ! -f "$ZIP_FILE" ]; then
-        echo -e "${RED}❌ Failed to create ZIP archive${NC}"
-        exit 1
-    fi
-    
-    # The bundle file for signing is now the ZIP
-    BUNDLE_FILE="$ZIP_FILE"
-    echo -e "${GREEN}✅ ZIP archive created: ${BUNDLE_FILE}${NC}"
+    # Tauri v2 updater uses the raw MSI directly (no zip wrapper).
+    # The zip crate in tauri-plugin-updater is compiled without deflate support,
+    # so .msi.zip files with Deflate compression cause "compression method not supported".
     
 elif [[ "$PLATFORM" == linux-* ]]; then
-    # Tauri updater for Linux requires AppImage format (not .deb)
-    # Find .AppImage file
+    # Find .AppImage file (primary Linux update format)
     APPIMAGE_DIR="$BUNDLE_DIR/appimage"
     
     # Always use absolute path from PROJECT_DIR
     if [[ "$APPIMAGE_DIR" != /* ]]; then
-        # Relative path - make it absolute
         APPIMAGE_DIR="$PROJECT_DIR/$APPIMAGE_DIR"
     fi
     
-    # Verify the directory exists
     if [ ! -d "$APPIMAGE_DIR" ]; then
         echo -e "${RED}❌ AppImage directory not found: ${APPIMAGE_DIR}${NC}"
-        echo -e "${YELLOW}   PROJECT_DIR: ${PROJECT_DIR}${NC}"
-        echo -e "${YELLOW}   BUNDLE_DIR: ${BUNDLE_DIR}${NC}"
         echo -e "${YELLOW}   Make sure 'appimage' is in tauri.conf.json targets!${NC}"
-        echo -e "${YELLOW}   Looking for AppImage files in bundle directory:${NC}"
         ABS_BUNDLE_DIR="$PROJECT_DIR/$BUNDLE_DIR"
         if [ -d "$ABS_BUNDLE_DIR" ]; then
-            echo -e "${YELLOW}   Contents of: ${ABS_BUNDLE_DIR}${NC}"
             ls -la "$ABS_BUNDLE_DIR" || true
-        elif [ -d "$BUNDLE_DIR" ]; then
-            echo -e "${YELLOW}   Contents of: ${BUNDLE_DIR}${NC}"
-            ls -la "$BUNDLE_DIR" || true
-        else
-            echo -e "${YELLOW}   Bundle directory not found at all${NC}"
         fi
         exit 1
     fi
     
-    # Try find first (works on Unix-like systems)
     APPIMAGE_FILE=$(find "$APPIMAGE_DIR" -name "*.AppImage" 2>/dev/null | head -1)
-    
-    # If find failed, try ls as fallback
     if [ -z "$APPIMAGE_FILE" ]; then
         APPIMAGE_FILE=$(ls "$APPIMAGE_DIR"/*.AppImage 2>/dev/null | head -1)
     fi
     
     if [ -z "$APPIMAGE_FILE" ] || [ ! -f "$APPIMAGE_FILE" ]; then
         echo -e "${RED}❌ AppImage not found in: ${APPIMAGE_DIR}${NC}"
-        echo -e "${YELLOW}   Contents of appimage directory:${NC}"
         ls -la "$APPIMAGE_DIR" || true
         exit 1
     fi
     
     echo -e "${BLUE}📦 Found AppImage: ${APPIMAGE_FILE}${NC}"
     
-    # Tauri updater expects .AppImage.tar.gz format for Linux
-    # Create a tar.gz archive of the AppImage file
     APPIMAGE_BASENAME=$(basename "$APPIMAGE_FILE")
     TAR_FILE="$OUTPUT_DIR/${APPIMAGE_BASENAME}.tar.gz"
     
     echo -e "${BLUE}📦 Creating tar.gz archive for updater: ${TAR_FILE}${NC}"
-    
-    # Create tar.gz archive
     tar -czf "$TAR_FILE" -C "$(dirname "$APPIMAGE_FILE")" "$APPIMAGE_BASENAME"
     
     if [ ! -f "$TAR_FILE" ]; then
@@ -395,9 +344,31 @@ elif [[ "$PLATFORM" == linux-* ]]; then
         exit 1
     fi
     
-    # The bundle file for signing is now the tar.gz
     BUNDLE_FILE="$TAR_FILE"
     echo -e "${GREEN}✅ tar.gz archive created: ${BUNDLE_FILE}${NC}"
+    
+    # Also find .deb file for deb-based update support (tauri-plugin-updater >= 2.10)
+    DEB_FILE=""
+    DEB_DIR="$BUNDLE_DIR/deb"
+    if [[ "$DEB_DIR" != /* ]]; then
+        DEB_DIR="$PROJECT_DIR/$DEB_DIR"
+    fi
+    
+    if [ -d "$DEB_DIR" ]; then
+        DEB_FILE=$(find "$DEB_DIR" -name "*.deb" 2>/dev/null | head -1)
+        if [ -z "$DEB_FILE" ]; then
+            DEB_FILE=$(ls "$DEB_DIR"/*.deb 2>/dev/null | head -1)
+        fi
+        
+        if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
+            echo -e "${GREEN}✅ Found .deb package: ${DEB_FILE}${NC}"
+        else
+            echo -e "${YELLOW}⚠️  No .deb package found, skipping deb update entry${NC}"
+            DEB_FILE=""
+        fi
+    else
+        echo -e "${YELLOW}⚠️  No deb directory found, skipping deb update entry${NC}"
+    fi
 fi
 
 if [ ! -f "$BUNDLE_FILE" ]; then
@@ -579,6 +550,43 @@ else
     fi
 fi
 
+# 4b. Sign .deb file if present (Linux only, for tauri-plugin-updater >= 2.10)
+DEB_SIGNATURE=""
+if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
+    echo ""
+    echo -e "${BLUE}🔐 Step 2b: Signing .deb package...${NC}"
+    DEB_SIGNATURE_FILE="${DEB_FILE}.sig"
+    
+    set +e
+    if [ -n "$TAURI_SIGNING_KEY_PASSWORD" ]; then
+        yarn tauri signer sign -f "$PRIVATE_KEY" -p "$TAURI_SIGNING_KEY_PASSWORD" "$DEB_FILE" 2>&1
+    else
+        yarn tauri signer sign -v -f "$PRIVATE_KEY" -p "" "$DEB_FILE" 2>&1
+    fi
+    DEB_SIGN_EXIT=$?
+    set -e
+    
+    if [ -f "$DEB_SIGNATURE_FILE" ]; then
+        echo -e "${GREEN}✅ .deb package signed: ${DEB_SIGNATURE_FILE}${NC}"
+        
+        DEB_FIRST_LINE=$(head -1 "$DEB_SIGNATURE_FILE")
+        if echo "$DEB_FIRST_LINE" | grep -q "untrusted comment"; then
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                DEB_SIGNATURE=$(base64 -i "$DEB_SIGNATURE_FILE" | tr -d '\n\r')
+            else
+                DEB_SIGNATURE=$(base64 -w 0 "$DEB_SIGNATURE_FILE" | tr -d '\r')
+            fi
+        else
+            DEB_SIGNATURE=$(cat "$DEB_SIGNATURE_FILE" | tr -d '\n\r\t ')
+        fi
+        
+        echo -e "${GREEN}✅ .deb signature ready${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Failed to sign .deb (exit code: $DEB_SIGN_EXIT), skipping deb update entry${NC}"
+        DEB_FILE=""
+    fi
+fi
+
 # 5. Generate metadata JSON
 echo ""
 echo -e "${BLUE}📄 Step 3: Generating update metadata...${NC}"
@@ -588,14 +596,16 @@ JSON_DIR="$OUTPUT_DIR/$PLATFORM/$VERSION"
 mkdir -p "$JSON_DIR"
 
 # File name according to platform (must match the actual filenames uploaded to GitHub Releases)
-# Use the actual bundle file name that was created
-FILE_NAME=$(basename "$BUNDLE_FILE")
+# Use the actual bundle file name that was created.
+# GitHub Releases converts spaces to dots in asset names, so we must do the same
+# to ensure the download URLs in latest.json match the actual asset URLs.
+FILE_NAME=$(basename "$BUNDLE_FILE" | tr ' ' '.')
 
 # Log what we're using
 if [[ "$PLATFORM" == darwin-* ]]; then
     echo -e "${BLUE}   macOS update file: ${FILE_NAME}${NC}"
 elif [[ "$PLATFORM" == windows-* ]]; then
-    # Windows uses .msi.zip format for updater
+    # Windows uses raw .msi for Tauri v2 updater (no zip wrapper)
     echo -e "${BLUE}   Windows update file: ${FILE_NAME}${NC}"
 elif [[ "$PLATFORM" == linux-* ]]; then
     # Linux uses .AppImage.tar.gz format for updater
@@ -617,6 +627,25 @@ else
     fi
 fi
 
+# Build the deb URL and platform entry if available (Linux only)
+DEB_PLATFORM_ENTRY=""
+if [ -n "$DEB_FILE" ] && [ -n "$DEB_SIGNATURE" ]; then
+    DEB_FILE_NAME=$(basename "$DEB_FILE" | tr ' ' '.')
+    if [ "$ENV" = "dev" ]; then
+        DEB_FILE_URL="http://localhost:8080/${DEB_FILE_NAME}"
+    elif [ -n "$RELEASE_URL_BASE" ]; then
+        DEB_FILE_URL="${RELEASE_URL_BASE}${VERSION}/${DEB_FILE_NAME}"
+    else
+        DEB_FILE_URL="https://releases.example.com/${DEB_FILE_NAME}"
+    fi
+    DEB_PLATFORM_ENTRY=",
+    \"${PLATFORM}-deb\": {
+      \"signature\": \"${DEB_SIGNATURE}\",
+      \"url\": \"${DEB_FILE_URL}\"
+    }"
+    echo -e "${GREEN}✅ Added ${PLATFORM}-deb entry for .deb update support${NC}"
+fi
+
 # Generate JSON
 UPDATE_JSON="$JSON_DIR/update.json"
 cat > "$UPDATE_JSON" <<EOF
@@ -628,7 +657,7 @@ cat > "$UPDATE_JSON" <<EOF
     "${PLATFORM}": {
       "signature": "${SIGNATURE}",
       "url": "${FILE_URL}"
-    }
+    }${DEB_PLATFORM_ENTRY}
   }
 }
 EOF
@@ -644,6 +673,10 @@ echo ""
 echo -e "${BLUE}Files created:${NC}"
 echo "  - Bundle: ${BUNDLE_FILE}"
 echo "  - Signature: ${SIGNATURE_FILE}"
+if [ -n "$DEB_FILE" ] && [ -n "$DEB_SIGNATURE" ]; then
+echo "  - Deb package: ${DEB_FILE}"
+echo "  - Deb signature: ${DEB_FILE}.sig"
+fi
 echo "  - Metadata: ${UPDATE_JSON}"
 echo ""
 if [ "$ENV" = "dev" ]; then

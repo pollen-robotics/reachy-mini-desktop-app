@@ -380,25 +380,33 @@ pub fn open_location_settings() -> Result<(), String> {
 #[tauri::command]
 #[cfg(target_os = "macos")]
 pub async fn check_bluetooth_permission() -> Result<Option<bool>, String> {
-    extern "C" {
-        fn bluetooth_authorization_status() -> i32;
+    // In debug/dev builds the binary is not bundled or signed with Bluetooth entitlements.
+    // CBCentralManager crashes without a valid app bundle, so we report "granted" to skip
+    // the permission gate and allow normal dev/debugging workflows.
+    #[cfg(debug_assertions)]
+    {
+        log::warn!("[dev] Skipping Bluetooth permission check in debug build — reporting granted");
+        Ok(Some(true))
     }
 
-    tokio::task::spawn_blocking(|| {
-        let status = unsafe { bluetooth_authorization_status() };
-        log::debug!("[permissions] Bluetooth authorization status: {}", status);
-        // 0=notDetermined, 1=restricted, 2=denied, 3=allowedAlways
-        // Note: notDetermined (0) means the user was never asked - this is expected on first run.
-        // We do NOT add a delay here because CBManager.authorization is a direct TCC read
-        // (unlike CLLocationManager which needs a delegate callback to reflect the real state).
-        match status {
-            3 => Ok(Some(true)),
-            1 | 2 => Ok(Some(false)),
-            _ => Ok(None),
+    #[cfg(not(debug_assertions))]
+    {
+        extern "C" {
+            fn bluetooth_authorization_status() -> i32;
         }
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking failed: {}", e))?
+
+        tokio::task::spawn_blocking(|| {
+            let status = unsafe { bluetooth_authorization_status() };
+            log::debug!("[permissions] Bluetooth authorization status: {}", status);
+            match status {
+                3 => Ok(Some(true)),
+                1 | 2 => Ok(Some(false)),
+                _ => Ok(None),
+            }
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking failed: {}", e))?
+    }
 }
 
 #[tauri::command]
@@ -412,22 +420,34 @@ pub async fn check_bluetooth_permission() -> Result<Option<bool>, String> {
 #[tauri::command]
 #[cfg(target_os = "macos")]
 pub async fn request_bluetooth_permission() -> Result<Option<bool>, String> {
-    extern "C" {
-        fn bluetooth_request_permission();
-        fn bluetooth_authorization_status() -> i32;
+    // Skip in debug builds — see check_bluetooth_permission for rationale.
+    #[cfg(debug_assertions)]
+    {
+        log::warn!(
+            "[dev] Skipping Bluetooth permission request in debug build — reporting granted"
+        );
+        Ok(Some(true))
     }
 
-    tokio::task::spawn_blocking(|| {
-        unsafe { bluetooth_request_permission() };
-        let status = unsafe { bluetooth_authorization_status() };
-        match status {
-            3 => Ok(Some(true)),
-            1 | 2 => Ok(Some(false)),
-            _ => Ok(None),
+    #[cfg(not(debug_assertions))]
+    {
+        extern "C" {
+            fn bluetooth_request_permission();
+            fn bluetooth_authorization_status() -> i32;
         }
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking failed: {}", e))?
+
+        tokio::task::spawn_blocking(|| {
+            unsafe { bluetooth_request_permission() };
+            let status = unsafe { bluetooth_authorization_status() };
+            match status {
+                3 => Ok(Some(true)),
+                1 | 2 => Ok(Some(false)),
+                _ => Ok(None),
+            }
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking failed: {}", e))?
+    }
 }
 
 #[tauri::command]

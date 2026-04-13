@@ -495,12 +495,19 @@ pub fn spawn_and_monitor_sidecar(
 
     let daemon_args_refs: Vec<&str> = daemon_args.iter().map(|s| s.as_str()).collect();
 
-    let sidecar_command = app_handle
+    let mut sidecar_command = app_handle
         .shell()
         .sidecar("uv-trampoline")
         .map_err(|e| e.to_string())?
         .args(daemon_args_refs)
         .env("PYTHONIOENCODING", "utf-8");
+
+    if cfg!(target_os = "linux") {
+        sidecar_command = sidecar_command.env(
+            "GST_PLUGIN_PATH",
+            "/usr/share/reachy-mini-control/gstreamer-plugins",
+        );
+    }
 
     let (mut rx, child) = sidecar_command.spawn().map_err(|e| e.to_string())?;
 
@@ -626,11 +633,18 @@ pub fn spawn_and_monitor_sidecar(
                             }
                         };
 
-                        match sidecar_cmd
+                        let mut sidecar_cmd = sidecar_cmd
                             .args(daemon_args_refs)
-                            .env("PYTHONIOENCODING", "utf-8")
-                            .spawn()
-                        {
+                            .env("PYTHONIOENCODING", "utf-8");
+
+                        if cfg!(target_os = "linux") {
+                            sidecar_cmd = sidecar_cmd.env(
+                                "GST_PLUGIN_PATH",
+                                "/usr/share/reachy-mini-control/gstreamer-plugins",
+                            );
+                        }
+
+                        match sidecar_cmd.spawn() {
                             Ok((mut new_rx, new_child)) => {
                                 let new_gen = match daemon_state.generation.lock() {
                                     Ok(mut gen) => {

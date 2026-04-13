@@ -101,8 +101,8 @@ fn get_current_ssid_linux() -> Result<Option<String>, String> {
             let stdout = String::from_utf8_lossy(&output.stdout);
             for line in stdout.lines() {
                 // Format: "yes:NetworkName" for active connection
-                if line.starts_with("yes:") {
-                    let ssid = line[4..].to_string();
+                if let Some(networkname) = line.strip_prefix("yes:") {
+                    let ssid = networkname.to_string();
                     if !ssid.is_empty() {
                         return Ok(Some(ssid));
                     }

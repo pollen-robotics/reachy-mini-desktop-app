@@ -11,7 +11,6 @@ mod paths;
 mod permissions;
 mod python;
 mod reset;
-mod signing;
 mod update;
 mod usb;
 mod wifi;
@@ -320,14 +319,23 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init());
 
     // BLE plugin panics if Bluetooth is unavailable (CI runners, VMs, no adapter).
-    // Catch the panic so the app starts without BLE support.
-    // When BT is installed but adapter is off, init succeeds and the UI prompts the user.
+    // catch_unwind handles standard panics, but on macOS CoreBluetooth callbacks fire
+    // via Objective-C FFI (extern "C"), which cannot unwind — causing a fatal abort.
+    // In debug/dev builds the binary lacks signed Bluetooth entitlements, so CoreBluetooth
+    // immediately fires an "unauthorized" state callback that hits an `.expect()` and aborts.
+    // Skip BLE entirely in debug builds to keep dev mode stable.
+    #[cfg(not(all(debug_assertions, target_os = "macos")))]
     let builder = match std::panic::catch_unwind(tauri_plugin_blec::init) {
         Ok(plugin) => builder.plugin(plugin),
         Err(_) => {
             log::warn!("Bluetooth not available — BLE features disabled");
             builder
         }
+    };
+    #[cfg(all(debug_assertions, target_os = "macos"))]
+    let builder = {
+        log::warn!("[dev] Skipping BLE plugin in debug build — Bluetooth entitlements require a signed release build");
+        builder
     };
 
     let builder = if cfg!(target_os = "macos") {
@@ -385,7 +393,6 @@ pub fn run() {
             usb::check_usb_robot,
             window::apply_transparent_titlebar,
             window::close_window,
-            signing::sign_python_binaries,
             permissions::open_camera_settings,
             permissions::open_microphone_settings,
             permissions::open_wifi_settings,

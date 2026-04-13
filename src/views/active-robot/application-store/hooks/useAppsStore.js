@@ -95,6 +95,9 @@ export function useAppsStore(isActive) {
   // Timer for auto-clearing error state after display duration
   const errorClearTimerRef = useRef(null);
 
+  // Track the last app whose error was auto-dismissed to prevent re-detection loop
+  const lastDismissedErrorAppRef = useRef(null);
+
   // Cache duration: 1 day (apps don't change that often, filter client-side)
   const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -280,11 +283,22 @@ export function useAppsStore(isActive) {
       // AppState enum: "starting" | "running" | "done" | "stopping" | "error"
 
       if (status && status.info && status.state) {
-        setCurrentApp(status);
-
         const appState = status.state;
         const appName = status.info.name;
         const hasError = !!status.error;
+
+        // Skip re-detection of an already-dismissed error for the same app
+        // to prevent the 12s oscillation loop (setCurrentApp → timer null → poll → repeat)
+        if (appState === 'error' && appName === lastDismissedErrorAppRef.current) {
+          return status;
+        }
+
+        // Clear dismissed flag when a healthy state or different app is detected
+        if (appState === 'running' || appState === 'starting') {
+          lastDismissedErrorAppRef.current = null;
+        }
+
+        setCurrentApp(status);
 
         // ✅ Production-grade state handling based on API schema
         const isAppActive = appState === 'running' || appState === 'starting';
@@ -331,6 +345,7 @@ export function useAppsStore(isActive) {
             // Auto-clear the error after a delay so the user can launch another app
             if (!errorClearTimerRef.current) {
               errorClearTimerRef.current = setTimeout(() => {
+                lastDismissedErrorAppRef.current = appName;
                 setCurrentApp(null);
                 errorClearTimerRef.current = null;
               }, APP_ERROR_DISPLAY_DURATION_MS);
@@ -357,8 +372,9 @@ export function useAppsStore(isActive) {
 
       return status;
     } catch (err) {
-      // No error if no app running
-      setCurrentApp(null);
+      // Network error: keep last known currentApp state.
+      // Daemon crashes are detected separately by the health check system
+      // (CRASH_DETECTION.MAX_TIMEOUTS), which triggers resetAll().
       return null;
     }
   }, [setCurrentApp]);

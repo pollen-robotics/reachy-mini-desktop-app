@@ -127,6 +127,21 @@ export const initTelemetry = async context => {
       daemon_version: context.daemonVersion || 'unknown',
     };
 
+    // Disable posthog-js autocapture (clicks, pageviews, pageleaves).
+    // We only want explicitly tracked custom events.
+    try {
+      const ph = await PostHog.getInstance();
+      if (ph?.set_config) {
+        ph.set_config({
+          autocapture: false,
+          capture_pageview: false,
+          capture_pageleave: false,
+        });
+      }
+    } catch {
+      // PostHog not ready yet - autocapture will remain on but is non-critical
+    }
+
     if (import.meta.env.DEV) {
       console.log('[Telemetry] Context initialized:', globalContext);
     }

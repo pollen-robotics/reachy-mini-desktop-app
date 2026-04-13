@@ -1,6 +1,6 @@
 [package]
 name = "reachy-mini-control"
-version = "0.9.21"
+version = "0.9.29"
 description = "Reachy Mini Control Application"
 authors = ["Reachy Mini Contributors"]
 edition = "2021"
@@ -24,7 +24,7 @@ tauri-plugin-opener = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-positioner = "2"
 tauri-plugin-process = "2"
-tauri-plugin-updater = "2.0"
+tauri-plugin-updater = "2.10"
 tauri-plugin-macos-permissions = "2.3"
 tauri-plugin-http = "2"
 tauri-plugin-deep-link = "2"

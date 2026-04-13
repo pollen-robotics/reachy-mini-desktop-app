@@ -8,6 +8,7 @@ name = "uv-trampoline"
 path = "src/bin/uv-trampoline.rs"
 
 [dependencies]
+log = "0.4"
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 signal-hook = "0.3"

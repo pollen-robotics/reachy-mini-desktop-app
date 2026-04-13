@@ -14,7 +14,8 @@ import { isLinux } from '../utils/platform';
 import '../lib/gstwebrtc-api';
 
 const SIGNALING_PORT = 8443;
-const RECONNECT_DELAY = 5000;
+const RECONNECT_DELAY = 2000;
+const INITIAL_RECONNECT_DELAY = 500;
 
 /**
  * Connection states for the WebRTC stream
@@ -57,6 +58,7 @@ export function WebRTCStreamProvider({ children }) {
   const mountedRef = useRef(true);
   const producersListenerRef = useRef(null);
   const connectionListenerRef = useRef(null);
+  const hasConnectedRef = useRef(false);
 
   // Check WebRTC availability on mount
   // - WiFi mode: check if daemon reports wireless_version (remote WebRTC on RPi)
@@ -179,20 +181,27 @@ export function WebRTCStreamProvider({ children }) {
       connectionListenerRef.current = {
         connected: clientId => {
           if (!mountedRef.current) return;
+          hasConnectedRef.current = true;
         },
         disconnected: () => {
           if (!mountedRef.current) return;
-          setState(StreamState.DISCONNECTED);
           setStream(null);
 
           // Schedule reconnect if still should connect
           if (mountedRef.current && !reconnectTimeoutRef.current) {
-            reconnectTimeoutRef.current = setTimeout(() => {
-              reconnectTimeoutRef.current = null;
-              if (mountedRef.current) {
-                connect();
-              }
-            }, RECONNECT_DELAY);
+            reconnectTimeoutRef.current = setTimeout(
+              () => {
+                reconnectTimeoutRef.current = null;
+                if (mountedRef.current) {
+                  connect();
+                }
+              },
+              hasConnectedRef.current ? RECONNECT_DELAY : INITIAL_RECONNECT_DELAY
+            );
+            // Keep showing "Connecting..." while retrying
+            setState(StreamState.CONNECTING);
+          } else {
+            setState(StreamState.DISCONNECTED);
           }
         },
       };
@@ -220,7 +229,23 @@ export function WebRTCStreamProvider({ children }) {
             if (!mountedRef.current) return;
             console.error('[WebRTC] Session error:', e.message);
             setError(e.message || 'Stream error');
-            setState(StreamState.ERROR);
+
+            // Schedule reconnect on error (e.g. signaling server not ready yet)
+            if (mountedRef.current && !reconnectTimeoutRef.current) {
+              reconnectTimeoutRef.current = setTimeout(
+                () => {
+                  reconnectTimeoutRef.current = null;
+                  if (mountedRef.current) {
+                    connect();
+                  }
+                },
+                hasConnectedRef.current ? RECONNECT_DELAY : INITIAL_RECONNECT_DELAY
+              );
+              // Keep showing "Connecting..." while retrying
+              setState(StreamState.CONNECTING);
+            } else {
+              setState(StreamState.ERROR);
+            }
           });
 
           session.addEventListener('closed', () => {
