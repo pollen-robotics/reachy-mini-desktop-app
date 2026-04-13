@@ -16,8 +16,13 @@ import { buildApiUrl, fetchWithTimeout, DAEMON_CONFIG } from '../../../config/da
  *   &accent=FF9500       — primary accent color (hex without #)
  *   &bg=1a1a1a|fafafc    — panel background color
  *   &fg=f5f5f5|333333    — foreground text color
+ *
+ * For local daemon-hosted apps we also append a `_t` cache-buster, since
+ * different apps reuse the same localhost port and the WebView may serve
+ * stale assets. Remote URLs (e.g. HF Spaces) are left alone — they have
+ * proper cache headers and `_t` would defeat HF's CDN.
  */
-function buildEmbeddedUrl(baseUrl, darkMode) {
+function buildEmbeddedUrl(baseUrl, darkMode, isRemote) {
   try {
     const url = new URL(baseUrl);
     url.searchParams.set('embedded', '1');
@@ -25,10 +30,30 @@ function buildEmbeddedUrl(baseUrl, darkMode) {
     url.searchParams.set('accent', 'FF9500');
     url.searchParams.set('bg', darkMode ? '1a1a1a' : 'fafafc');
     url.searchParams.set('fg', darkMode ? 'f5f5f5' : '333333');
-    url.searchParams.set('_t', Date.now()); // cache-bust: apps often reuse the same port
+    if (!isRemote) {
+      url.searchParams.set('_t', Date.now());
+    }
     return url.toString();
   } catch {
     return baseUrl;
+  }
+}
+
+/**
+ * Decide whether a URL points to a local daemon-hosted app.
+ * Local URLs need cache-busting; remote ones don't.
+ */
+function isLocalUrl(url) {
+  try {
+    const { hostname } = new URL(url);
+    return (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname.startsWith('192.168.') ||
+      hostname.startsWith('10.')
+    );
+  } catch {
+    return false;
   }
 }
 
@@ -74,16 +99,33 @@ async function bustCacheForApp(baseUrl) {
  * inside the right panel, with a toolbar for stop / pop-out actions.
  */
 export default function EmbeddedAppView({ darkMode = false }) {
-  const { robotState, actions } = useActiveRobotContext();
+  const { robotState } = useActiveRobotContext();
   const { embeddedAppUrl, currentAppName } = robotState;
+  // JS-app fields live in the global store (not the daemon-driven robotState)
+  const embeddedAppKind = useAppStore(state => state.embeddedAppKind);
+  const embeddedAppName = useAppStore(state => state.embeddedAppName);
+  const isJsApp = embeddedAppKind === 'js';
+  const displayName = embeddedAppName || currentAppName || 'App';
+  const isRemote = useMemo(() => !isLocalUrl(embeddedAppUrl || ''), [embeddedAppUrl]);
+
   const [cacheReady, setCacheReady] = useState(false);
   const bustKeyRef = useRef(null);
 
-  // Bust cache before showing iframe — ensures subresources match the current app
+  // Bust cache before showing iframe — only for local daemon-hosted apps
+  // (different apps reuse the same localhost port). Remote URLs (HF Spaces)
+  // skip this entirely: their assets have proper cache headers and CORS may
+  // block fetch() from our origin.
   useEffect(() => {
     if (!embeddedAppUrl) {
       setCacheReady(false);
       bustKeyRef.current = null;
+      return;
+    }
+
+    if (isRemote) {
+      // No cache-bust needed for remote URLs
+      bustKeyRef.current = embeddedAppUrl;
+      setCacheReady(true);
       return;
     }
 
@@ -97,12 +139,13 @@ export default function EmbeddedAppView({ darkMode = false }) {
       // when apps switch quickly: old promise resolving must not unlock the new app)
       if (bustKeyRef.current === key) setCacheReady(true);
     });
-  }, [embeddedAppUrl, currentAppName]);
+  }, [embeddedAppUrl, currentAppName, isRemote]);
 
   const iframeSrc = useMemo(
-    () => (embeddedAppUrl && cacheReady ? buildEmbeddedUrl(embeddedAppUrl, darkMode) : null),
+    () =>
+      embeddedAppUrl && cacheReady ? buildEmbeddedUrl(embeddedAppUrl, darkMode, isRemote) : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [embeddedAppUrl, darkMode, currentAppName, cacheReady]
+    [embeddedAppUrl, darkMode, currentAppName, cacheReady, isRemote]
   );
 
   const handleClose = async () => {
@@ -110,6 +153,10 @@ export default function EmbeddedAppView({ darkMode = false }) {
 
     // Dismiss the embedded view immediately (prevents auto-reopen)
     store.dismissEmbeddedApp();
+
+    // JS apps are pure iframes — nothing to stop on the daemon side.
+    if (isJsApp) return;
+
     store.setIsStoppingApp(true);
 
     try {
@@ -140,8 +187,9 @@ export default function EmbeddedAppView({ darkMode = false }) {
   };
 
   const handlePopOut = async () => {
-    if (!embeddedAppUrl || !currentAppName) return;
-    await openAppWindow(currentAppName, embeddedAppUrl);
+    if (!embeddedAppUrl) return;
+    const name = displayName;
+    await openAppWindow(name, embeddedAppUrl);
     useAppStore.getState().dismissEmbeddedApp();
   };
 
@@ -192,7 +240,7 @@ export default function EmbeddedAppView({ darkMode = false }) {
             ml: 0.5,
           }}
         >
-          {currentAppName || 'App'}
+          {displayName}
         </Typography>
 
         <Tooltip title="Open in separate window" arrow placement="top">
@@ -242,7 +290,8 @@ export default function EmbeddedAppView({ darkMode = false }) {
       >
         <iframe
           src={iframeSrc}
-          title={currentAppName || 'App'}
+          title={displayName}
+          allow="camera; microphone; autoplay; clipboard-read; clipboard-write; display-capture; geolocation; midi"
           style={{
             width: '100%',
             height: '100%',

@@ -12,6 +12,11 @@ const EXCLUDED_TAGS = new Set([
   'region:eu',
 ]);
 
+// Synthetic category for live (browser-side / no-install) apps.
+// Filters to apps where isPythonApp === false (set by the website API based
+// on whether the HF Space carries the reachy_mini_python_app tag).
+export const LIVE_CATEGORY = 'live';
+
 const FUSE_OPTIONS = {
   keys: [
     { name: 'name', weight: 0.4 },
@@ -96,10 +101,18 @@ export function useAppFiltering(
       }
     });
 
-    return Array.from(categoryMap.entries())
+    const tagCategories = Array.from(categoryMap.entries())
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => (b.count !== a.count ? b.count - a.count : a.name.localeCompare(b.name)))
       .slice(0, 8);
+
+    // Prepend the synthetic "Live" category when at least one live app is
+    // present. Lives at the front of the chip row to make it discoverable.
+    const liveCount = appsForMode.filter(app => app.extra?.isPythonApp === false).length;
+    if (liveCount > 0) {
+      return [{ name: LIVE_CATEGORY, count: liveCount }, ...tagCategories];
+    }
+    return tagCategories;
   }, [appsForMode]);
 
   const filteredApps = useMemo(() => {
@@ -107,23 +120,28 @@ export function useAppFiltering(
 
     // Filter by category
     if (selectedCategory) {
-      apps = apps.filter(app => {
-        const rootTags = app.extra?.tags || [];
-        const cardDataTags = app.extra?.cardData?.tags || [];
-        const allTags = [...new Set([...rootTags, ...cardDataTags])];
-        const sdk = app.extra?.sdk || app.extra?.cardData?.sdk;
+      // Synthetic "Live" category: browser-side apps only (no install needed).
+      if (selectedCategory === LIVE_CATEGORY) {
+        apps = apps.filter(app => app.extra?.isPythonApp === false);
+      } else {
+        apps = apps.filter(app => {
+          const rootTags = app.extra?.tags || [];
+          const cardDataTags = app.extra?.cardData?.tags || [];
+          const allTags = [...new Set([...rootTags, ...cardDataTags])];
+          const sdk = app.extra?.sdk || app.extra?.cardData?.sdk;
 
-        if (selectedCategory.startsWith('sdk:')) {
-          return sdk === selectedCategory.replace('sdk:', '');
-        }
-        const tagMatch = allTags.some(
-          tag =>
-            tag && typeof tag === 'string' && tag.toLowerCase() === selectedCategory.toLowerCase()
-        );
-        const sdkMatch =
-          sdk && typeof sdk === 'string' && sdk.toLowerCase() === selectedCategory.toLowerCase();
-        return tagMatch || sdkMatch;
-      });
+          if (selectedCategory.startsWith('sdk:')) {
+            return sdk === selectedCategory.replace('sdk:', '');
+          }
+          const tagMatch = allTags.some(
+            tag =>
+              tag && typeof tag === 'string' && tag.toLowerCase() === selectedCategory.toLowerCase()
+          );
+          const sdkMatch =
+            sdk && typeof sdk === 'string' && sdk.toLowerCase() === selectedCategory.toLowerCase();
+          return tagMatch || sdkMatch;
+        });
+      }
     }
 
     // Fuzzy search with Fuse.js

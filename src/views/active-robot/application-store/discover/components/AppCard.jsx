@@ -7,6 +7,7 @@ import VerifiedIcon from '@mui/icons-material/Verified';
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { useActiveRobotContext } from '../../../context';
+import { openJsApp } from '../../../../../utils/jsAppLauncher';
 
 /**
  * App card component for Discover Modal
@@ -79,9 +80,16 @@ function AppCard({
         app.url
           ? async () => {
               try {
-                await open(app.url);
+                if (!isPythonApp) {
+                  // JS apps: embed in panel (Win/Mac) or spawn Chromium (Linux)
+                  await openJsApp(app, { shellApi });
+                } else {
+                  // Python apps: card body click is an "info" action — open the
+                  // HF Space page in the user's browser so they can read more.
+                  await open(app.url);
+                }
               } catch (err) {
-                console.error('Failed to open space URL:', err);
+                console.error('Failed to open app:', err);
               }
             }
           : undefined
@@ -384,9 +392,9 @@ function AppCard({
             onClick={async e => {
               e.stopPropagation();
               try {
-                await open(spaceUrl);
+                await openJsApp(app, { shellApi });
               } catch (err) {
-                console.error('Failed to open web app URL:', err);
+                console.error('Failed to open JS app:', err);
               }
             }}
             sx={{
