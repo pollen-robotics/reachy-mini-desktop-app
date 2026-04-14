@@ -1,7 +1,9 @@
-import React, { useMemo, useRef } from 'react';
-import { Box, Typography, IconButton, Tooltip } from '@mui/material';
+import React, { useMemo, useRef, useCallback } from 'react';
+import { Box, Typography, IconButton, Tooltip, InputBase } from '@mui/material';
 import OpenInFullIcon from '@mui/icons-material/OpenInFull';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import SearchIcon from '@mui/icons-material/Search';
+import ClearIcon from '@mui/icons-material/Clear';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import useAppStore from '../../store/useAppStore';
 import { FONT_SIZES, PADDING, EMPTY_ARRAY, TEXT_SELECT_STYLES } from './constants';
@@ -9,25 +11,84 @@ import { useLogProcessing } from './useLogProcessing';
 import { LogItem } from './LogItem';
 import { useLogConsoleHeight, useFixedItemHeight } from './useLogConsoleHeight';
 import { useVirtualizerScroll } from './useVirtualizerScroll';
+import { CATEGORY_META } from '../../utils/logging/constants';
+
+function FilterChip({ label, color, active, onClick, darkMode }) {
+  return (
+    <Box
+      onClick={onClick}
+      sx={{
+        fontSize: 9,
+        fontWeight: 600,
+        px: 0.75,
+        py: 0.15,
+        borderRadius: '4px',
+        cursor: 'pointer',
+        transition: 'all 0.15s',
+        userSelect: 'none',
+        color: active ? color : darkMode ? '#555' : '#bbb',
+        bgcolor: active ? `${color}18` : 'transparent',
+        border: `1px solid ${active ? `${color}40` : darkMode ? '#333' : '#ddd'}`,
+        '&:hover': {
+          bgcolor: `${color}15`,
+          borderColor: `${color}30`,
+        },
+      }}
+    >
+      {label}
+    </Box>
+  );
+}
+
+function ModeToggle({ mode, onChange, darkMode }) {
+  return (
+    <Box
+      sx={{
+        display: 'inline-flex',
+        borderRadius: '4px',
+        overflow: 'hidden',
+        border: `1px solid ${darkMode ? '#333' : '#ddd'}`,
+      }}
+    >
+      {[
+        { value: 'simple', label: 'Simple' },
+        { value: 'dev', label: 'Dev' },
+      ].map(opt => (
+        <Box
+          key={opt.value}
+          onClick={() => onChange(opt.value)}
+          sx={{
+            fontSize: 9,
+            fontWeight: 600,
+            px: 0.75,
+            py: 0.15,
+            cursor: 'pointer',
+            userSelect: 'none',
+            transition: 'all 0.15s',
+            color: mode === opt.value ? (darkMode ? '#fff' : '#111') : darkMode ? '#555' : '#bbb',
+            bgcolor:
+              mode === opt.value
+                ? darkMode
+                  ? 'rgba(255,255,255,0.08)'
+                  : 'rgba(0,0,0,0.05)'
+                : 'transparent',
+            '&:hover': { bgcolor: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' },
+          }}
+        >
+          {opt.label}
+        </Box>
+      ))}
+    </Box>
+  );
+}
 
 /**
  * LogConsole Component
  *
- * A virtualized log console component that displays logs from multiple sources (daemon, frontend, apps).
- * Supports auto-scrolling, filtering, and multiple display modes.
- *
- * @param {Object} props
- * @param {Array} props.logs - Array of daemon logs
- * @param {boolean} [props.darkMode=false] - Dark mode enabled
- * @param {boolean} [props.includeStoreLogs=true] - Include logs from Zustand store
- * @param {Object} [props.sx={}] - Additional MUI sx styles
- * @param {number|string|null} [props.maxHeight=null] - Maximum height in pixels
- * @param {number|string|null} [props.height=null] - Fixed height in pixels or '100%' or 'auto'
- * @param {number|null} [props.lines=null] - Number of lines to display (calculates height automatically)
- * @param {boolean} [props.showTimestamp=true] - Show timestamp for each log
- * @param {boolean} [props.compact=false] - Compact mode (smaller font and spacing)
- * @param {boolean} [props.simpleStyle=false] - Simple style mode (minimal formatting)
- * @param {string} [props.emptyMessage='No logs'] - Message to display when no logs
+ * Two layouts:
+ *   - Inline (default): compact header with "Logs" + expand/copy
+ *   - Full-size (fullSize=true): toggle Simple/Dev, and in Dev mode
+ *     category filters + search appear on the same line
  */
 function LogConsole({
   logs,
@@ -43,29 +104,45 @@ function LogConsole({
   simpleStyle = false,
   emptyMessage = 'No logs',
   onExpand = null,
+  fullSize = false,
 }) {
-  // Select logs from store - will trigger re-render when logs change
   const frontendLogs = useAppStore(state => (includeStoreLogs ? state.frontendLogs : EMPTY_ARRAY));
   const appLogs = useAppStore(state => (includeStoreLogs ? state.appLogs : EMPTY_ARRAY));
 
-  // Process and normalize all logs (remoteLogs bypass shouldFilterLog via appLogs path)
+  const logMode = useAppStore(s => s.logMode);
+  const setLogMode = useAppStore(s => s.setLogMode);
+  const logSearch = useAppStore(s => s.logSearch);
+  const setLogSearch = useAppStore(s => s.setLogSearch);
+  const categoryFilters = useAppStore(s => s.logCategoryFilters);
+  const toggleCategory = useAppStore(s => s.toggleLogCategory);
+
+  const effectiveMode = simpleStyle ? 'simple' : logMode;
+  const isDevMode = effectiveMode === 'dev';
+
+  const mergedAppLogs = useMemo(
+    () => (remoteLogs.length > 0 ? [...appLogs, ...remoteLogs] : appLogs),
+    [appLogs, remoteLogs]
+  );
+
   const normalizedLogs = useLogProcessing(
     logs,
     frontendLogs,
-    [...appLogs, ...remoteLogs],
+    mergedAppLogs,
     includeStoreLogs,
-    simpleStyle
+    simpleStyle,
+    {
+      mode: effectiveMode,
+      categoryFilters: isDevMode ? categoryFilters : null,
+      search: isDevMode ? logSearch : '',
+    }
   );
 
-  // Calculate heights
   const fontSize = compact ? FONT_SIZES.COMPACT : FONT_SIZES.NORMAL;
   const fixedItemHeight = useFixedItemHeight(compact);
   const containerHeight = useLogConsoleHeight({ lines, height, maxHeight, compact, simpleStyle });
 
-  // Parent ref for virtualizer
   const parentRef = useRef(null);
 
-  // Create virtualizer instance - NO paddingEnd, spacing handled by marginBottom on items
   const virtualizer = useVirtualizer({
     count: normalizedLogs.length,
     getScrollElement: () => parentRef.current,
@@ -73,56 +150,40 @@ function LogConsole({
     overscan: 5,
   });
 
-  // Use auto-scroll hook
   const { handleScroll } = useVirtualizerScroll({
     virtualizer,
     totalCount: normalizedLogs.length,
     enabled: true,
     compact,
     simpleStyle,
-    scrollElementRef: parentRef, // Pass direct ref as fallback
+    scrollElementRef: parentRef,
   });
 
-  // Copy all logs to clipboard
-  const handleCopyLogs = async () => {
+  const handleCopyLogs = useCallback(async () => {
+    const text = normalizedLogs
+      .map(log =>
+        showTimestamp && log.timestamp ? `[${log.timestamp}] ${log.message}` : log.message
+      )
+      .join('\n');
     try {
-      const logsText = normalizedLogs
-        .map(log => {
-          if (showTimestamp && log.timestamp) {
-            return `[${log.timestamp}] ${log.message}`;
-          }
-          return log.message;
-        })
-        .join('\n');
-
-      await navigator.clipboard.writeText(logsText);
+      await navigator.clipboard.writeText(text);
     } catch {
-      // Fallback for older browsers
-      const textArea = document.createElement('textarea');
-      textArea.value = normalizedLogs
-        .map(log => {
-          if (showTimestamp && log.timestamp) {
-            return `[${log.timestamp}] ${log.message}`;
-          }
-          return log.message;
-        })
-        .join('\n');
-      document.body.appendChild(textArea);
-      textArea.select();
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
       try {
         document.execCommand('copy');
       } catch {
-        // Silently fail
+        /* noop */
       }
-      document.body.removeChild(textArea);
+      document.body.removeChild(ta);
     }
-  };
+  }, [normalizedLogs, showTimestamp]);
 
-  // Memoize sx styles to prevent recalculation on every render
   const boxSx = useMemo(
     () => ({
       width: '100%',
-      // If containerHeight is null (height='100%'), use '100%', otherwise use calculated height
       height:
         containerHeight === null ? '100%' : height === 'auto' ? 'auto' : `${containerHeight}px`,
       maxHeight: maxHeight || undefined,
@@ -134,9 +195,9 @@ function LogConsole({
           ? '1px solid rgba(255, 255, 255, 0.15)'
           : '1px solid rgba(0, 0, 0, 0.15)',
       overflow: 'hidden',
-      overflowY: normalizedLogs.length === 0 ? 'hidden' : 'auto', // No scroll when empty
-      overflowX: 'hidden', // No horizontal scroll - use ellipsis instead
-      position: 'relative', // For absolute positioning of empty state
+      overflowY: normalizedLogs.length === 0 ? 'hidden' : 'auto',
+      overflowX: 'hidden',
+      position: 'relative',
       display: 'flex',
       flexDirection: 'column',
       fontFamily: simpleStyle ? 'monospace' : 'SF Mono, Monaco, Menlo, monospace',
@@ -146,11 +207,11 @@ function LogConsole({
       '&::-webkit-scrollbar': { width: 6 },
       '&::-webkit-scrollbar-track': { background: 'transparent' },
       '&::-webkit-scrollbar-thumb': {
-        background: darkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)',
+        background: darkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)',
         borderRadius: 3,
       },
       '&:hover::-webkit-scrollbar-thumb': {
-        background: darkMode ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.25)',
+        background: darkMode ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)',
       },
       ...sx,
     }),
@@ -167,77 +228,193 @@ function LogConsole({
     ]
   );
 
+  // Inline (small) header
+  const renderInlineHeader = () => (
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        px: 1,
+        py: 0.25,
+        borderBottom: `1px solid ${darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+        flexShrink: 0,
+        minHeight: 24,
+      }}
+    >
+      <Typography
+        sx={{
+          fontSize: 9,
+          fontWeight: 600,
+          color: darkMode ? '#666' : '#aaa',
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px',
+        }}
+      >
+        Logs
+      </Typography>
+      <Box
+        className="log-console-actions"
+        sx={{ display: 'flex', gap: 0.25, opacity: 0, transition: 'opacity 0.15s' }}
+      >
+        {onExpand && (
+          <IconButton
+            onClick={onExpand}
+            sx={{
+              width: 20,
+              height: 20,
+              padding: 0.25,
+              '&:hover': { bgcolor: darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)' },
+            }}
+          >
+            <OpenInFullIcon sx={{ fontSize: 10, color: darkMode ? '#666' : '#aaa' }} />
+          </IconButton>
+        )}
+        <IconButton
+          onClick={handleCopyLogs}
+          sx={{
+            width: 20,
+            height: 20,
+            padding: 0.25,
+            '&:hover': { bgcolor: darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)' },
+          }}
+        >
+          <ContentCopyIcon sx={{ fontSize: 10, color: darkMode ? '#666' : '#aaa' }} />
+        </IconButton>
+      </Box>
+    </Box>
+  );
+
+  // Full-size header: [Logs] [Simple|Dev]  ...dev filters...  [Search] [Copy]
+  const renderFullSizeHeader = () => (
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 0.75,
+        px: 1.5,
+        py: 0.75,
+        borderBottom: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`,
+        flexShrink: 0,
+      }}
+    >
+      <Typography
+        sx={{
+          fontSize: 10,
+          fontWeight: 600,
+          color: darkMode ? '#666' : '#aaa',
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px',
+        }}
+      >
+        Logs
+      </Typography>
+
+      <ModeToggle mode={logMode} onChange={setLogMode} darkMode={darkMode} />
+
+      {/* Dev-only: category filters + search */}
+      {isDevMode && (
+        <>
+          {Object.entries(CATEGORY_META).map(([key, meta]) => (
+            <FilterChip
+              key={key}
+              label={meta.label}
+              color={meta.color}
+              active={categoryFilters.includes(key)}
+              onClick={() => toggleCategory(key)}
+              darkMode={darkMode}
+            />
+          ))}
+
+          {/* Search */}
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.5,
+              bgcolor: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+              borderRadius: '5px',
+              px: 0.75,
+              py: 0.2,
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`,
+              minWidth: 140,
+              maxWidth: 220,
+            }}
+          >
+            <SearchIcon sx={{ fontSize: 12, color: darkMode ? '#555' : '#aaa' }} />
+            <InputBase
+              value={logSearch}
+              onChange={e => setLogSearch(e.target.value)}
+              placeholder="Search..."
+              sx={{
+                fontSize: 10,
+                color: darkMode ? '#ccc' : '#333',
+                fontFamily: 'SF Mono, Monaco, Menlo, monospace',
+                '& input': { p: 0 },
+                '& input::placeholder': { color: darkMode ? '#555' : '#aaa', opacity: 1 },
+                flex: 1,
+              }}
+            />
+            {logSearch && (
+              <ClearIcon
+                onClick={() => setLogSearch('')}
+                sx={{
+                  fontSize: 11,
+                  cursor: 'pointer',
+                  color: darkMode ? '#555' : '#aaa',
+                  '&:hover': { color: darkMode ? '#aaa' : '#555' },
+                }}
+              />
+            )}
+          </Box>
+        </>
+      )}
+
+      <Box sx={{ flex: 1 }} />
+
+      {/* Copy */}
+      <Tooltip title="Copy all logs" arrow placement="top">
+        <IconButton
+          onClick={handleCopyLogs}
+          sx={{
+            width: 24,
+            height: 24,
+            padding: 0.5,
+            bgcolor: darkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+            '&:hover': { bgcolor: darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.07)' },
+          }}
+        >
+          <ContentCopyIcon sx={{ fontSize: 12, color: darkMode ? '#666' : '#aaa' }} />
+        </IconButton>
+      </Tooltip>
+    </Box>
+  );
+
   return (
     <Box
       className="log-console"
       sx={{
         ...boxSx,
         position: 'relative',
-        '&:hover .copy-logs-button': {
-          opacity: 1,
-        },
+        '&:hover .log-console-actions': { opacity: 1 },
       }}
     >
-      {/* Expand or Copy button - hidden by default, visible on hover */}
-      {normalizedLogs.length > 0 && (
-        <Tooltip title={onExpand ? 'Expand logs' : 'Copy all logs'} arrow placement="left">
-          <IconButton
-            className="copy-logs-button"
-            onClick={onExpand ?? handleCopyLogs}
-            sx={{
-              position: 'absolute',
-              top: 8,
-              right: 8,
-              zIndex: 10,
-              opacity: 0,
-              transition: 'opacity 0.2s ease-in-out',
-              bgcolor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-              '&:hover': {
-                bgcolor: darkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
-                opacity: 1,
-              },
-              width: 28,
-              height: 28,
-              padding: 0.5,
-            }}
-          >
-            {onExpand ? (
-              <OpenInFullIcon
-                sx={{
-                  fontSize: 13,
-                  color: darkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)',
-                }}
-              />
-            ) : (
-              <ContentCopyIcon
-                sx={{
-                  fontSize: 14,
-                  color: darkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)',
-                }}
-              />
-            )}
-          </IconButton>
-        </Tooltip>
-      )}
+      {!simpleStyle && (fullSize ? renderFullSizeHeader() : renderInlineHeader())}
+
       {normalizedLogs.length === 0 ? (
         <Box
           sx={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            width: '100%',
-            height: '100%',
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
+            flex: 1,
+            minHeight: 40,
           }}
         >
           <Typography
             sx={{
               fontSize: simpleStyle ? 11 : fontSize,
-              color: darkMode ? (simpleStyle ? '#888' : '#666') : simpleStyle ? '#999' : '#999',
+              color: darkMode ? '#666' : '#999',
               fontFamily: 'inherit',
               textAlign: 'center',
               fontStyle: simpleStyle ? 'italic' : 'normal',
@@ -252,7 +429,7 @@ function LogConsole({
           ref={parentRef}
           onScroll={handleScroll}
           sx={{
-            height: '100%',
+            flex: 1,
             width: '100%',
             overflow: 'auto',
             overflowX: 'hidden',
@@ -269,33 +446,21 @@ function LogConsole({
             paddingBottom: simpleStyle
               ? `${PADDING.SIMPLE}px`
               : `${PADDING[compact ? 'COMPACT' : 'NORMAL'].vertical}px`,
-            // Custom scrollbar styling
-            '&::-webkit-scrollbar': {
-              width: 6,
-            },
-            '&::-webkit-scrollbar-track': {
-              background: 'transparent',
-            },
+            '&::-webkit-scrollbar': { width: 6 },
+            '&::-webkit-scrollbar-track': { background: 'transparent' },
             '&::-webkit-scrollbar-thumb': {
-              background: darkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)',
+              background: darkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)',
               borderRadius: 3,
-              '&:hover': {
-                background: darkMode ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.25)',
-              },
+              '&:hover': { background: darkMode ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)' },
             },
           }}
         >
           <Box
-            sx={{
-              height: `${virtualizer.getTotalSize()}px`,
-              width: '100%',
-              position: 'relative',
-            }}
+            sx={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}
           >
             {virtualizer.getVirtualItems().map(virtualItem => {
               const log = normalizedLogs[virtualItem.index];
               if (!log) return null;
-
               return (
                 <Box
                   key={virtualItem.key}
@@ -318,6 +483,7 @@ function LogConsole({
                     compact={compact}
                     showTimestamp={showTimestamp}
                     simpleStyle={simpleStyle}
+                    logMode={simpleStyle ? 'simple' : logMode}
                   />
                 </Box>
               );

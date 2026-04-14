@@ -4,172 +4,224 @@ import { normalizeLog, formatTimestamp } from './utils';
 import { shouldFilterLog } from '../../utils/logging/logFilters';
 
 /**
- * Hook to process and normalize all logs
- *
- * Filtering is handled by the centralized logFilters utility.
+ * Allowlist for simple mode - user-facing events only.
+ * Errors always pass. Everything else must match a pattern.
  */
-export const useLogProcessing = (logs, frontendLogs, appLogs, includeStoreLogs, simpleStyle) => {
+const SIMPLE_ALLOWLIST = [
+  /^connected to/i,
+  /disconnected/i,
+  /connection lost/i,
+  /^enable motors/i,
+  /^disable motors/i,
+  /motors? (enabled|disabled|stiff|compliant)/i,
+  /^(installing|uninstalling|starting|stopping|updating)\s/i,
+  /app.*completed/i,
+  /app.*stopped unexpectedly/i,
+  /set (speaker |microphone )?volume/i,
+  /^(mute|unmute)\s/i,
+  /^wake up/i,
+  /^goto sleep/i,
+  /^sleep animation/i,
+  /^playing (emotion|dance|action):/i,
+  /^manual control (started|ended)/i,
+  /cache cleared/i,
+  /apps? reset/i,
+  /hf (oauth|logout)/i,
+  /^daemon (started|stopped|updated|restarted)/i,
+  /^(update completed|update likely completed)/i,
+  /^simulation mode/i,
+];
+
+const isSimpleModeVisible = log => {
+  if (log.level === 'error') return true;
+  const msg = log.message || '';
+  return SIMPLE_ALLOWLIST.some(p => p.test(msg));
+};
+
+const inferCategory = log => {
+  if (log.category === 'daemon' || log.category === 'app' || log.category === 'frontend') {
+    return log.category;
+  }
+  if (log.source === 'app') return 'app';
+  if (log.source === 'frontend' || log.source === 'api') return 'frontend';
+  if (log.source === 'daemon') return 'daemon';
+  return 'frontend';
+};
+
+function safeNormalize(log, fallbackSource, fallbackCategory) {
+  try {
+    const normalized = normalizeLog(log);
+    return {
+      ...normalized,
+      category: log.category || inferCategory(normalized),
+    };
+  } catch (error) {
+    return {
+      message: `[Normalize error: ${error.message}]`,
+      source: fallbackSource,
+      category: fallbackCategory,
+      timestamp: formatTimestamp(Date.now()),
+      timestampNumeric: Date.now(),
+      level: 'error',
+    };
+  }
+}
+
+/**
+ * Merge pre-sorted arrays by timestampNumeric (avoids full sort).
+ * Each input array is already in chronological order.
+ */
+function mergeByTimestamp(daemonLogs, frontendLogs, appLogs) {
+  const result = [];
+  let di = 0,
+    fi = 0,
+    ai = 0;
+  const dLen = daemonLogs.length,
+    fLen = frontendLogs.length,
+    aLen = appLogs.length;
+
+  while (di < dLen || fi < fLen || ai < aLen) {
+    const dTs = di < dLen ? daemonLogs[di].timestampNumeric || 0 : Infinity;
+    const fTs = fi < fLen ? frontendLogs[fi].timestampNumeric || 0 : Infinity;
+    const aTs = ai < aLen ? appLogs[ai].timestampNumeric || 0 : Infinity;
+
+    if (dTs <= fTs && dTs <= aTs) {
+      result.push(daemonLogs[di++]);
+    } else if (fTs <= aTs) {
+      result.push(frontendLogs[fi++]);
+    } else {
+      result.push(appLogs[ai++]);
+    }
+  }
+  return result;
+}
+
+/**
+ * Hook to process and normalize all logs.
+ * Supports simple + dev modes with category, level, and search filtering.
+ *
+ * Performance: daemon/frontend/app logs arrive pre-sorted so we merge
+ * instead of concat+sort. Deduplication uses a single pass.
+ */
+export const useLogProcessing = (
+  logs,
+  frontendLogs,
+  appLogs,
+  includeStoreLogs,
+  simpleStyle,
+  { mode = 'simple', categoryFilters = null, search = '' } = {}
+) => {
   return useMemo(() => {
-    // Validate inputs
     const safeLogs = Array.isArray(logs) ? logs : [];
     const safeFrontendLogs = Array.isArray(frontendLogs) ? frontendLogs : [];
     const safeAppLogs = Array.isArray(appLogs) ? appLogs : [];
 
+    // simpleStyle = legacy inline overlay, minimal processing
     if (simpleStyle) {
       return safeLogs
         .map(log => {
           try {
             return normalizeLog(log);
-          } catch (error) {
+          } catch {
             return null;
           }
         })
         .filter(Boolean);
     }
 
-    // Filter out confusing logs using centralized filter
-    const filteredLogs = safeLogs.filter(log => {
-      try {
-        const message =
-          typeof log === 'string'
-            ? log
-            : log && typeof log === 'object' && log.message != null
-              ? String(log.message)
-              : String(log || '');
-        return !shouldFilterLog(message);
-      } catch (error) {
-        return false;
+    // --- Normalize each source independently (preserves insertion order) ---
+
+    const isDev = mode === 'dev';
+
+    const normalizedDaemon = [];
+    const daemonDedup = new Map();
+    for (let i = 0; i < safeLogs.length; i++) {
+      const raw = safeLogs[i];
+
+      // In simple mode, pre-filter noisy logs before normalizing (cheaper)
+      if (!isDev) {
+        try {
+          const msg =
+            typeof raw === 'string'
+              ? raw
+              : raw && typeof raw === 'object' && raw.message != null
+                ? String(raw.message)
+                : String(raw || '');
+          if (shouldFilterLog(msg)) continue;
+        } catch {
+          continue;
+        }
       }
-    });
 
-    // Combine all logs with their original order preserved
-    const allLogs = [
-      ...filteredLogs.map((log, idx) => {
-        try {
-          return { ...normalizeLog(log), order: idx };
-        } catch (error) {
-          return {
-            message: `[Error normalizing log: ${error.message}]`,
-            source: 'daemon',
-            timestamp: formatTimestamp(Date.now()),
-            timestampNumeric: Date.now(),
-            level: 'error',
-            order: idx,
-          };
-        }
-      }),
-      ...safeFrontendLogs.map((log, idx) => {
-        try {
-          return { ...normalizeLog(log), order: 1000000 + idx, level: log.level || 'info' };
-        } catch (error) {
-          return {
-            message: `[Error normalizing frontend log: ${error.message}]`,
-            source: 'frontend',
-            timestamp: formatTimestamp(Date.now()),
-            timestampNumeric: Date.now(),
-            level: 'error',
-            order: 1000000 + idx,
-          };
-        }
-      }),
-      ...safeAppLogs.map((log, idx) => {
-        try {
-          return { ...normalizeLog(log), order: 2000000 + idx };
-        } catch (error) {
-          return {
-            message: `[Error normalizing app log: ${error.message}]`,
-            source: 'app',
-            timestamp: formatTimestamp(Date.now()),
-            timestampNumeric: Date.now(),
-            level: 'error',
-            order: 2000000 + idx,
-          };
-        }
-      }),
-    ];
+      const log = safeNormalize(raw, 'daemon', 'daemon');
 
-    // Deduplication
-    const seen = new Set();
-    const daemonLogsSeen = new Map();
-    const uniqueLogs = allLogs.filter((log, index) => {
-      if (log.source === 'daemon') {
-        const messageKey = log.message;
-        const timestamp = log.timestampNumeric > 0 ? log.timestampNumeric : index;
+      // Dedup: skip same message within 1s
+      const key = log.message;
+      const prevTs = daemonDedup.get(key);
+      if (prevTs && log.timestampNumeric > 0 && log.timestampNumeric - prevTs < 1000) continue;
+      daemonDedup.set(key, log.timestampNumeric || 0);
 
-        if (log.timestampNumeric > 0) {
-          const lastSeen = daemonLogsSeen.get(messageKey);
-          if (
-            lastSeen &&
-            typeof lastSeen === 'number' &&
-            lastSeen > 1000000000000 &&
-            timestamp - lastSeen < 1000
-          ) {
-            return false;
-          }
+      normalizedDaemon.push(log);
+    }
+
+    const normalizedFrontend = [];
+    const frontendSeen = new Set();
+    for (let i = 0; i < safeFrontendLogs.length; i++) {
+      const raw = safeFrontendLogs[i];
+      const log = safeNormalize(raw, 'frontend', 'frontend');
+      log.level = raw.level || log.level || 'info';
+
+      const dedupKey = `${log.timestampNumeric || ''}|${log.source}|${log.message}`;
+      if (frontendSeen.has(dedupKey)) continue;
+      frontendSeen.add(dedupKey);
+
+      normalizedFrontend.push(log);
+    }
+
+    const normalizedApp = [];
+    for (let i = 0; i < safeAppLogs.length; i++) {
+      const raw = safeAppLogs[i];
+      const log = safeNormalize(raw, 'app', 'app');
+      normalizedApp.push(log);
+    }
+
+    // --- Merge (already sorted per-source) ---
+    const merged = mergeByTimestamp(normalizedDaemon, normalizedFrontend, normalizedApp);
+
+    // --- Collapse repeated daemon errors within 10s ---
+    const errorSeen = new Map();
+    let filtered = merged;
+    if (merged.length > 0) {
+      filtered = merged.filter(log => {
+        if (log.source === 'daemon' && log.level === 'error') {
+          const ts = log.timestampNumeric || 0;
+          const prev = errorSeen.get(log.message);
+          if (prev && ts - prev < 10000) return false;
+          errorSeen.set(log.message, ts);
         }
-
-        daemonLogsSeen.set(messageKey, timestamp);
         return true;
+      });
+    }
+
+    // --- Mode-specific filtering ---
+    if (mode === 'simple') {
+      filtered = filtered.filter(isSimpleModeVisible);
+    } else {
+      if (categoryFilters && categoryFilters.length > 0) {
+        filtered = filtered.filter(log => categoryFilters.includes(log.category));
       }
-
-      const tsKey = log.timestampNumeric || log.timestamp || '';
-      const key = `${tsKey}|${log.source}|${log.message}|${log.appName || ''}`;
-
-      if (seen.has(key)) {
-        return false;
+      if (search) {
+        const lower = search.toLowerCase();
+        filtered = filtered.filter(log => (log.message || '').toLowerCase().includes(lower));
       }
-      seen.add(key);
-      return true;
-    });
+    }
 
-    // Sort by timestamp
-    const sortedLogs = uniqueLogs.sort((a, b) => {
-      const aOrder = a.order || 0;
-      const bOrder = b.order || 0;
+    // --- Cap display count ---
+    const maxDisplay = DAEMON_CONFIG?.LOGS?.MAX_DISPLAY || 1000;
+    if (includeStoreLogs && filtered.length > maxDisplay) {
+      return filtered.slice(-maxDisplay);
+    }
 
-      if (Math.floor(aOrder / 1000000) !== Math.floor(bOrder / 1000000)) {
-        const aHasTimestamp = a.timestampNumeric && a.timestampNumeric > 0;
-        const bHasTimestamp = b.timestampNumeric && b.timestampNumeric > 0;
-        if (aHasTimestamp && bHasTimestamp) {
-          return a.timestampNumeric - b.timestampNumeric;
-        }
-        return aOrder - bOrder;
-      }
-
-      const aHasTimestamp = a.timestampNumeric && a.timestampNumeric > 0;
-      const bHasTimestamp = b.timestampNumeric && b.timestampNumeric > 0;
-      if (aHasTimestamp && bHasTimestamp) {
-        return a.timestampNumeric - b.timestampNumeric;
-      }
-
-      return aOrder - bOrder;
-    });
-
-    // Filter duplicate errors
-    const errorCounts = new Map();
-    const filteredSortedLogs = sortedLogs.filter((log, index) => {
-      if (log.source === 'daemon' && log.level === 'error') {
-        const errorKey = log.message;
-        const now = log.timestampNumeric || Date.now();
-
-        const lastSeen = errorCounts.get(errorKey);
-
-        if (lastSeen && now - lastSeen < 10000) {
-          return false;
-        }
-
-        errorCounts.set(errorKey, now);
-      }
-
-      return true;
-    });
-
-    // Limit to MAX_DISPLAY
-    const finalLogs =
-      includeStoreLogs && filteredSortedLogs.length > DAEMON_CONFIG.LOGS.MAX_DISPLAY
-        ? filteredSortedLogs.slice(-DAEMON_CONFIG.LOGS.MAX_DISPLAY)
-        : filteredSortedLogs;
-
-    return finalLogs;
-  }, [logs, frontendLogs, appLogs, includeStoreLogs, simpleStyle]);
+    return filtered;
+  }, [logs, frontendLogs, appLogs, includeStoreLogs, simpleStyle, mode, categoryFilters, search]);
 };

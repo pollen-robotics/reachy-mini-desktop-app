@@ -1,146 +1,88 @@
-import { useStore } from '../../store';
-import { LOG_LEVELS, LOG_EMOJIS, LOG_PREFIXES } from './constants';
+import { LOG_LEVELS, LOG_PREFIXES, LOG_CATEGORIES } from './constants';
 
-/**
- * Helper to safely get logs store instance
- */
+let _store = null;
+
 const getLogsStore = () => {
   try {
-    return useStore.getState();
-  } catch (e) {
-    // Fallback for cases where store might not be initialized
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('[Logger] Logs store not available:', e);
+    if (!_store) {
+      // Lazy import to break circular dependency (daemon.js -> logging -> store -> slices)
+      const mod = import('../../store');
+      mod
+        .then(m => {
+          _store = m.useStore;
+        })
+        .catch(() => {});
+      return null;
     }
+    return _store.getState();
+  } catch {
     return null;
   }
 };
 
-/**
- * Helper to add log (synchronous for main window, async fallback for secondary windows)
- * In main window: adds directly to store (synchronous)
- * In secondary windows: emits event to main window (async, but we don't wait)
- */
-const addLog = (message, level = LOG_LEVELS.INFO) => {
-  // Main window: add directly to logs store (synchronous, fast path)
+const addLog = (message, level = LOG_LEVELS.INFO, category = LOG_CATEGORIES.FRONTEND) => {
   const logsStore = getLogsStore();
   if (logsStore?.addFrontendLog) {
-    logsStore.addFrontendLog(message, level);
+    logsStore.addFrontendLog(message, level, category);
     return;
   }
 
-  // Fallback: try async window detection (for secondary windows or if store not available)
-  // We don't await this to keep functions synchronous
   (async () => {
     try {
       const { getCurrentWindow } = await import('@tauri-apps/api/window');
       const { emit } = await import('@tauri-apps/api/event');
       const currentWindow = await getCurrentWindow();
       if (currentWindow.label !== 'main') {
-        await emit('add-log', { message, level });
+        await emit('add-log', { message, level, category });
       }
-    } catch (error) {
-      // Silently fail - logs are not critical
+    } catch {
+      // Silently fail
     }
   })();
 };
 
-/**
- * Static logging functions for use outside React components
- *
- * These functions can be used in utility files, event handlers, etc.
- * where React hooks are not available.
- *
- * @example
- * ```javascript
- * import { logSuccess, logError } from '@/utils/logging';
- *
- * async function fetchData() {
- *   try {
- *     const data = await fetch('/api/data');
- *     logSuccess('Data fetched successfully');
- *     return data;
- *   } catch (error) {
- *     logError('Failed to fetch data', error.message);
- *   }
- * }
- * ```
- */
-
-/**
- * Log an info message
- */
-export const logInfo = (message, context = {}) => {
-  addLog(message, LOG_LEVELS.INFO);
+export const logInfo = (message, category = LOG_CATEGORIES.FRONTEND) => {
+  addLog(message, LOG_LEVELS.INFO, category);
 };
 
-/**
- * Log a success message
- */
-export const logSuccess = (message, context = {}) => {
-  if (process.env.NODE_ENV === 'development') {
-  }
-  addLog(message, LOG_LEVELS.SUCCESS);
+export const logSuccess = (message, category = LOG_CATEGORIES.FRONTEND) => {
+  addLog(message, LOG_LEVELS.SUCCESS, category);
 };
 
-/**
- * Log a warning message
- */
-export const logWarning = (message, context = {}) => {
-  addLog(message, LOG_LEVELS.WARNING);
+export const logWarning = (message, category = LOG_CATEGORIES.FRONTEND) => {
+  addLog(message, LOG_LEVELS.WARNING, category);
 };
 
-/**
- * Log an error message
- */
-export const logError = (message, context = {}) => {
-  addLog(message, LOG_LEVELS.ERROR);
+export const logError = (message, category = LOG_CATEGORIES.FRONTEND) => {
+  addLog(message, LOG_LEVELS.ERROR, category);
 };
 
-/**
- * Log an API call
- */
 export const logApiCall = (method, endpoint, success, details = '') => {
   const message = details ? `${method} ${endpoint}: ${details}` : `${method} ${endpoint}`;
-  addLog(message, success ? LOG_LEVELS.SUCCESS : LOG_LEVELS.ERROR);
+  addLog(message, success ? LOG_LEVELS.SUCCESS : LOG_LEVELS.ERROR, LOG_CATEGORIES.FRONTEND);
 };
 
-/**
- * Log a daemon message
- */
 export const logDaemon = (message, level = LOG_LEVELS.INFO) => {
   const formattedMessage = `${LOG_PREFIXES.DAEMON} ${message}`;
-  addLog(formattedMessage, level);
+  addLog(formattedMessage, level, LOG_CATEGORIES.DAEMON);
 };
 
-/**
- * Log an app message (uses addAppLog)
- */
 export const logApp = (appName, message, level = LOG_LEVELS.INFO) => {
-  const appStore = useStore.getState();
-  if (appStore?.addAppLog) {
-    appStore.addAppLog(message, appName, level);
+  const store = getLogsStore();
+  if (store?.addAppLog) {
+    store.addAppLog(message, appName, level);
   }
 };
 
-/**
- * Log a user action
- */
 export const logUserAction = (action, details = '') => {
   const message = details ? `${action}: ${details}` : action;
-  addLog(message, LOG_LEVELS.INFO);
+  addLog(message, LOG_LEVELS.INFO, LOG_CATEGORIES.FRONTEND);
 };
 
-/**
- * Log a permission-related message
- */
 export const logPermission = message => {
-  addLog(message, LOG_LEVELS.WARNING);
+  addLog(message, LOG_LEVELS.WARNING, LOG_CATEGORIES.FRONTEND);
 };
 
-/**
- * Log a timeout message
- */
 export const logTimeout = message => {
-  addLog(message, LOG_LEVELS.WARNING);
+  addLog(message, LOG_LEVELS.WARNING, LOG_CATEGORIES.FRONTEND);
 };

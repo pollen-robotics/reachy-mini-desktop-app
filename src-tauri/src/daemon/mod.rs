@@ -113,13 +113,14 @@ pub struct DaemonState {
     pub connection_mode: Mutex<Option<String>>,
 }
 
-pub const MAX_LOGS: usize = 50;
+pub const MAX_LOGS: usize = 2000;
 
 // ============================================================================
 // LOG MANAGEMENT
 // ============================================================================
 
-pub fn add_log(state: &State<DaemonState>, message: String) {
+/// Store a log line in the ring buffer (callable from any context).
+pub fn buffer_log(state: &DaemonState, message: String) {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     let timestamp = SystemTime::now()
@@ -144,6 +145,11 @@ pub fn add_log(state: &State<DaemonState>, message: String) {
             );
         }
     }
+}
+
+/// Convenience wrapper for Tauri command handlers (State<T> derefs to T).
+pub fn add_log(state: &State<DaemonState>, message: String) {
+    buffer_log(state, message);
 }
 
 // ============================================================================
@@ -422,6 +428,8 @@ macro_rules! spawn_sidecar_monitor {
                             .unwrap_or_else(|| line.to_string());
                         log::info!("Sidecar stdout: {}", prefixed_line);
                         let _ = app_handle_clone.emit("sidecar-stdout", prefixed_line.clone());
+                        let ds = app_handle_clone.state::<$crate::daemon::DaemonState>();
+                        $crate::daemon::buffer_log(&ds, prefixed_line);
                     }
                     CommandEvent::Stderr(line_bytes) => {
                         let line = String::from_utf8_lossy(&line_bytes);
@@ -431,6 +439,8 @@ macro_rules! spawn_sidecar_monitor {
                             .unwrap_or_else(|| line.to_string());
                         log::warn!("Sidecar stderr: {}", prefixed_line);
                         let _ = app_handle_clone.emit("sidecar-stderr", prefixed_line.clone());
+                        let ds = app_handle_clone.state::<$crate::daemon::DaemonState>();
+                        $crate::daemon::buffer_log(&ds, prefixed_line);
                     }
                     CommandEvent::Terminated(status) => {
                         if let Some(ref p) = prefix {
@@ -549,12 +559,18 @@ pub fn spawn_and_monitor_sidecar(
                 CommandEvent::Stdout(line_bytes) => {
                     let line = String::from_utf8_lossy(&line_bytes);
                     log::info!("Sidecar stdout: {}", line);
-                    let _ = app_handle_clone.emit("sidecar-stdout", line.to_string());
+                    let line_str = line.to_string();
+                    let _ = app_handle_clone.emit("sidecar-stdout", line_str.clone());
+                    let ds = app_handle_clone.state::<crate::daemon::DaemonState>();
+                    crate::daemon::buffer_log(&ds, line_str);
                 }
                 CommandEvent::Stderr(line_bytes) => {
                     let line = String::from_utf8_lossy(&line_bytes);
                     log::warn!("Sidecar stderr: {}", line);
-                    let _ = app_handle_clone.emit("sidecar-stderr", line.to_string());
+                    let line_str = line.to_string();
+                    let _ = app_handle_clone.emit("sidecar-stderr", line_str.clone());
+                    let ds = app_handle_clone.state::<crate::daemon::DaemonState>();
+                    crate::daemon::buffer_log(&ds, line_str);
 
                     let line_lower = line.to_lowercase();
                     if line_lower.contains("unrecognised argument")

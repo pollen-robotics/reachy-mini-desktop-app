@@ -1,10 +1,7 @@
 /**
- * Constants for logging system
+ * Constants for logging system - single source of truth
  */
 
-/**
- * Log levels
- */
 export const LOG_LEVELS = {
   INFO: 'info',
   SUCCESS: 'success',
@@ -12,19 +9,12 @@ export const LOG_LEVELS = {
   ERROR: 'error',
 };
 
-/**
- * Log sources
- */
-export const LOG_SOURCES = {
-  FRONTEND: 'frontend',
+export const LOG_CATEGORIES = {
   DAEMON: 'daemon',
   APP: 'app',
-  API: 'api',
+  FRONTEND: 'frontend',
 };
 
-/**
- * Standard emojis for log messages
- */
 export const LOG_EMOJIS = {
   SUCCESS: '✓',
   ERROR: '❌',
@@ -38,11 +28,17 @@ export const LOG_EMOJIS = {
   INFO: 'ℹ️',
 };
 
-/**
- * Log prefixes
- */
 export const LOG_PREFIXES = {
   DAEMON: '[Daemon]',
   API: '[API]',
   APP: appName => `[App: ${appName}]`,
+};
+
+/**
+ * Display metadata for category filter chips (used in LogConsole UI)
+ */
+export const CATEGORY_META = {
+  daemon: { label: 'Daemon', color: '#60a5fa' },
+  app: { label: 'Apps', color: '#c084fc' },
+  frontend: { label: 'Frontend', color: '#5db3ff' },
 };

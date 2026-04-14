@@ -1,11 +1,12 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useRef } from 'react';
 import { Box, Typography } from '@mui/material';
-import { ControllerProvider } from './context/ControllerContext';
+import { ControllerProvider, useController } from './context/ControllerContext';
 import { useControllerHandlers } from './hooks/useControllerHandlers';
 import { useControllerSmoothing } from './hooks/useControllerSmoothing';
 import { useControllerSync } from './hooks/useControllerSync';
 import { useControllerAPI } from './hooks/useControllerAPI';
 import { useControllerInput } from './hooks/useControllerInput';
+import { logInfo } from '../../../utils/logging';
 import { Joystick2D, VerticalSlider, SimpleSlider, CircularSlider } from './components';
 import { EXTENDED_ROBOT_RANGES } from '../../../utils/inputConstants';
 import { mapRobotToDisplay, mapDisplayToRobot } from '../../../utils/inputMappings';
@@ -30,7 +31,18 @@ import bodyIcon from '../../../assets/reachy-body-icon.svg';
  * Inner controller component (uses context)
  */
 function ControllerInner({ darkMode, onResetReady, onIsAtInitialPosition }) {
+  const { isDragging } = useController();
   const { sendCommand, forceSendCommand } = useControllerAPI();
+
+  const wasDraggingRef = useRef(false);
+  useEffect(() => {
+    if (isDragging && !wasDraggingRef.current) {
+      logInfo('Manual control started');
+    } else if (!isDragging && wasDraggingRef.current) {
+      logInfo('Manual control ended');
+    }
+    wasDraggingRef.current = isDragging;
+  }, [isDragging]);
 
   // Handlers
   const {

@@ -1,99 +1,65 @@
 import { useCallback } from 'react';
 import { useStore } from '../../store';
-import { LOG_LEVELS, LOG_EMOJIS, LOG_PREFIXES } from './constants';
+import { LOG_LEVELS, LOG_EMOJIS, LOG_PREFIXES, LOG_CATEGORIES } from './constants';
 
 /**
- * React hook for logging in components
- *
- * Provides standardized logging functions with consistent formatting
- *
- * @example
- * ```jsx
- * function MyComponent() {
- *   const logger = useLogger();
- *
- *   const handleAction = () => {
- *     logger.success('Action completed');
- *     logger.error('Something went wrong');
- *   };
- * }
- * ```
+ * React hook for logging in components.
+ * Each method routes to addFrontendLog with the appropriate category.
  */
 export function useLogger() {
   const addFrontendLog = useStore(state => state.addFrontendLog);
   const addAppLog = useStore(state => state.addAppLog);
 
-  /**
-   * Log an info message
-   */
   const info = useCallback(
-    (message, context = {}) => {
-      addFrontendLog(message, LOG_LEVELS.INFO);
+    (message, category = LOG_CATEGORIES.FRONTEND) => {
+      addFrontendLog(message, LOG_LEVELS.INFO, category);
     },
     [addFrontendLog]
   );
 
-  /**
-   * Log a success message
-   */
   const success = useCallback(
-    (message, context = {}) => {
-      const formattedMessage = `${LOG_EMOJIS.SUCCESS} ${message}`;
-      addFrontendLog(formattedMessage, LOG_LEVELS.SUCCESS);
+    (message, category = LOG_CATEGORIES.FRONTEND) => {
+      const formatted = `${LOG_EMOJIS.SUCCESS} ${message}`;
+      addFrontendLog(formatted, LOG_LEVELS.SUCCESS, category);
     },
     [addFrontendLog]
   );
 
-  /**
-   * Log a warning message
-   */
   const warning = useCallback(
-    (message, context = {}) => {
-      const formattedMessage = `${LOG_EMOJIS.WARNING} ${message}`;
-      addFrontendLog(formattedMessage, LOG_LEVELS.WARNING);
+    (message, category = LOG_CATEGORIES.FRONTEND) => {
+      const formatted = `${LOG_EMOJIS.WARNING} ${message}`;
+      addFrontendLog(formatted, LOG_LEVELS.WARNING, category);
     },
     [addFrontendLog]
   );
 
-  /**
-   * Log an error message
-   */
   const error = useCallback(
-    (message, context = {}) => {
-      const formattedMessage = `${LOG_EMOJIS.ERROR} ${message}`;
-      addFrontendLog(formattedMessage, LOG_LEVELS.ERROR);
+    (message, category = LOG_CATEGORIES.FRONTEND) => {
+      const formatted = `${LOG_EMOJIS.ERROR} ${message}`;
+      addFrontendLog(formatted, LOG_LEVELS.ERROR, category);
     },
     [addFrontendLog]
   );
 
-  /**
-   * Log an API call
-   */
   const api = useCallback(
-    (method, endpoint, success, details = '') => {
-      const icon = success ? LOG_EMOJIS.SUCCESS : LOG_EMOJIS.ERROR;
+    (method, endpoint, ok, details = '') => {
+      const icon = ok ? LOG_EMOJIS.SUCCESS : LOG_EMOJIS.ERROR;
       const message = details
         ? `${icon} ${method} ${endpoint}: ${details}`
         : `${icon} ${method} ${endpoint}`;
-      addFrontendLog(message, success ? LOG_LEVELS.SUCCESS : LOG_LEVELS.ERROR);
+      addFrontendLog(message, ok ? LOG_LEVELS.SUCCESS : LOG_LEVELS.ERROR, LOG_CATEGORIES.FRONTEND);
     },
     [addFrontendLog]
   );
 
-  /**
-   * Log a daemon message
-   */
   const daemon = useCallback(
     (message, level = LOG_LEVELS.INFO) => {
-      const formattedMessage = `${LOG_PREFIXES.DAEMON} ${message}`;
-      addFrontendLog(formattedMessage, level);
+      const formatted = `${LOG_PREFIXES.DAEMON} ${message}`;
+      addFrontendLog(formatted, level, LOG_CATEGORIES.DAEMON);
     },
     [addFrontendLog]
   );
 
-  /**
-   * Log an app message (uses addAppLog)
-   */
   const app = useCallback(
     (appName, message, level = LOG_LEVELS.INFO) => {
       addAppLog(message, appName, level);
@@ -101,35 +67,26 @@ export function useLogger() {
     [addAppLog]
   );
 
-  /**
-   * Log a user action
-   */
   const userAction = useCallback(
     (action, details = '') => {
       const message = details ? `${action}: ${details}` : action;
-      addFrontendLog(message, LOG_LEVELS.INFO);
+      addFrontendLog(message, LOG_LEVELS.INFO, LOG_CATEGORIES.FRONTEND);
     },
     [addFrontendLog]
   );
 
-  /**
-   * Log a permission-related message
-   */
   const permission = useCallback(
     message => {
-      const formattedMessage = `${LOG_EMOJIS.PERMISSION} ${message}`;
-      addFrontendLog(formattedMessage, LOG_LEVELS.WARNING);
+      const formatted = `${LOG_EMOJIS.PERMISSION} ${message}`;
+      addFrontendLog(formatted, LOG_LEVELS.WARNING, LOG_CATEGORIES.FRONTEND);
     },
     [addFrontendLog]
   );
 
-  /**
-   * Log a timeout message
-   */
   const timeout = useCallback(
     message => {
-      const formattedMessage = `${LOG_EMOJIS.TIMEOUT} ${message}`;
-      addFrontendLog(formattedMessage, LOG_LEVELS.WARNING);
+      const formatted = `${LOG_EMOJIS.TIMEOUT} ${message}`;
+      addFrontendLog(formatted, LOG_LEVELS.WARNING, LOG_CATEGORIES.FRONTEND);
     },
     [addFrontendLog]
   );

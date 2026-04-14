@@ -3,17 +3,20 @@ import { listen } from '@tauri-apps/api/event';
 import { shouldFilterLog } from '../../utils/logging/logFilters';
 
 /**
- * Hook to listen to sidecar logs during daemon startup
- * Provides real-time feedback to the user about what's happening
+ * Hook to listen to sidecar logs during daemon startup.
+ * Pure display hook - collects stdout/stderr lines for the LogConsole UI.
  *
- * Filtering is handled by the centralized logFilters utility.
+ * Error detection is NOT this hook's responsibility. Daemon errors are
+ * detected via structured signals:
+ * - Process termination: Tauri "daemon-status-changed" event (Crashed)
+ * - Daemon-level errors: polling /api/daemon/status (state === "error")
+ * - Hardware errors: specific patterns in hardwareErrors.js
  *
  * @param {boolean} isStarting - Whether daemon is currently starting
- * @returns {object} { logs, hasError, lastMessage }
+ * @returns {object} { logs, lastMessage }
  */
 export function useDaemonStartupLogs(isStarting) {
   const [startupLogs, setStartupLogs] = useState([]);
-  const [hasError, setHasError] = useState(false);
   const [lastMessage, setLastMessage] = useState('');
 
   // Use ref to accumulate logs during startup
@@ -40,9 +43,19 @@ export function useDaemonStartupLogs(isStarting) {
     // Clear logs when starting new daemon
     logsRef.current = [];
     setStartupLogs([]);
-    setHasError(false);
 
     let isMounted = true;
+
+    const addLog = (cleanLine, level) => {
+      const newLog = {
+        message: cleanLine,
+        level,
+        timestamp: Date.now(),
+      };
+      logsRef.current = [...logsRef.current, newLog].slice(-50);
+      setStartupLogs([...logsRef.current]);
+      setLastMessage(cleanLine);
+    };
 
     const setupListeners = async () => {
       try {
@@ -53,24 +66,13 @@ export function useDaemonStartupLogs(isStarting) {
           const logLine =
             typeof event.payload === 'string' ? event.payload : event.payload?.toString() || '';
 
-          // Clean up prefix if present
           const cleanLine = logLine.replace(/^Sidecar stdout:\s*/, '').trim();
 
-          // Skip empty lines or filtered logs (use centralized filter)
           if (!cleanLine || shouldFilterLog(cleanLine)) {
             return;
           }
 
-          // Add to logs
-          const newLog = {
-            message: cleanLine,
-            level: 'info',
-            timestamp: Date.now(),
-          };
-
-          logsRef.current = [...logsRef.current, newLog].slice(-50); // Keep last 50
-          setStartupLogs([...logsRef.current]);
-          setLastMessage(cleanLine);
+          addLog(cleanLine, 'info');
         });
 
         if (isMounted) {
@@ -80,42 +82,20 @@ export function useDaemonStartupLogs(isStarting) {
           return;
         }
 
-        // Listen to stderr (warnings/errors)
+        // Listen to stderr (daemon logs go to stderr via Python logging)
         const unlistenStderr = await listen('sidecar-stderr', event => {
           if (!isMounted) return;
 
           const logLine =
             typeof event.payload === 'string' ? event.payload : event.payload?.toString() || '';
 
-          // Clean up prefix if present
           const cleanLine = logLine.replace(/^Sidecar stderr:\s*/, '').trim();
 
-          // Skip empty lines or filtered logs (use centralized filter)
           if (!cleanLine || shouldFilterLog(cleanLine)) {
             return;
           }
 
-          // Check for actual errors (not just stderr noise)
-          const isError =
-            cleanLine.includes('ERROR') ||
-            cleanLine.includes('error:') ||
-            cleanLine.includes('Exception') ||
-            cleanLine.includes('Traceback');
-
-          if (isError) {
-            setHasError(true);
-          }
-
-          // Add to logs
-          const newLog = {
-            message: cleanLine,
-            level: isError ? 'error' : 'warning',
-            timestamp: Date.now(),
-          };
-
-          logsRef.current = [...logsRef.current, newLog].slice(-50);
-          setStartupLogs([...logsRef.current]);
-          setLastMessage(cleanLine);
+          addLog(cleanLine, 'info');
         });
 
         if (isMounted) {
@@ -143,7 +123,6 @@ export function useDaemonStartupLogs(isStarting) {
 
   return {
     logs: startupLogs,
-    hasError,
     lastMessage,
   };
 }

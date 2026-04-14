@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Typography } from '@mui/material';
 import { getVersion } from '@utils/tauriCompat';
+import { invoke } from '@tauri-apps/api/core';
 import useAppStore from '../../store/useAppStore';
 
 /**
@@ -10,11 +11,19 @@ import useAppStore from '../../store/useAppStore';
 export default function RobotHeader({ daemonVersion, darkMode = false }) {
   const { connectionMode } = useAppStore();
   const [appVersion, setAppVersion] = useState('');
+  const [sidecarBranch, setSidecarBranch] = useState(null);
 
   useEffect(() => {
     getVersion()
       .then(setAppVersion)
       .catch(() => setAppVersion(null));
+    invoke('get_sidecar_source')
+      .then(info => {
+        if (info?.source && info.source !== 'pypi') {
+          setSidecarBranch(info.source);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Get connection type label
@@ -89,7 +98,11 @@ export default function RobotHeader({ daemonVersion, darkMode = false }) {
             verticalAlign: 'middle',
           }}
         />
-        {daemonVersion ? `Daemon v${daemonVersion}` : 'Daemon ?'}
+        {sidecarBranch
+          ? `Daemon @${sidecarBranch}`
+          : daemonVersion
+            ? `Daemon v${daemonVersion}`
+            : 'Daemon ?'}
       </Typography>
     </Box>
   );

@@ -130,7 +130,7 @@ async fn stop_local_proxy(state: &Arc<LocalProxyState>) {
     // Bump generation — this wakes all connection handlers via their
     // watch::Receiver::changed() branch, causing them to drop their
     // TCP/WebSocket pipes to the old target host.
-    let _ = state.generation.send_modify(|v| *v += 1);
+    state.generation.send_modify(|v| *v += 1);
 
     // Abort listener tasks (they hold the TcpListener / UdpSocket)
     for handle in handles.drain(..) {

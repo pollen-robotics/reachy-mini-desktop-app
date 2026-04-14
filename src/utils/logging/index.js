@@ -1,31 +1,3 @@
-/**
- * Centralized logging utilities
- *
- * Provides two ways to log:
- * 1. useLogger() hook - for React components
- * 2. Static functions - for use outside React components
- *
- * @example
- * ```jsx
- * // In React components
- * import { useLogger } from '@/utils/logging';
- *
- * function MyComponent() {
- *   const logger = useLogger();
- *   logger.success('Action completed');
- * }
- * ```
- *
- * @example
- * ```javascript
- * // Outside React components
- * import { logSuccess, logError } from '@/utils/logging';
- *
- * logSuccess('Action completed');
- * logError('Something went wrong');
- * ```
- */
-
 // Hook for React components
 export { useLogger } from './useLogger';
 
@@ -44,7 +16,7 @@ export {
 } from './logger';
 
 // Constants
-export { LOG_LEVELS, LOG_SOURCES, LOG_EMOJIS, LOG_PREFIXES } from './constants';
+export { LOG_LEVELS, LOG_EMOJIS, LOG_PREFIXES, LOG_CATEGORIES, CATEGORY_META } from './constants';
 
-// Log filtering (single source of truth)
-export { FILTERED_PATTERNS, shouldFilterLog, filterLogs } from './logFilters';
+// Log filtering (single source of truth for simple-mode noise reduction)
+export { FILTERED_PATTERNS, shouldFilterLog } from './logFilters';

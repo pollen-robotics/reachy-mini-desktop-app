@@ -13,7 +13,6 @@ import useAppStore from '../../store/useAppStore';
 import { usePermissions } from '../../hooks/system';
 
 import { isMacOS } from '../../utils/platform';
-import LogConsole from '@components/LogConsole';
 import LockedReachy from '../../assets/locked-reachy.svg';
 import SleepingReachy from '../../assets/sleeping-reachy.svg';
 
@@ -511,38 +510,6 @@ export default function PermissionsRequiredView({ isRestarting: externalIsRestar
         position: 'relative',
       }}
     >
-      {/* LogConsole at bottom */}
-      <Box
-        sx={{
-          position: 'fixed',
-          bottom: 8,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: 'calc(100% - 32px)',
-          maxWidth: '420px',
-          zIndex: 1000,
-          opacity: 0.2,
-          transition: 'opacity 0.3s ease-in-out',
-          '&:hover': { opacity: 1 },
-        }}
-      >
-        <LogConsole
-          logs={[]}
-          darkMode={darkMode}
-          includeStoreLogs={true}
-          compact={true}
-          showTimestamp={false}
-          lines={1}
-          emptyMessage="Waiting for logs..."
-          sx={{
-            bgcolor: darkMode ? 'rgba(0, 0, 0, 0.6)' : 'rgba(255, 255, 255, 0.7)',
-            border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.12)'}`,
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-          }}
-        />
-      </Box>
-
       <Box
         sx={{
           display: 'flex',

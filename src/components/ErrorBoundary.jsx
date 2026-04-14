@@ -20,10 +20,10 @@ class ErrorBoundary extends React.Component {
 
     try {
       const { telemetry } = require('../utils/telemetry');
-      telemetry.capture('app_render_crash', {
-        error: error?.message,
+      telemetry.appCrash({
+        error_type: 'react_render_crash',
+        error_message: error?.message,
         stack: error?.stack?.slice(0, 500),
-        componentStack: info.componentStack?.slice(0, 500),
       });
     } catch {
       // Telemetry unavailable — swallow silently
@@ -85,6 +85,7 @@ class ErrorBoundary extends React.Component {
 
         {this.state.error && (
           <Box
+            className="selectable-text"
             sx={{
               mt: 1,
               px: 2,
@@ -101,6 +102,7 @@ class ErrorBoundary extends React.Component {
                 fontSize: 11,
                 color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.35)',
                 wordBreak: 'break-word',
+                cursor: 'text',
               }}
             >
               {this.state.error.message}

@@ -99,13 +99,7 @@ export const useDaemon = () => {
         const errorObject = createErrorFromConfig(data.errorConfig, data.errorLine);
         setHardwareError(errorObject);
         transitionTo.starting();
-        // 📊 Telemetry - Track known hardware errors (NO_MOTORS, CAMERA_ERROR, etc.)
         handleDaemonError('hardware', data.errorLine, { code: data.errorConfig.code });
-      } else if (data.isGeneric) {
-        const currentError = currentState.hardwareError;
-        if (!currentError || !currentError.type) {
-          handleDaemonError('hardware', data.errorLine);
-        }
       }
     });
 
@@ -188,12 +182,14 @@ export const useDaemon = () => {
     };
   }, [eventBus, clearStartupTimeout]);
 
-  // Listen to sidecar stderr events to detect hardware errors
+  // Listen to sidecar stderr events to detect known hardware errors.
+  // Only matches specific patterns from HARDWARE_ERROR_CONFIGS (e.g. "No motors detected",
+  // "Camera communication error"). Generic errors (RuntimeError, Exception, etc.) are NOT
+  // caught here - they are detected via structured daemon status polling below.
   useEffect(() => {
     let isMounted = true;
 
     const setupStderrListener = async () => {
-      // Cleanup previous listener if any
       if (unlistenStderrRef.current) {
         unlistenStderrRef.current();
         unlistenStderrRef.current = null;
@@ -217,12 +213,6 @@ export const useDaemon = () => {
 
           if (errorConfig) {
             eventBus.emit('daemon:hardware:error', { errorConfig, errorLine });
-          } else if (errorLine.includes('RuntimeError')) {
-            eventBus.emit('daemon:hardware:error', {
-              errorConfig: null,
-              errorLine,
-              isGeneric: true,
-            });
           }
         });
 
@@ -244,6 +234,81 @@ export const useDaemon = () => {
       }
     };
   }, [eventBus]);
+
+  // Poll /api/daemon/status during startup to detect daemon-level errors.
+  // The Python daemon exposes a structured state machine (DaemonState enum):
+  //   not_initialized → starting → running | error
+  // When state === "error", the response includes an "error" field with
+  // the actual exception message - much more reliable than parsing stderr.
+  const daemonStatusPollRef = useRef(null);
+
+  useEffect(() => {
+    if (!isStarting) {
+      if (daemonStatusPollRef.current) {
+        clearInterval(daemonStatusPollRef.current);
+        daemonStatusPollRef.current = null;
+      }
+      return;
+    }
+
+    // Wait a few seconds before starting to poll (daemon needs time to start Uvicorn)
+    const startDelay = setTimeout(() => {
+      if (!useAppStore.getState().isStarting) return;
+
+      const pollDaemonStatus = async () => {
+        const state = useAppStore.getState();
+        if (!state.isStarting || state.isActive) {
+          clearInterval(daemonStatusPollRef.current);
+          daemonStatusPollRef.current = null;
+          return;
+        }
+
+        try {
+          const response = await fetchWithTimeout(
+            buildApiUrl(DAEMON_CONFIG.ENDPOINTS.DAEMON_STATUS),
+            {},
+            DAEMON_CONFIG.TIMEOUTS.STARTUP_CHECK,
+            { silent: true }
+          );
+
+          if (!response.ok) return;
+
+          const data = await response.json();
+
+          if (data.state === 'error' && data.error) {
+            // Check if the structured error matches a known hardware error first
+            const errorConfig = findErrorConfig(data.error);
+            if (errorConfig) {
+              eventBus.emit('daemon:hardware:error', {
+                errorConfig,
+                errorLine: data.error,
+              });
+            } else {
+              // Daemon reported a structured error (e.g. serial port, backend init failure)
+              handleDaemonError('startup', { message: data.error });
+              clearStartupTimeout();
+            }
+
+            clearInterval(daemonStatusPollRef.current);
+            daemonStatusPollRef.current = null;
+          }
+        } catch {
+          // Daemon not reachable yet - expected during early startup
+        }
+      };
+
+      pollDaemonStatus();
+      daemonStatusPollRef.current = setInterval(pollDaemonStatus, 2000);
+    }, DAEMON_CONFIG.ANIMATIONS.STARTUP_MIN_DELAY || 3000);
+
+    return () => {
+      clearTimeout(startDelay);
+      if (daemonStatusPollRef.current) {
+        clearInterval(daemonStatusPollRef.current);
+        daemonStatusPollRef.current = null;
+      }
+    };
+  }, [isStarting, eventBus, clearStartupTimeout]);
 
   // Listen to sidecar stdout/stderr events to reset timeout when we see activity
   // Daemon logs go to stderr (Python logging), so we must listen to both

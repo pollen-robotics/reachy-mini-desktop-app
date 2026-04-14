@@ -180,11 +180,7 @@ function HardwareScanView({ startupError, onScanComplete: onScanCompleteCallback
   // ✅ App fetching hooks for pre-loading apps before transition
   const { fetchAppsFromWebsite, fetchInstalledApps } = useAppFetching();
   const isStarting = robotStatus === 'starting';
-  const {
-    logs: startupLogs,
-    hasError: hasStartupError,
-    lastMessage,
-  } = useDaemonStartupLogs(isStarting);
+  const { logs: startupLogs, lastMessage } = useDaemonStartupLogs(isStarting);
   const totalScanParts = getTotalScanParts(); // Static total from scan parts list
   const [scanProgress, setScanProgress] = useState({ current: 0, total: totalScanParts });
   const [currentPart, setCurrentPart] = useState(null);

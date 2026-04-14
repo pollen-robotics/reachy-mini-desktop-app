@@ -47,7 +47,7 @@ export function WebRTCStreamProvider({ children }) {
   // WebRTC availability: true if the daemon exposes a WebRTC signaling server
   // - WiFi + wireless_version: true (Wireless robot over WiFi)
   // - USB (Lite): true (Lite daemon now supports WebRTC locally)
-  // - Simulation: depends on daemon capabilities
+  // - Simulation: true (mockup-sim daemon runs locally with WebRTC signaling)
   const [isWebRTCAvailable, setIsWebRTCAvailable] = useState(null);
   const [checkFailed, setCheckFailed] = useState(false);
 
@@ -70,7 +70,11 @@ export function WebRTCStreamProvider({ children }) {
       return;
     }
 
-    if (connectionMode === 'usb' || connectionMode === 'external') {
+    if (
+      connectionMode === 'usb' ||
+      connectionMode === 'external' ||
+      connectionMode === 'simulation'
+    ) {
       // Local daemon always exposes WebRTC signaling server on localhost
       setIsWebRTCAvailable(true);
       return;
@@ -131,6 +135,11 @@ export function WebRTCStreamProvider({ children }) {
           apiRef.current.unregisterConnectionListener(connectionListenerRef.current);
           connectionListenerRef.current = null;
         }
+        // GstWebRTCAPI has no public close() - close the underlying signaling channel
+        // directly to prevent orphaned WebSocket connections
+        if (apiRef.current._channel) {
+          apiRef.current._channel.close();
+        }
       } catch (e) {
         // Ignore cleanup errors
       }
@@ -185,7 +194,9 @@ export function WebRTCStreamProvider({ children }) {
         },
         disconnected: () => {
           if (!mountedRef.current) return;
+          setState(StreamState.DISCONNECTED);
           setStream(null);
+          setAudioTrack(null);
 
           // Schedule reconnect if still should connect
           if (mountedRef.current && !reconnectTimeoutRef.current) {
@@ -252,6 +263,7 @@ export function WebRTCStreamProvider({ children }) {
             if (!mountedRef.current) return;
             sessionRef.current = null;
             setStream(null);
+            setAudioTrack(null);
             setState(prev => (prev === StreamState.CONNECTED ? StreamState.DISCONNECTED : prev));
           });
 
@@ -284,6 +296,7 @@ export function WebRTCStreamProvider({ children }) {
             sessionRef.current.close();
             sessionRef.current = null;
             setStream(null);
+            setAudioTrack(null);
             setState(StreamState.DISCONNECTED);
           }
         },

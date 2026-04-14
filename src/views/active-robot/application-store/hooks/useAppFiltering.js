@@ -33,23 +33,31 @@ const FUSE_OPTIONS = {
  * @param {string} searchQuery - Search query string
  * @param {string|null} selectedCategory - Selected category filter
  * @param {boolean} officialOnly - If true, show only official apps; if false, show all apps
+ * @param {boolean} privateOnly - If true, show only private apps; if false, show all apps
  */
 export function useAppFiltering(
   availableApps,
   searchQuery,
   selectedCategory,
-  officialOnly = false
+  officialOnly = false,
+  privateOnly = false
 ) {
   const fuseRef = useRef(null);
   const fuseInputRef = useRef(null);
 
   const appsForMode = useMemo(() => {
-    if (!officialOnly) return availableApps;
-    return availableApps.filter(app => {
-      if (app.isOfficial !== undefined) return app.isOfficial;
-      return app.source_kind === 'hf_space';
-    });
-  }, [availableApps, officialOnly]);
+    let apps = availableApps;
+    if (officialOnly) {
+      apps = apps.filter(app => {
+        if (app.isOfficial !== undefined) return app.isOfficial;
+        return app.source_kind === 'hf_space';
+      });
+    }
+    if (privateOnly) {
+      apps = apps.filter(app => app.extra?.private === true);
+    }
+    return apps;
+  }, [availableApps, officialOnly, privateOnly]);
 
   // Build / rebuild Fuse index when the filtered app set changes
   const fuse = useMemo(() => {

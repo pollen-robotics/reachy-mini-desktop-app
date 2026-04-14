@@ -1,25 +1,29 @@
 /**
  * Logs Slice - Manages all types of logs (daemon, frontend, app)
  *
- * Note: We don't import DAEMON_CONFIG here to avoid circular dependencies
- * (daemon.js imports useStore which imports slices)
+ * Two display modes:
+ *   - "simple": user-facing actions only (errors, user actions, key events)
+ *   - "dev":    everything with category/level filters and search
  *
- * Filtering is handled by the centralized logFilters utility.
+ * Note: We don't import DAEMON_CONFIG here to avoid circular dependencies
+ * (daemon.js imports useStore which imports slices).
+ * We also avoid importing from utils/logging/constants for the same reason;
+ * the canonical category list lives there, but we inline the values here.
  */
 
-import { filterLogs } from '../../utils/logging/logFilters';
-
-// Default max logs (same as DAEMON_CONFIG.LOGS values)
 const MAX_FRONTEND_LOGS = 500;
-const MAX_APP_LOGS = 500;
+const MAX_APP_LOGS = 1000;
 
-/**
- * Initial state for logs slice
- */
+const ALL_CATEGORIES = ['daemon', 'app', 'frontend'];
+
 export const logsInitialState = {
-  logs: [], // Daemon logs (from Tauri IPC)
-  frontendLogs: [], // Frontend action logs (API calls, user actions)
-  appLogs: [], // App logs (from running apps)
+  logs: [],
+  frontendLogs: [],
+  appLogs: [],
+
+  logMode: 'simple',
+  logSearch: '',
+  logCategoryFilters: [...ALL_CATEGORIES],
 };
 
 /**
@@ -31,27 +35,24 @@ export const logsInitialState = {
 export const createLogsSlice = (set, get) => ({
   ...logsInitialState,
 
-  // Set daemon logs - filter confusing messages and merge intelligently
+  // Set daemon logs - store raw, filtering happens at display time
   setLogs: newLogs =>
     set(state => {
-      // Filter out confusing internal logs using centralized filter
-      const filteredLogs = filterLogs(newLogs);
-
       if (
-        state.logs === filteredLogs ||
+        state.logs === newLogs ||
         (Array.isArray(state.logs) &&
-          Array.isArray(filteredLogs) &&
-          state.logs.length === filteredLogs.length &&
+          Array.isArray(newLogs) &&
+          state.logs.length === newLogs.length &&
           state.logs.length > 0 &&
-          state.logs[state.logs.length - 1] === filteredLogs[filteredLogs.length - 1])
+          state.logs[state.logs.length - 1] === newLogs[newLogs.length - 1])
       ) {
         return state;
       }
-      return { logs: filteredLogs };
+      return { logs: newLogs };
     }),
 
-  // Add frontend log
-  addFrontendLog: (message, level = 'info') => {
+  // Add frontend log with optional category
+  addFrontendLog: (message, level = 'info', category = 'frontend') => {
     if (message == null) {
       if (process.env.NODE_ENV === 'development') {
         console.warn('[addFrontendLog] Received null/undefined message, skipping');
@@ -83,6 +84,7 @@ export const createLogsSlice = (set, get) => ({
           timestampNumeric: now,
           message: sanitizedMessage,
           source: 'frontend',
+          category: category || 'frontend',
           level: normalizedLevel,
         };
 
@@ -170,5 +172,18 @@ export const createLogsSlice = (set, get) => ({
       logs: [],
       frontendLogs: [],
       appLogs: [],
+    }),
+
+  // Log mode & filters
+  setLogMode: mode => set({ logMode: mode }),
+  setLogSearch: search => set({ logSearch: search }),
+  toggleLogCategory: category =>
+    set(state => {
+      const current = state.logCategoryFilters;
+      return {
+        logCategoryFilters: current.includes(category)
+          ? current.filter(c => c !== category)
+          : [...current, category],
+      };
     }),
 });

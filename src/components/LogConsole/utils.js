@@ -1,132 +1,100 @@
+// Shared formatter - created once, reused for every timestamp
+let _formatter;
+try {
+  _formatter = new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+} catch {
+  _formatter = null;
+}
+
 /**
- * Format timestamp to HH:mm:ss string
- * Robust version with error handling
+ * Format timestamp to HH:mm:ss string.
+ * Uses a cached Intl.DateTimeFormat for performance.
  */
 export const formatTimestamp = timestamp => {
-  try {
-    if (typeof timestamp === 'string' && /^\d{2}:\d{2}:\d{2}$/.test(timestamp)) {
-      return timestamp;
-    }
-    if (typeof timestamp === 'number' && !isNaN(timestamp) && isFinite(timestamp)) {
-      // Validate timestamp is reasonable (not too far in past/future)
-      const now = Date.now();
-      const maxDiff = 365 * 24 * 60 * 60 * 1000; // 1 year
-      if (Math.abs(timestamp - now) > maxDiff) {
-        // Invalid timestamp, use current time
-        timestamp = now;
-      }
-
-      try {
-        return new Date(timestamp).toLocaleTimeString('en-GB', {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: false,
-        });
-      } catch (e) {
-        // Fallback if toLocaleTimeString fails
-        return new Date(timestamp).toISOString().substring(11, 19);
-      }
-    }
-    // Fallback to current time
-    const now = Date.now();
-    try {
-      return new Date(now).toLocaleTimeString('en-GB', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-      });
-    } catch (e) {
-      return new Date(now).toISOString().substring(11, 19);
-    }
-  } catch (error) {
-    // Ultimate fallback
-    return new Date().toISOString().substring(11, 19);
+  if (typeof timestamp === 'string' && timestamp.length === 8 && timestamp[2] === ':') {
+    return timestamp;
   }
+
+  let ms;
+  if (typeof timestamp === 'number' && timestamp > 1000000000000 && timestamp < 2000000000000) {
+    ms = timestamp;
+  } else {
+    ms = Date.now();
+  }
+
+  if (_formatter) {
+    return _formatter.format(ms);
+  }
+  // Fallback
+  return new Date(ms).toISOString().substring(11, 19);
 };
 
 /**
- * Normalize a log entry to a consistent format
- * Robust version with validation and error handling
+ * Normalize a log entry to a consistent format.
+ * Hot path - called for every log every poll cycle.
  */
 export const normalizeLog = log => {
-  try {
-    if (log && typeof log === 'object' && log.message != null) {
-      // Validate and sanitize message
-      const message = String(log.message || '').slice(0, 10000); // Max 10KB
+  // Object with message property (frontend/app logs, or already-normalized)
+  if (log && typeof log === 'object' && log.message != null) {
+    const message = typeof log.message === 'string' ? log.message : String(log.message);
 
-      // Validate timestamp
-      let timestampNumeric = Date.now();
-      if (typeof log.timestamp === 'number' && !isNaN(log.timestamp) && isFinite(log.timestamp)) {
-        timestampNumeric = log.timestamp;
-      } else if (
-        log.timestampNumeric &&
-        typeof log.timestampNumeric === 'number' &&
-        !isNaN(log.timestampNumeric) &&
-        isFinite(log.timestampNumeric)
-      ) {
-        timestampNumeric = log.timestampNumeric;
-      }
-
-      return {
-        message,
-        source: log.source || 'daemon',
-        timestamp: log.timestamp
-          ? formatTimestamp(log.timestamp)
-          : formatTimestamp(timestampNumeric),
-        level: log.level || 'info',
-        appName: log.appName || undefined,
-        timestampNumeric,
-      };
+    let tsNum = 0;
+    if (typeof log.timestampNumeric === 'number' && log.timestampNumeric > 0) {
+      tsNum = log.timestampNumeric;
+    } else if (typeof log.timestamp === 'number' && log.timestamp > 1000000000000) {
+      tsNum = log.timestamp;
     }
 
-    if (typeof log === 'string') {
-      // Parse Rust logs with format "TIMESTAMP|MESSAGE"
-      // If no pipe found, treat as legacy log without timestamp
-      const pipeIndex = log.indexOf('|');
-      let message = log;
-      let timestampNumeric = 0;
-
-      if (pipeIndex > 0 && pipeIndex < 20) {
-        // Potential timestamp prefix (Unix millis is ~13 digits)
-        const potentialTimestamp = log.substring(0, pipeIndex);
-        const parsedTs = parseInt(potentialTimestamp, 10);
-
-        // Validate it looks like a Unix timestamp (reasonable range)
-        if (!isNaN(parsedTs) && parsedTs > 1600000000000 && parsedTs < 2000000000000) {
-          timestampNumeric = parsedTs;
-          message = log.substring(pipeIndex + 1);
-        }
-      }
-
-      return {
-        message: message.slice(0, 10000), // Max 10KB
-        source: 'daemon',
-        timestamp: timestampNumeric > 0 ? formatTimestamp(timestampNumeric) : '',
-        timestampNumeric,
-        level: 'info',
-      };
-    }
-
-    // Fallback for any other type
-    const now = Date.now();
     return {
-      message: String(log || 'Invalid log entry').slice(0, 10000),
-      source: 'daemon',
-      timestamp: formatTimestamp(now),
-      timestampNumeric: now,
-      level: 'info',
-    };
-  } catch (error) {
-    // Ultimate fallback - return a safe log entry
-    const now = Date.now();
-    return {
-      message: `[Log normalization error: ${error.message}]`,
-      source: 'daemon',
-      timestamp: formatTimestamp(now),
-      timestampNumeric: now,
-      level: 'error',
+      message,
+      source: log.source || 'daemon',
+      timestamp:
+        tsNum > 0
+          ? formatTimestamp(tsNum)
+          : typeof log.timestamp === 'string'
+            ? log.timestamp
+            : formatTimestamp(Date.now()),
+      level: log.level || 'info',
+      appName: log.appName || undefined,
+      timestampNumeric: tsNum || Date.now(),
     };
   }
+
+  // Raw string from Rust VecDeque: "TIMESTAMP|MESSAGE"
+  if (typeof log === 'string') {
+    const pipeIdx = log.indexOf('|');
+    if (pipeIdx > 0 && pipeIdx < 16) {
+      const ts = parseInt(log.substring(0, pipeIdx), 10);
+      if (ts > 1600000000000 && ts < 2000000000000) {
+        return {
+          message: log.substring(pipeIdx + 1),
+          source: 'daemon',
+          timestamp: formatTimestamp(ts),
+          timestampNumeric: ts,
+          level: 'info',
+        };
+      }
+    }
+    return {
+      message: log,
+      source: 'daemon',
+      timestamp: '',
+      timestampNumeric: 0,
+      level: 'info',
+    };
+  }
+
+  const now = Date.now();
+  return {
+    message: String(log || ''),
+    source: 'daemon',
+    timestamp: formatTimestamp(now),
+    timestampNumeric: now,
+    level: 'info',
+  };
 };

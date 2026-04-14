@@ -38,7 +38,7 @@ jobs:
             platform: windows-x86_64
           # Linux uses runtime bootstrap (same as macOS/Windows)
           # uv-trampoline downloads Python + creates venvs on first launch
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             platform: linux-x86_64
 
@@ -66,12 +66,14 @@ jobs:
           echo "🧪 ════════════════════════════════════════════════════════════════"
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          lfs: true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24.11.1'  # LTS - Required for camera-controls (>=24.4.0)
+          node-version: '24.11.1' # LTS - Required for camera-controls (>=24.4.0)
           cache: 'yarn'
 
       - name: Setup Rust
@@ -95,12 +97,12 @@ jobs:
         run: |
           echo "🔧 Installing Rust target: ${{ matrix.target }}"
           rustup target add ${{ matrix.target }}
-          
+
           echo "🔍 Verifying target is installed..."
           INSTALLED_TARGETS=$(rustup target list --installed)
           echo "Installed targets:"
           echo "$INSTALLED_TARGETS"
-          
+
           if ! echo "$INSTALLED_TARGETS" | grep -q "${{ matrix.target }}"; then
             echo "❌ Target ${{ matrix.target }} is NOT installed!"
             exit 1
@@ -111,7 +113,7 @@ jobs:
         run: yarn install
 
       - name: Build sidecar (macOS/Linux)
-        if: startsWith(matrix.os, 'macos') || matrix.os == 'ubuntu-22.04'
+        if: startsWith(matrix.os, 'macos') || matrix.os == 'ubuntu-24.04'
         shell: bash
         run: |
           TARGET_TRIPLET=${{ matrix.target }} bash ./scripts/build/build-sidecar-unix.sh
@@ -148,45 +150,45 @@ jobs:
             echo "❌ Apple secrets not configured - APPLE_CERTIFICATE, APPLE_SIGNING_IDENTITY and APPLE_CERTIFICATE_PASSWORD are required"
             exit 1
           fi
-          
+
           echo "✅ Apple variables configured"
           if [ -z "$APPLE_TEAM_ID" ]; then
             APPLE_TEAM_ID=$(echo "$APPLE_SIGNING_IDENTITY" | sed -n 's/.*(\([A-Z0-9]\{10\}\)).*/\1/p')
             export APPLE_TEAM_ID
           fi
-          
+
           # Import the .p12 certificate into the keychain
           echo "📦 Importing .p12 certificate into keychain..."
           KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
           KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
-          
+
           # Create a temporary keychain
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          
+
           # Clean base64 (remove spaces, newlines) then decode
           CLEANED_CERT=$(echo "$APPLE_CERTIFICATE" | tr -d ' \n\r\t')
-          
+
           # Debug: check base64 length and first characters
           echo "🔍 Debug base64:"
           echo "  Length: ${#CLEANED_CERT}"
           echo "  First 50 characters: ${CLEANED_CERT:0:50}"
           echo "  Last 50 characters: ${CLEANED_CERT: -50}"
-          
+
           # Decode base64
           echo "$CLEANED_CERT" | base64 --decode > /tmp/certificate.p12
-          
+
           # Verify file is valid before import
           echo "🔍 Verifying .p12 file..."
           file /tmp/certificate.p12 || true
           ls -lh /tmp/certificate.p12 || true
-          
+
           # Verify .p12 is valid with openssl
           openssl pkcs12 -in /tmp/certificate.p12 -passin pass:"$APPLE_CERTIFICATE_PASSWORD" -noout -info 2>&1 | head -5 || {
             echo "⚠️  The .p12 file seems invalid or password is incorrect"
           }
-          
+
           # Import .p12 into keychain
           # Note: security import automatically detects PKCS12 format
           security import /tmp/certificate.p12 -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security || {
@@ -202,26 +204,26 @@ jobs:
             exit 1
           }
           rm -f /tmp/certificate.p12
-          
+
           # Configure keychain for codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" || true
-          
+
           # Add temporary keychain FIRST in search list (priority)
           EXISTING_KEYCHAINS=$(security list-keychains -d user | sed 's/^[[:space:]]*//' | tr '\n' ' ')
           security list-keychains -d user -s "$KEYCHAIN_PATH" $EXISTING_KEYCHAINS
-          
+
           # Verify identity is available in ALL keychains
           echo "🔍 Available identities in all keychains:"
           security find-identity -v -p codesigning || true
-          
+
           # Verify specifically in our keychain
           echo "🔍 Identities in temporary keychain:"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH" || true
-          
+
           # Export variables for next steps
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
           echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
-          
+
           echo "✅ Certificate imported into temporary keychain"
           echo "✅ Keychain added to search list"
 
@@ -236,11 +238,11 @@ jobs:
             # 1. Raw format (starts with "untrusted comment: rsign encrypted secret key")
             # 2. Base64-encoded format
             # We detect the format and handle accordingly
-            
+
             # Check if it's raw format (starts with "untrusted comment")
             # Use the first 50 chars to check, avoiding issues with leading whitespace
             FIRST_CHARS=$(printf '%s' "$TAURI_SIGNING_KEY" | head -c 50)
-            
+
             if echo "$FIRST_CHARS" | grep -q "untrusted comment"; then
               # Raw format in GitHub Secrets - encode to base64 for tauri signer
               # tauri signer expects the key file to be base64-encoded
@@ -262,10 +264,10 @@ jobs:
               echo "✅ Using base64 format private key (from GitHub Secrets)"
             fi
             chmod 600 ~/.tauri/reachy-mini.key
-            
+
             # ✅ Extract public key from tauri.conf.json (standard practice - ensures they match)
             echo "🔑 Extracting public key from tauri.conf.json..."
-            
+
             # The public key in tauri.conf.json is base64-encoded
             # We decode it to get the raw public key format that minisign expects
             PUBKEY=$(grep -o '"pubkey": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
@@ -277,7 +279,7 @@ jobs:
               echo "❌ No public key found in tauri.conf.json"
               exit 1
             fi
-            
+
             # ✅ Verify the key pair matches by testing signature
             if [ -f ~/.tauri/reachy-mini.key.pub ]; then
               echo "🔍 Verifying key pair match..."
@@ -300,7 +302,7 @@ jobs:
                 echo "⚠️ Could not test key pair (private key may require password)"
               fi
             fi
-            
+
             # ✅ Verify the private key is valid by attempting a test sign
             echo "🔍 Verifying private key validity..."
             TEST_FILE="/tmp/test-sign-verify-$$.txt"
@@ -311,7 +313,7 @@ jobs:
             else
               echo "⚠️ Warning: Could not verify private key (may require password or key mismatch)"
             fi
-            
+
             # ✅ Export cleaned key to GITHUB_ENV for use in build steps
             # Read the cleaned key from file (single line, no spaces/newlines)
             CLEANED_SIGNING_KEY=$(cat ~/.tauri/reachy-mini.key)
@@ -332,14 +334,14 @@ jobs:
           echo "🔍 Extracting version..."
           echo "   GITHUB_REF: $GITHUB_REF"
           echo "   github.event.inputs.version: ${{ github.event.inputs.version }}"
-          
+
           # Try to extract from tag (format: refs/tags/v0.2.15)
           VERSION=${GITHUB_REF#refs/tags/v}
           if [ "$VERSION" = "$GITHUB_REF" ]; then
             echo "   No 'v' prefix in tag, trying input..."
             VERSION=${{ github.event.inputs.version }}
           fi
-          
+
           # If still empty, try to extract from tag without 'v' prefix
           if [ -z "$VERSION" ] || [ "$VERSION" = "$GITHUB_REF" ]; then
             VERSION=${GITHUB_REF#refs/tags/}
@@ -348,12 +350,12 @@ jobs:
               VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
             fi
           fi
-          
+
           if [ -z "$VERSION" ]; then
             echo "❌ Could not determine version!"
             exit 1
           fi
-          
+
           echo "✅ Version extracted: $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
@@ -362,26 +364,26 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           echo "📝 Updating version in tauri.conf.json to: $VERSION"
-          
+
           # Show current version before update
           CURRENT_VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
           echo "   Current version: $CURRENT_VERSION"
-          
+
           if [[ "$RUNNER_OS" == "macOS" ]]; then
             sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
           else
             sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json && rm -f src-tauri/tauri.conf.json.bak
           fi
-          
+
           # Verify update
           UPDATED_VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
           echo "   Updated version: $UPDATED_VERSION"
-          
+
           if [ "$UPDATED_VERSION" != "$VERSION" ]; then
             echo "❌ Version update failed! Expected: $VERSION, Got: $UPDATED_VERSION"
             exit 1
           fi
-          
+
           echo "✅ Version updated successfully"
 
       - name: Setup App Store Connect API Key (macOS only)
@@ -401,10 +403,10 @@ jobs:
             echo "❌ APPLE_API_KEY is not defined"
             exit 1
           fi
-          
+
           # Clean APPLE_API_ISSUER (remove spaces, newlines, etc.)
           CLEANED_ISSUER=$(echo -n "${{ secrets.APPLE_API_ISSUER }}" | tr -d ' \n\r\t')
-          
+
           # Verify APPLE_API_ISSUER is a valid UUID
           if ! echo "$CLEANED_ISSUER" | grep -qE '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'; then
             echo "❌ APPLE_API_ISSUER is not a valid UUID"
@@ -412,17 +414,17 @@ jobs:
             echo "   Expected format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
             exit 1
           fi
-          
+
           echo "📦 Configuring App Store Connect API key for manual notarization..."
           mkdir -p ~/.appstoreconnect
-          
+
           # Get the secret content
           KEY_CONTENT="${{ secrets.APPLE_API_KEY_CONTENT }}"
-          
+
           # Detect if content is base64-encoded or raw PEM
           # Base64 typically doesn't start with -----BEGIN
           FIRST_CHARS=$(echo "$KEY_CONTENT" | head -c 20 | tr -d ' \n\r\t')
-          
+
           if echo "$FIRST_CHARS" | grep -q "^-----BEGIN"; then
             echo "✅ Detected raw PEM format"
             # Raw PEM format - write directly
@@ -432,9 +434,9 @@ jobs:
             # Base64 format - decode first
             echo "$KEY_CONTENT" | tr -d ' \n\r\t' | base64 --decode > ~/.appstoreconnect/private_key.p8
           fi
-          
+
           chmod 600 ~/.appstoreconnect/private_key.p8
-          
+
           # Validate the key file using openssl (standard practice)
           echo "🔍 Validating private key with openssl..."
           if openssl pkey -in ~/.appstoreconnect/private_key.p8 -noout > /dev/null 2>&1; then
@@ -452,10 +454,10 @@ jobs:
             echo "   2. Base64: Encode the .p8 file with: base64 -i Certificates.p8"
             exit 1
           fi
-          
+
           # Clean APPLE_API_KEY as well
           CLEANED_API_KEY=$(echo -n "${{ secrets.APPLE_API_KEY }}" | tr -d ' \n\r\t')
-          
+
           # Store in GITHUB_ENV for use in next steps
           echo "APPLE_API_KEY_PATH=$HOME/.appstoreconnect/private_key.p8" >> $GITHUB_ENV
           echo "APPLE_API_ISSUER=$CLEANED_ISSUER" >> $GITHUB_ENV
@@ -491,7 +493,7 @@ jobs:
           # Required for createUpdaterArtifacts to generate .app.tar.gz.sig
           # Use cleaned key from GITHUB_ENV (set in Setup Tauri Signing Key step)
           TAURI_SIGNING_PRIVATE_KEY: ${{ env.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
         shell: bash
         working-directory: src-tauri
         run: |
@@ -501,7 +503,7 @@ jobs:
           unset APPLE_API_ISSUER || true
           unset APPLE_API_KEY || true
           unset APPLE_API_KEY_PATH || true
-          
+
           # Temporarily remove the signing keychain from search list to prevent Tauri from auto-detecting it
           # We'll add it back for manual signing
           if [ -n "$KEYCHAIN_PATH" ]; then
@@ -509,14 +511,14 @@ jobs:
             EXISTING_KEYCHAINS=$(security list-keychains -d user | grep -v "$KEYCHAIN_PATH" | sed 's/^[[:space:]]*//' | tr '\n' ' ')
             security list-keychains -d user -s $EXISTING_KEYCHAINS || true
           fi
-          
+
           echo "🔍 Verifying no auto-signing/notarization variables are set..."
           env | grep -E "APPLE_(SIGNING|API)" || echo "✅ No auto-signing/notarization variables found"
-          
+
           # Build without automatic signing/notarization
           # signingIdentity is set to "-" in tauri.macos.conf.json
           yarn tauri build --target ${{ matrix.target }}
-          
+
           # Restore keychain to search list for manual signing step
           if [ -n "$KEYCHAIN_PATH" ]; then
             echo "🔓 Restoring signing keychain to search list..."
@@ -532,21 +534,21 @@ jobs:
         shell: pwsh
         continue-on-error: true
         run: |
-          if ([string]::IsNullOrEmpty($env:WINDOWS_CERTIFICATE_PFX) -or 
+          if ([string]::IsNullOrEmpty($env:WINDOWS_CERTIFICATE_PFX) -or
               [string]::IsNullOrEmpty($env:WINDOWS_CERTIFICATE_PASSWORD)) {
             Write-Warning "⚠️  Windows signing secrets not configured - skipping signature setup"
             Write-Warning "   The build will continue but binaries will not be signed"
             Write-Warning "   Configure WINDOWS_CERTIFICATE_PFX and WINDOWS_CERTIFICATE_PASSWORD secrets to enable signing"
             exit 0
           }
-          
+
           Write-Host "✅ Windows certificate variables configured"
-          
+
           # Decode certificate from base64
           $certBytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_PFX)
           $tempCertPath = "$env:RUNNER_TEMP\code-signing-cert.pfx"
           [System.IO.File]::WriteAllBytes($tempCertPath, $certBytes)
-          
+
           # Verify certificate is valid
           try {
             $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(
@@ -556,7 +558,7 @@ jobs:
             Write-Host "✅ Certificate loaded successfully"
             Write-Host "   Subject: $($cert.Subject)"
             Write-Host "   Thumbprint: $($cert.Thumbprint)"
-            
+
             # Export for next steps
             echo "WINDOWS_CERT_PATH=$tempCertPath" >> $env:GITHUB_ENV
             echo "WINDOWS_SIGNING_ENABLED=true" >> $env:GITHUB_ENV
@@ -564,14 +566,14 @@ jobs:
             Write-Error "❌ Failed to load certificate: $($_.Exception.Message)"
             exit 1
           }
-          
+
           # Find signtool.exe
           $signtoolPath = $null
           $possiblePaths = @(
             "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe",
             "${env:ProgramFiles}\Windows Kits\10\bin\*\x64\signtool.exe"
           )
-          
+
           foreach ($path in $possiblePaths) {
             $found = Get-ChildItem -Path $path -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($found) {
@@ -579,13 +581,13 @@ jobs:
               break
             }
           }
-          
+
           if (-not $signtoolPath) {
             Write-Error "❌ signtool.exe not found"
             Write-Error "   Windows SDK should be installed on GitHub Actions runners"
             exit 1
           }
-          
+
           Write-Host "✅ signtool.exe found: $signtoolPath"
           echo "SIGNTOOL_PATH=$signtoolPath" >> $env:GITHUB_ENV
 
@@ -595,7 +597,7 @@ jobs:
           # Required for createUpdaterArtifacts to generate .msi.sig
           # Use cleaned key from GITHUB_ENV (set in Setup Tauri Signing Key step)
           TAURI_SIGNING_PRIVATE_KEY: ${{ env.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
         shell: bash
         working-directory: src-tauri
         run: |
@@ -610,21 +612,21 @@ jobs:
         shell: pwsh
         run: |
           $BUNDLE_DIR = "src-tauri/target/${{ matrix.target }}/release"
-          
+
           Write-Host "🔐 Signing Windows binaries..."
-          
+
           # Use the existing script
           & ./scripts/signing/sign-windows-binaries.ps1 `
             -TargetPath "$BUNDLE_DIR" `
             -CertificatePath $env:WINDOWS_CERT_PATH `
             -CertificatePassword $env:WINDOWS_CERTIFICATE_PASSWORD `
             -TimestampUrl "http://timestamp.digicert.com"
-          
+
           if ($LASTEXITCODE -ne 0) {
             Write-Error "❌ Failed to sign binaries"
             exit 1
           }
-          
+
           Write-Host "✅ All binaries signed successfully!"
 
       - name: Sign MSI installer (Windows)
@@ -637,15 +639,15 @@ jobs:
         run: |
           $MSI_DIR = "src-tauri/target/${{ matrix.target }}/release/bundle/msi"
           $MSI_FILE = Get-ChildItem -Path $MSI_DIR -Filter "*.msi" -ErrorAction SilentlyContinue | Select-Object -First 1
-          
+
           if (-not $MSI_FILE) {
             Write-Error "❌ MSI file not found in: $MSI_DIR"
             exit 1
           }
-          
+
           Write-Host "🔐 Signing MSI installer..."
           Write-Host "   File: $($MSI_FILE.FullName)"
-          
+
           & $env:SIGNTOOL_PATH sign `
             /f $env:WINDOWS_CERT_PATH `
             /p $env:WINDOWS_CERTIFICATE_PASSWORD `
@@ -653,12 +655,12 @@ jobs:
             /tr http://timestamp.digicert.com `
             /td sha256 `
             $MSI_FILE.FullName
-          
+
           if ($LASTEXITCODE -ne 0) {
             Write-Error "❌ Failed to sign MSI"
             exit 1
           }
-          
+
           # Verify MSI signature
           Write-Host "✅ Verifying MSI signature..."
           & $env:SIGNTOOL_PATH verify /pa /v $MSI_FILE.FullName
@@ -666,11 +668,11 @@ jobs:
             Write-Error "❌ MSI signature verification failed"
             exit 1
           }
-          
+
           Write-Host "✅ MSI signed and verified successfully!"
 
       - name: Build Tauri app (Linux)
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-24.04'
         shell: bash
         working-directory: src-tauri
         env:
@@ -706,70 +708,70 @@ jobs:
             file \
             libc-bin \
             dpkg-dev \
-            libfuse2 \
+            libfuse2t64 \
             squashfs-tools \
             patchelf
-          
+
           # Verify patchelf is installed (critical for linuxdeploy)
           echo "🔍 Verifying patchelf installation..."
           which patchelf && patchelf --version
-          
+
           # Tauri handles .deb package creation automatically
           # Set environment variables for pkg-config if needed
           export PKG_CONFIG_PATH=/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig
-          
+
           # Clean previous build artifacts to avoid conflicts
           rm -rf target/${{ matrix.target }}/release/bundle
-          
+
           # Set signing key for createUpdaterArtifacts to generate .AppImage.tar.gz.sig
           # Use cleaned key from GITHUB_ENV (set in Setup Tauri Signing Key step)
           export TAURI_SIGNING_PRIVATE_KEY="${{ env.TAURI_SIGNING_PRIVATE_KEY }}"
           export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
-          
+
           # Show disk space before build
           echo "📊 Disk space before build:"
           df -h .
-          
+
           # Show resources size
           echo "📦 Resources size:"
           du -sh ../binaries/* 2>/dev/null || echo "No binaries yet"
           TOTAL_SIZE=$(du -sh ../binaries 2>/dev/null | cut -f1 || echo "unknown")
           echo "📦 Total binaries size: $TOTAL_SIZE"
-          
+
           # Build with verbose output
           yarn tauri build --target ${{ matrix.target }} -v
 
       - name: Add post-install scripts to .deb (Linux)
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-24.04'
         shell: bash
         working-directory: src-tauri
         run: |
           DEB_DIR="target/${{ matrix.target }}/release/bundle/deb"
           DEB_FILE=$(find "$DEB_DIR" -name "*.deb" | head -1)
-          
+
           if [ -z "$DEB_FILE" ]; then
             echo "❌ No .deb file found in $DEB_DIR"
             exit 1
           fi
-          
+
           echo "📦 Adding post-install scripts to .deb package..."
-          
+
           # Extract .deb
           TEMP_DIR=$(mktemp -d)
           dpkg-deb -x "$DEB_FILE" "$TEMP_DIR/extract"
           dpkg-deb -e "$DEB_FILE" "$TEMP_DIR/extract/DEBIAN"
-          
+
           # Verify DEBIAN directory was created
           if [ ! -d "$TEMP_DIR/extract/DEBIAN" ]; then
             echo "❌ Failed to extract DEBIAN directory"
             exit 1
           fi
-          
+
           # Copy post-install scripts to DEBIAN directory
           cp linux/deb-postinst.sh "$TEMP_DIR/extract/DEBIAN/postinst"
           cp linux/deb-postrm.sh "$TEMP_DIR/extract/DEBIAN/postrm"
           chmod +x "$TEMP_DIR/extract/DEBIAN/postinst" "$TEMP_DIR/extract/DEBIAN/postrm"
-          
+
           # Rebuild .deb with scripts
           dpkg-deb -b "$TEMP_DIR/extract" "$DEB_FILE.new"
           if [ $? -ne 0 ]; then
@@ -777,37 +779,37 @@ jobs:
             exit 1
           fi
           mv "$DEB_FILE.new" "$DEB_FILE"
-          
+
           # Cleanup
           rm -rf "$TEMP_DIR"
-          
+
           echo "✅ Post-install scripts added to .deb package"
 
       # ===========================================
       # E2E Tests - Run directly after Linux build
       # ===========================================
       - name: Install E2E test dependencies (Linux only)
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-24.04'
         run: |
           echo "📦 Installing E2E test dependencies..."
-          
+
           # System dependencies for running the app and WebDriver
           sudo apt-get install -y \
             xvfb \
             webkit2gtk-driver \
             at-spi2-core
-          
+
           # Install tauri-driver 2.0.x for Tauri v2
           # IMPORTANT: This project uses Tauri v2, so we need tauri-driver 2.0.x
           # (tauri-driver 0.1.x was for Tauri v1)
           echo "🦀 Installing tauri-driver (latest 2.0.x for Tauri v2)..."
           cargo install tauri-driver --locked
-          
+
           # Verify installation
           echo "✅ tauri-driver installed: $(which tauri-driver)"
 
       - name: Install .deb and run E2E tests (Linux only)
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-24.04'
         env:
           # Disable DMA-BUF renderer to avoid WebKit crashes on headless CI systems
           WEBKIT_DISABLE_DMABUF_RENDERER: 1
@@ -815,34 +817,34 @@ jobs:
           echo "🧪 ════════════════════════════════════════════════════════════════"
           echo "🧪 E2E TESTS - Validating Linux .deb package"
           echo "🧪 ════════════════════════════════════════════════════════════════"
-          
+
           # Find and install the .deb
           DEB_FILE=$(find src-tauri/target/${{ matrix.target }}/release/bundle/deb -name "*.deb" | head -1)
-          
+
           if [ -z "$DEB_FILE" ]; then
             echo "❌ No .deb file found"
             exit 1
           fi
-          
+
           echo "📦 Installing: $DEB_FILE"
           sudo dpkg -i "$DEB_FILE" || sudo apt-get install -f -y
-          
+
           # Verify installation
           if [ ! -f "/usr/bin/reachy-mini-control" ]; then
             echo "❌ Application binary not found after installation"
             exit 1
           fi
           echo "✅ Application installed successfully"
-          
+
           # Install Node.js test dependencies
           echo "📦 Installing test dependencies..."
           yarn install --frozen-lockfile
-          
+
           # Run E2E tests with xvfb-run (official Tauri CI approach)
           # xvfb-run creates a virtual display and runs the command within it
           echo "🧪 Running E2E tests with xvfb-run..."
           xvfb-run --auto-servernum yarn test:e2e
-          
+
           echo "🧪 ════════════════════════════════════════════════════════════════"
           echo "🧪 ✅ E2E TESTS PASSED (Linux)"
           echo "🧪 ════════════════════════════════════════════════════════════════"
@@ -855,24 +857,24 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "📦 Installing E2E test dependencies for Windows..."
-          
+
           # Install msedgedriver (must match Edge version on runner)
           # msedgedriver-tool automatically detects and downloads the correct version
           Write-Host "🌐 Installing msedgedriver-tool..."
           cargo install --git https://github.com/chippers/msedgedriver-tool
-          
+
           # Run msedgedriver-tool to download matching Edge driver
           Write-Host "🌐 Downloading matching msedgedriver..."
           & "$env:USERPROFILE\.cargo\bin\msedgedriver-tool.exe"
-          
+
           # Add current directory to PATH (msedgedriver is downloaded here)
           $env:PATH = "$PWD;$env:PATH"
           [Environment]::SetEnvironmentVariable("PATH", "$PWD;$env:PATH", "Process")
-          
+
           # Install tauri-driver 2.0.x for Tauri v2
           Write-Host "🦀 Installing tauri-driver..."
           cargo install tauri-driver --locked
-          
+
           # Verify installations
           Write-Host "✅ msedgedriver location: $PWD\msedgedriver.exe"
           Write-Host "✅ tauri-driver installed"
@@ -884,25 +886,25 @@ jobs:
           Write-Host "🧪 ════════════════════════════════════════════════════════════════"
           Write-Host "🧪 E2E TESTS - Validating Windows .msi package"
           Write-Host "🧪 ════════════════════════════════════════════════════════════════"
-          
+
           # Find and install the .msi
           $MSI_DIR = "src-tauri/target/${{ matrix.target }}/release/bundle/msi"
           $MSI_FILE = Get-ChildItem -Path $MSI_DIR -Filter "*.msi" -ErrorAction SilentlyContinue | Select-Object -First 1
-          
+
           if (-not $MSI_FILE) {
             Write-Error "❌ No .msi file found in: $MSI_DIR"
             exit 1
           }
-          
+
           Write-Host "📦 Installing: $($MSI_FILE.FullName)"
-          
+
           # Install MSI silently
           $process = Start-Process msiexec.exe -ArgumentList "/i", "`"$($MSI_FILE.FullName)`"", "/quiet", "/norestart" -Wait -PassThru
           if ($process.ExitCode -ne 0) {
             Write-Error "❌ MSI installation failed with exit code: $($process.ExitCode)"
             exit 1
           }
-          
+
           # Find the installed application
           # The exe name comes from Cargo.toml package name: reachy-mini-control
           # The folder name comes from tauri.conf.json productName: Reachy Mini Control
@@ -920,7 +922,7 @@ jobs:
             "C:\Program Files (x86)\Reachy Mini Control\reachy-mini-control.exe",
             "C:\Program Files (x86)\Reachy Mini Control\Reachy Mini Control.exe"
           )
-          
+
           Write-Host "🔍 Searching for installed application..."
           $APP_PATH = $null
           foreach ($path in $POSSIBLE_PATHS) {
@@ -931,7 +933,7 @@ jobs:
               break
             }
           }
-          
+
           if (-not $APP_PATH) {
             Write-Host "❌ Application not found at expected paths"
             Write-Host ""
@@ -947,25 +949,25 @@ jobs:
             Write-Error "❌ Could not find installed application"
             exit 1
           }
-          
+
           Write-Host "✅ Application installed at: $APP_PATH"
-          
+
           # Update wdio.conf.js to use Windows path
           # We need to set the APP_BINARY environment variable
           $env:E2E_APP_BINARY = $APP_PATH
-          
+
           # Ensure msedgedriver is in PATH
           $env:PATH = "$PWD;$env:PATH"
-          
+
           # Install Node.js test dependencies
           # Note: Not using --frozen-lockfile here as E2E deps may have cross-platform differences
           Write-Host "📦 Installing test dependencies..."
           yarn install
-          
+
           # Run E2E tests (no xvfb needed on Windows)
           Write-Host "🧪 Running E2E tests..."
           yarn test:e2e
-          
+
           Write-Host "🧪 ════════════════════════════════════════════════════════════════"
           Write-Host "🧪 ✅ E2E TESTS PASSED (Windows)"
           Write-Host "🧪 ════════════════════════════════════════════════════════════════"
@@ -977,11 +979,11 @@ jobs:
         if: startsWith(matrix.os, 'macos')
         run: |
           echo "📦 Installing E2E test dependencies for macOS..."
-          
+
           # Install Node.js test dependencies (includes @crabnebula/tauri-driver)
           echo "📦 Installing npm dependencies..."
           yarn install
-          
+
           echo "✅ E2E dependencies installed"
 
       - name: Run E2E tests (macOS only)
@@ -992,7 +994,7 @@ jobs:
           echo "🧪 ════════════════════════════════════════════════════════════════"
           echo "🧪 E2E TESTS - Validating macOS .app bundle"
           echo "🧪 ════════════════════════════════════════════════════════════════"
-          
+
           # Check if CN_API_KEY is configured
           if [ -z "$CN_API_KEY" ]; then
             echo "⚠️ CN_API_KEY not configured - skipping macOS E2E tests"
@@ -1003,24 +1005,24 @@ jobs:
             echo "🧪 ════════════════════════════════════════════════════════════════"
             exit 0
           fi
-          
+
           # Find the built .app bundle
           APP_BUNDLE="src-tauri/target/${{ matrix.target }}/release/bundle/macos/Reachy Mini Control.app"
-          
+
           if [ ! -d "$APP_BUNDLE" ]; then
             echo "❌ App bundle not found: $APP_BUNDLE"
             exit 1
           fi
-          
+
           echo "✅ App bundle found: $APP_BUNDLE"
-          
+
           # Set the app binary path for E2E tests
           export E2E_APP_BINARY="$APP_BUNDLE"
-          
+
           # Run E2E tests
           echo "🧪 Running E2E tests with CrabNebula WebDriver..."
           yarn test:e2e
-          
+
           echo "🧪 ════════════════════════════════════════════════════════════════"
           echo "🧪 ✅ E2E TESTS PASSED (macOS - ${{ matrix.target }})"
           echo "🧪 ════════════════════════════════════════════════════════════════"
@@ -1036,7 +1038,7 @@ jobs:
             echo "❌ App bundle not found: $APP_BUNDLE"
             exit 1
           fi
-          
+
           # Ensure signing keychain is in search list for manual signing
           if [ -n "$KEYCHAIN_PATH" ]; then
             echo "🔓 Ensuring signing keychain is in search list..."
@@ -1046,10 +1048,10 @@ jobs:
             fi
             security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" || true
           fi
-          
+
           chmod +x scripts/signing/sign-all-binaries.sh
           bash scripts/signing/sign-all-binaries.sh "$APP_BUNDLE" "$APPLE_SIGNING_IDENTITY"
-          
+
           # Verify all binaries are signed
           echo "🔍 Verifying all binaries are signed..."
           codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE" || {
@@ -1067,29 +1069,29 @@ jobs:
         run: |
           APP_BUNDLE="src-tauri/target/${{ matrix.target }}/release/bundle/macos/Reachy Mini Control.app"
           BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
-          
+
           if [ ! -d "$APP_BUNDLE" ]; then
             echo "❌ App bundle not found: $APP_BUNDLE"
             exit 1
           fi
-          
+
           cd "$BUNDLE_DIR"
-          
+
           # Get absolute path for notarytool
           APP_BUNDLE_NAME="Reachy Mini Control.app"
           ABS_APP_BUNDLE="$(pwd)/$APP_BUNDLE_NAME"
           echo "📦 Submitting app bundle for notarization..."
           echo "   App: $ABS_APP_BUNDLE"
-          
+
           # Create a ZIP of the app for notarization (Apple requires ZIP format for app bundles)
           APP_ZIP_NAME="Reachy.Mini.Control.app.zip"
           rm -f "$APP_ZIP_NAME"
           ditto -c -k --norsrc --keepParent "$APP_BUNDLE_NAME" "$APP_ZIP_NAME"
           ABS_APP_ZIP="$(pwd)/$APP_ZIP_NAME"
-          
+
           echo "📦 Submitting app ZIP for notarization..."
           echo "   ZIP: $ABS_APP_ZIP ($(du -h "$APP_ZIP_NAME" | cut -f1))"
-          
+
           NOTARIZATION_OUTPUT=$(xcrun notarytool submit "$ABS_APP_ZIP" \
             --key "$APPLE_API_KEY_PATH" \
             --key-id "$APPLE_API_KEY" \
@@ -1102,14 +1104,14 @@ jobs:
           # Check if notarization was successful
           if echo "$NOTARIZATION_OUTPUT" | grep -q "status: Accepted"; then
             echo "✅ App notarization successful!"
-            
+
             # Staple the notarization ticket to the app bundle
             echo "📎 Stapling notarization ticket to app bundle..."
             if ! xcrun stapler staple "$APP_BUNDLE_NAME"; then
               echo "❌ Failed to staple notarization ticket to app bundle"
               exit 1
             fi
-            
+
             # Validate that the ticket was stapled correctly
             echo "🔍 Validating stapled ticket on app..."
             if ! xcrun stapler validate "$APP_BUNDLE_NAME"; then
@@ -1117,17 +1119,17 @@ jobs:
               exit 1
             fi
             echo "✅ Ticket successfully stapled and validated on app bundle"
-            
+
             # Clean up ZIP file
             rm -f "$APP_ZIP_NAME"
           else
             echo "❌ App notarization failed!"
             echo ""
             echo "🔍 Checking notarization logs..."
-            
+
             # Extract submission ID if available
             SUBMISSION_ID=$(echo "$NOTARIZATION_OUTPUT" | grep -oE "id: [a-f0-9-]+" | head -1 | cut -d' ' -f2 || echo "")
-            
+
             if [ -n "$SUBMISSION_ID" ]; then
               echo "   Submission ID: $SUBMISSION_ID"
               echo "   Fetching logs..."
@@ -1136,7 +1138,7 @@ jobs:
                 --key-id "$APPLE_API_KEY" \
                 --issuer "$APPLE_API_ISSUER" || true
             fi
-            
+
             # Clean up ZIP file
             rm -f "$APP_ZIP_NAME"
             exit 1
@@ -1156,12 +1158,12 @@ jobs:
         run: |
           APP_BUNDLE="src-tauri/target/${{ matrix.target }}/release/bundle/macos/Reachy Mini Control.app"
           BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
-          
+
           if [ ! -d "$APP_BUNDLE" ]; then
             echo "❌ App bundle not found: $APP_BUNDLE"
             exit 1
           fi
-          
+
           # Ensure signing keychain is in search list for DMG signing
           if [ -n "$KEYCHAIN_PATH" ]; then
             echo "🔓 Ensuring signing keychain is in search list for DMG signing..."
@@ -1171,16 +1173,16 @@ jobs:
             fi
             security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" || true
           fi
-          
+
           # Create DMG with custom script (uses create-dmg)
           echo "💿 Creating DMG installer with customize-dmg.sh..."
           ARCH_SUFFIX="${{ matrix.target == 'aarch64-apple-darwin' && 'arm64' || 'x64' }}"
           DMG_NAME="Reachy.Mini.Control_${{ steps.version.outputs.version }}_${ARCH_SUFFIX}.dmg"
           DMG_PATH="$BUNDLE_DIR/$DMG_NAME"
-          
+
           # Remove old DMG if exists
           rm -f "$DMG_PATH" "$BUNDLE_DIR"/*.dmg
-          
+
           # Use the customize-dmg.sh script
           # It uses create-dmg which handles background image, icons, and Applications link
           bash scripts/build/customize-dmg.sh \
@@ -1188,12 +1190,12 @@ jobs:
             "$DMG_PATH" \
             "src-tauri/dmg-assets/background.png" \
             "Reachy Mini Control"
-          
+
           if [ ! -f "$DMG_PATH" ]; then
             echo "❌ Failed to create DMG file"
             exit 1
           fi
-          
+
           # Sign the DMG (required before notarization)
           # Use the same signing identity as the app
           echo "✍️ Signing DMG with identity: $APPLE_SIGNING_IDENTITY"
@@ -1206,7 +1208,7 @@ jobs:
             security find-identity -v -p codesigning || true
             exit 1
           fi
-          
+
           echo "✅ DMG created and signed: $DMG_NAME ($(du -h "$DMG_PATH" | cut -f1))"
           echo "RELEASE_DMG_PATH=$DMG_PATH" >> $GITHUB_ENV
 
@@ -1222,19 +1224,19 @@ jobs:
           ARCH_SUFFIX="${{ matrix.target == 'aarch64-apple-darwin' && 'arm64' || 'x64' }}"
           DMG_NAME="Reachy.Mini.Control_${{ steps.version.outputs.version }}_${ARCH_SUFFIX}.dmg"
           DMG_PATH="$BUNDLE_DIR/$DMG_NAME"
-          
+
           if [ ! -f "$DMG_PATH" ]; then
             echo "❌ DMG not found: $DMG_PATH"
             exit 1
           fi
-          
+
           cd "$BUNDLE_DIR"
-          
+
           # Get absolute path for notarytool
           ABS_DMG_PATH="$(pwd)/$DMG_NAME"
           echo "📦 Submitting DMG for notarization..."
           echo "   DMG: $ABS_DMG_PATH ($(du -h "$DMG_NAME" | cut -f1))"
-          
+
           NOTARIZATION_OUTPUT=$(xcrun notarytool submit "$ABS_DMG_PATH" \
             --key "$APPLE_API_KEY_PATH" \
             --key-id "$APPLE_API_KEY" \
@@ -1247,14 +1249,14 @@ jobs:
           # Check if notarization was successful
           if echo "$NOTARIZATION_OUTPUT" | grep -q "status: Accepted"; then
             echo "✅ DMG notarization successful!"
-            
+
             # Staple the notarization ticket to the DMG
             echo "📎 Stapling notarization ticket to DMG..."
             if ! xcrun stapler staple "$DMG_NAME"; then
               echo "❌ Failed to staple notarization ticket to DMG"
               exit 1
             fi
-            
+
             # Validate that the ticket was stapled correctly
             echo "🔍 Validating stapled ticket..."
             if ! xcrun stapler validate "$DMG_NAME"; then
@@ -1262,7 +1264,7 @@ jobs:
               exit 1
             fi
             echo "✅ Ticket successfully stapled and validated on DMG"
-            
+
             # Also create ZIP as fallback (for users who prefer ZIP)
             # Note: ZIP is not notarized, but contains the signed app
             echo "📦 Creating ZIP file as fallback..."
@@ -1276,10 +1278,10 @@ jobs:
             echo "❌ DMG notarization failed!"
             echo ""
             echo "🔍 Checking notarization logs..."
-            
+
             # Extract submission ID if available
             SUBMISSION_ID=$(echo "$NOTARIZATION_OUTPUT" | grep -oE "id: [a-f0-9-]+" | head -1 | cut -d' ' -f2 || echo "")
-            
+
             if [ -n "$SUBMISSION_ID" ]; then
               echo "   Submission ID: $SUBMISSION_ID"
               echo "   Fetching logs..."
@@ -1288,7 +1290,7 @@ jobs:
                 --key-id "$APPLE_API_KEY" \
                 --issuer "$APPLE_API_ISSUER" || true
             fi
-            
+
             exit 1
           fi
 
@@ -1304,9 +1306,9 @@ jobs:
           echo "   Version: ${{ steps.version.outputs.version }}"
           echo "   Target: ${{ matrix.target }}"
           echo "   Release URL base: ${RELEASE_URL_BASE}"
-          
+
           bash ./scripts/build/build-update.sh prod "${{ steps.version.outputs.version }}"
-          
+
           # Verify that update.json was created
           echo "🔍 Verifying update.json was created..."
           UPDATE_JSON=$(find releases -name "update.json" -type f | head -1)
@@ -1328,7 +1330,7 @@ jobs:
           retention-days: 30
 
       - name: Upload .deb package (Linux)
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-24.04'
         uses: actions/upload-artifact@v4
         with:
           name: deb-${{ matrix.platform }}
@@ -1373,11 +1375,11 @@ jobs:
           files: |
             ${{ matrix.os == 'windows-latest' && format('src-tauri/target/{0}/release/bundle/msi/*.msi', matrix.target) || '' }}
             ${{ matrix.os == 'windows-latest' && format('src-tauri/target/{0}/release/bundle/msi/*.msi.sig', matrix.target) || '' }}
-            ${{ matrix.os == 'ubuntu-22.04' && format('src-tauri/target/{0}/release/bundle/deb/*.deb', matrix.target) || '' }}
-            ${{ matrix.os == 'ubuntu-22.04' && format('src-tauri/target/{0}/release/bundle/deb/*.deb.sig', matrix.target) || '' }}
-            ${{ matrix.os == 'ubuntu-22.04' && format('src-tauri/target/{0}/release/bundle/appimage/*.AppImage', matrix.target) || '' }}
-            ${{ matrix.os == 'ubuntu-22.04' && format('src-tauri/target/{0}/release/bundle/appimage/*.AppImage.tar.gz', matrix.target) || '' }}
-            ${{ matrix.os == 'ubuntu-22.04' && format('src-tauri/target/{0}/release/bundle/appimage/*.AppImage.tar.gz.sig', matrix.target) || '' }}
+            ${{ matrix.os == 'ubuntu-24.04' && format('src-tauri/target/{0}/release/bundle/deb/*.deb', matrix.target) || '' }}
+            ${{ matrix.os == 'ubuntu-24.04' && format('src-tauri/target/{0}/release/bundle/deb/*.deb.sig', matrix.target) || '' }}
+            ${{ matrix.os == 'ubuntu-24.04' && format('src-tauri/target/{0}/release/bundle/appimage/*.AppImage', matrix.target) || '' }}
+            ${{ matrix.os == 'ubuntu-24.04' && format('src-tauri/target/{0}/release/bundle/appimage/*.AppImage.tar.gz', matrix.target) || '' }}
+            ${{ matrix.os == 'ubuntu-24.04' && format('src-tauri/target/{0}/release/bundle/appimage/*.AppImage.tar.gz.sig', matrix.target) || '' }}
             ${{ startsWith(matrix.os, 'macos') && format('src-tauri/target/{0}/release/bundle/macos/*.dmg', matrix.target) || '' }}
             ${{ startsWith(matrix.os, 'macos') && format('src-tauri/target/{0}/release/bundle/macos/*.zip', matrix.target) || '' }}
             ${{ startsWith(matrix.os, 'macos') && format('src-tauri/target/{0}/release/bundle/macos/*.app.tar.gz', matrix.target) || '' }}
@@ -1414,7 +1416,9 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          lfs: true
 
       - name: Extract version
         id: version
@@ -1439,14 +1443,14 @@ jobs:
       - name: Verify update artifacts were downloaded
         run: |
           echo "🔍 Verifying update artifacts were downloaded..."
-          
+
           # List all downloaded artifacts
           echo "📦 Contents of update-artifacts directory:"
           find update-artifacts -type f -o -type d | head -20 || echo "   (directory may be empty)"
-          
+
           # Check if any update.json files exist
           UPDATE_FILES=$(find update-artifacts -name "update.json" -type f 2>/dev/null || true)
-          
+
           if [ -z "$UPDATE_FILES" ]; then
             echo "❌ No update.json files found in downloaded artifacts"
             echo ""
@@ -1463,7 +1467,7 @@ jobs:
             echo "   Check the logs of each platform build to see why update.json files were not generated"
             exit 1
           fi
-          
+
           echo "✅ Found update.json files:"
           echo "$UPDATE_FILES" | while IFS= read -r file; do
             echo "   - $file"
@@ -1475,44 +1479,44 @@ jobs:
       - name: Merge update.json files into latest.json
         run: |
           sudo apt-get update && sudo apt-get install -y jq
-          
+
           UPDATE_FILES=$(find update-artifacts -name "update.json" -type f)
-          
+
           if [ -z "$UPDATE_FILES" ]; then
             echo "❌ No update.json files found (this should not happen after verification step)"
             exit 1
           fi
-          
+
           FIRST_FILE=$(echo "$UPDATE_FILES" | head -n1)
           VERSION=$(jq -r '.version' "$FIRST_FILE")
           NOTES=$(jq -r '.notes' "$FIRST_FILE")
           PUB_DATE=$(jq -r '.pub_date' "$FIRST_FILE")
-          
+
           MERGED_PLATFORMS="{}"
           for FILE in $UPDATE_FILES; do
             PLATFORM_DATA=$(jq -c '.platforms' "$FILE")
             MERGED_PLATFORMS=$(echo "$MERGED_PLATFORMS" | jq --argjson platforms "$PLATFORM_DATA" '. + $platforms')
           done
-          
+
           MERGED_JSON=$(jq -n \
             --arg version "$VERSION" \
             --arg notes "$NOTES" \
             --arg pub_date "$PUB_DATE" \
             --argjson platforms "$MERGED_PLATFORMS" \
             '{version: $version, notes: $notes, pub_date: $pub_date, platforms: $platforms}')
-          
+
           echo "✅ Merged JSON created:"
           echo "$MERGED_JSON" | jq '.'
-          
+
           # ✅ DRY: Create latest.json in root for release upload
           echo "$MERGED_JSON" > latest.json
           echo "✅ Created latest.json (version: $VERSION)"
-          
+
           # ✅ DRY: Create directly in docs/ for GitHub Pages (no copy needed)
           mkdir -p docs
           echo "$MERGED_JSON" > docs/latest.json
           echo "✅ Created docs/latest.json for GitHub Pages (version: $VERSION)"
-          
+
           # Verify the version matches what we expect
           echo "🔍 Verifying version consistency..."
           LATEST_VERSION=$(echo "$MERGED_JSON" | jq -r '.version')
@@ -1524,18 +1528,18 @@ jobs:
           else
             echo "✅ Version matches: $LATEST_VERSION"
           fi
-          
+
           # Verify both files exist and are valid JSON
           if [ ! -f "latest.json" ] || [ ! -f "docs/latest.json" ]; then
             echo "❌ Failed to create latest.json files"
             exit 1
           fi
-          
+
           if ! jq empty latest.json 2>/dev/null || ! jq empty docs/latest.json 2>/dev/null; then
             echo "❌ Invalid JSON in latest.json files"
             exit 1
           fi
-          
+
           echo "✅ Verified JSON files are valid"
 
       - name: Upload latest.json to release
@@ -1581,11 +1585,11 @@ jobs:
         run: |
           echo "⏳ Waiting for GitHub Pages to propagate (up to 30s)..."
           sleep 5
-          
+
           PAGES_URL="https://pollen-robotics.github.io/reachy-mini-desktop-app/latest.json"
           MAX_RETRIES=6
           RETRY_DELAY=5
-          
+
           for i in $(seq 1 $MAX_RETRIES); do
             if curl -sf "$PAGES_URL" > /dev/null 2>&1; then
               echo "✅ GitHub Pages deployment verified at: $PAGES_URL"
@@ -1595,8 +1599,7 @@ jobs:
             echo "   Attempt $i/$MAX_RETRIES: Not yet available, retrying in ${RETRY_DELAY}s..."
             sleep $RETRY_DELAY
           done
-          
+
           echo "⚠️  Warning: Could not verify deployment (may take longer to propagate)"
           echo "   URL: $PAGES_URL"
           # Don't fail the workflow - deployment may still succeed, just needs more time
-

@@ -23,15 +23,34 @@ export default function CameraFeed({ isLarge = false }) {
     connect,
   } = useWebRTCStreamContext();
 
-  // Attach stream to video element
+  // Attach/detach stream to video element
   useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
-      videoRef.current.play().catch(e => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (stream) {
+      video.srcObject = stream;
+      video.play().catch(e => {
         console.warn('[CameraFeed] Autoplay failed:', e);
       });
+    } else {
+      video.srcObject = null;
     }
+
+    return () => {
+      video.srcObject = null;
+    };
   }, [stream]);
+
+  // Re-trigger play() when the video becomes visible after connection
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video && isConnected && video.srcObject && video.paused) {
+      video.play().catch(e => {
+        console.warn('[CameraFeed] Resume play failed:', e);
+      });
+    }
+  }, [isConnected]);
 
   // Common placeholder box style
   const placeholderStyle = {
@@ -174,7 +193,7 @@ export default function CameraFeed({ isLarge = false }) {
           width: '100%',
           height: '100%',
           objectFit: 'cover',
-          display: isConnected ? 'block' : 'none',
+          visibility: isConnected ? 'visible' : 'hidden',
         }}
       />
 

@@ -315,21 +315,17 @@ export const useUpdater = ({
           }
         });
 
-        // downloadAndInstall should handle restart automatically,
-        // but we call relaunch() explicitly to ensure restart happens
-        // Note: In dev mode, relaunch might not work correctly
+        // Explicitly relaunch after install; Tauri's updater doesn't always
+        // auto-restart (especially on consecutive updates in the same session).
         try {
-          // Small delay to ensure installation is complete before restarting
           await new Promise(resolve => setTimeout(resolve, DAEMON_CONFIG.UPDATE_CHECK.RETRY_DELAY));
-
-          // Attempt to relaunch
           await relaunch();
-
-          // If we reach here, relaunch didn't work (shouldn't happen)
-        } catch (relaunchError) {
-          // In dev mode, relaunch might fail - this is expected
-          // The app should still restart automatically via Tauri's updater mechanism
-          // Don't throw here, as the update was successful
+        } catch {
+          // relaunch() can fail on the second consecutive update (stale process
+          // handle after the first in-place binary swap). Surface it to the user.
+          setIsDownloading(false);
+          setDownloadProgress(100);
+          setError('Update installed successfully. Please restart the app manually to apply it.');
         }
       } catch (err) {
         // Extract and format error message using centralized utilities (DRY)

@@ -21,6 +21,8 @@ export default function SearchBar({
   setSearchQuery,
   officialOnly,
   setOfficialOnly,
+  privateOnly,
+  setPrivateOnly,
   isLoading,
   filteredApps,
   totalAppsCount,
@@ -262,7 +264,58 @@ export default function SearchBar({
             </>
           )}
 
-          {/* Official/Non-official toggle */}
+          {/* Private only toggle */}
+          <Box
+            sx={{
+              width: '1px',
+              height: '18px',
+              bgcolor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+            }}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={privateOnly}
+                onChange={e => setPrivateOnly(e.target.checked)}
+                disabled={isLoading}
+                size="small"
+                sx={{
+                  color: darkMode ? '#888' : '#999',
+                  '&.Mui-checked': {
+                    color: '#8b5cf6',
+                  },
+                  '&.Mui-disabled': {
+                    color: darkMode ? '#444' : '#ccc',
+                    opacity: 0.5,
+                  },
+                  '& .MuiSvgIcon-root': {
+                    fontSize: 18,
+                  },
+                }}
+              />
+            }
+            label={
+              <Typography
+                sx={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: darkMode ? '#888' : '#999',
+                  userSelect: 'none',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Private
+              </Typography>
+            }
+            sx={{
+              m: 0,
+              '& .MuiFormControlLabel-label': {
+                ml: 0.5,
+              },
+            }}
+          />
+
+          {/* Official only toggle */}
           <Box
             sx={{
               width: '1px',
@@ -299,10 +352,10 @@ export default function SearchBar({
                   fontWeight: 600,
                   color: darkMode ? '#888' : '#999',
                   userSelect: 'none',
-                  pr: 1.5, // Padding right after text
+                  pr: 1.5,
                 }}
               >
-                Official only
+                Official
               </Typography>
             }
             sx={{

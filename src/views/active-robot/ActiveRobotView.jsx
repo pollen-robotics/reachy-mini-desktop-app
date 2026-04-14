@@ -13,6 +13,7 @@ import {
 } from '@mui/material';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import useDaemonLogStream from '../../hooks/useDaemonLogStream';
+import { logInfo } from '../../utils/logging';
 import FullscreenOverlay from '../../components/FullscreenOverlay';
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 import Viewer3D from '../../components/viewer3d';
@@ -172,15 +173,9 @@ function ActiveRobotView({
   // Logs fullscreen modal
   const [logsFullscreenOpen, setLogsFullscreenOpen] = useState(false);
 
-  // Remote daemon log filters (off by default)
-  const [daemonLogFilters, setDaemonLogFilters] = useState([]);
+  // Remote daemon log stream
+  const [daemonLogFilters] = useState([]);
   const remoteLogs = useDaemonLogStream(daemonLogFilters);
-
-  const toggleLogFilter = useCallback(cat => {
-    setDaemonLogFilters(prev =>
-      prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
-    );
-  }, []);
 
   // Audio controls - Extracted to hook
   const {
@@ -240,14 +235,19 @@ function ActiveRobotView({
   // Wrapper for Quick Actions with toast and visual effects
   const handleQuickAction = useCallback(
     action => {
+      const prefix =
+        action.type === 'dance'
+          ? 'Playing dance'
+          : action.type === 'action'
+            ? 'Playing action'
+            : 'Playing emotion';
+      logInfo(`${prefix}: ${action.label || action.name}`);
+
       if (action.type === 'action') {
-        // Actions like sleep/wake_up
         sendCommand(`/api/move/play/${action.name}`, action.label);
       } else if (action.type === 'dance') {
-        // Dances
         playRecordedMove(CHOREOGRAPHY_DATASETS.DANCES, action.name);
       } else {
-        // Emotions
         playRecordedMove(CHOREOGRAPHY_DATASETS.EMOTIONS, action.name);
       }
 
@@ -543,37 +543,14 @@ function ActiveRobotView({
               }}
             >
               <Box
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  mb: 1.5,
-                  flexShrink: 0,
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <Typography
-                    sx={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: darkMode ? '#888' : '#999',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
-                    }}
-                  >
-                    Logs
-                  </Typography>
-                </Box>
-              </Box>
-
-              <Box
                 sx={{ flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }}
               >
                 <LogConsole
                   logs={logs}
                   remoteLogs={remoteLogs}
                   darkMode={darkMode}
-                  lines={4}
+                  maxHeight={120}
+                  compact={true}
                   onExpand={() => setLogsFullscreenOpen(true)}
                 />
               </Box>
@@ -610,72 +587,40 @@ function ActiveRobotView({
 
         {/* Toast Notifications - handled by global Toast in App.jsx */}
 
-        {/* Logs Fullscreen Modal */}
+        {/* Logs Fullscreen Modal - only mount LogConsole when open */}
         <FullscreenOverlay
           open={logsFullscreenOpen}
           onClose={() => setLogsFullscreenOpen(false)}
           darkMode={darkMode}
           debugName="LogsFullscreen"
           showCloseButton={true}
+          centeredY={false}
         >
-          <Box
-            sx={{
-              width: 'calc(100vw - 80px)',
-              maxWidth: '1200px',
-              height: '85vh',
-              maxHeight: '800px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 2,
-              overflow: 'hidden',
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
-              <Typography
-                sx={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: darkMode ? '#888' : '#999',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                }}
-              >
-                Logs
-              </Typography>
-              {[
-                { key: 'daemon', label: 'Daemon', color: '#60a5fa' },
-                { key: 'api', label: 'API', color: '#34d399' },
-                { key: 'app', label: 'App', color: '#c084fc' },
-              ].map(({ key, label, color }) => (
-                <Box
-                  key={key}
-                  onClick={() => toggleLogFilter(key)}
-                  sx={{
-                    fontSize: 10,
-                    fontWeight: 600,
-                    px: 1,
-                    py: 0.25,
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s',
-                    userSelect: 'none',
-                    color: daemonLogFilters.includes(key) ? color : darkMode ? '#555' : '#bbb',
-                    bgcolor: daemonLogFilters.includes(key) ? `${color}18` : 'transparent',
-                    border: `1px solid ${daemonLogFilters.includes(key) ? `${color}40` : darkMode ? '#333' : '#ddd'}`,
-                    '&:hover': {
-                      bgcolor: `${color}15`,
-                      borderColor: `${color}30`,
-                    },
-                  }}
-                >
-                  {label}
-                </Box>
-              ))}
+          {logsFullscreenOpen && (
+            <Box
+              sx={{
+                width: 'calc(100vw - 80px)',
+                maxWidth: '1200px',
+                height: '82vh',
+                maxHeight: '800px',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+                mt: 'auto',
+                mb: 5,
+              }}
+            >
+              <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                <LogConsole
+                  logs={logs}
+                  remoteLogs={remoteLogs}
+                  darkMode={darkMode}
+                  height="100%"
+                  fullSize={true}
+                />
+              </Box>
             </Box>
-            <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-              <LogConsole logs={logs} remoteLogs={remoteLogs} darkMode={darkMode} height="100%" />
-            </Box>
-          </Box>
+          )}
         </FullscreenOverlay>
       </Box>
     </WebRTCStreamProvider>

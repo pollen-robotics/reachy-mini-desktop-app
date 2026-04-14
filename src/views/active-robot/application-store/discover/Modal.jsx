@@ -34,6 +34,8 @@ export default function DiscoverModal({
   setSearchQuery,
   officialOnly,
   setOfficialOnly,
+  privateOnly,
+  setPrivateOnly,
   categories,
   selectedCategory,
   setSelectedCategory,
@@ -101,6 +103,8 @@ export default function DiscoverModal({
           setSearchQuery={setSearchQuery}
           officialOnly={officialOnly}
           setOfficialOnly={setOfficialOnly}
+          privateOnly={privateOnly}
+          setPrivateOnly={setPrivateOnly}
           isLoading={isLoading}
           filteredApps={filteredApps}
           totalAppsCount={totalAppsCount}

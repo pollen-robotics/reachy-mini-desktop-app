@@ -4,6 +4,7 @@ import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import VerifiedIcon from '@mui/icons-material/Verified';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { useActiveRobotContext } from '../../../context';
@@ -33,6 +34,7 @@ function AppCard({
   const lastModified = app.extra?.lastModified || app.extra?.createdAt || null;
   const isPythonApp = app.extra?.isPythonApp !== false;
   const isOfficial = app.isOfficial === true;
+  const isPrivate = app.extra?.private === true;
   const emoji = [...(cardData.emoji || (isPythonApp ? '📦' : '🌐'))][0];
   const spaceUrl = app.url || `https://huggingface.co/spaces/${app.extra?.id || app.name}`;
 
@@ -151,6 +153,23 @@ function AppCard({
                   height: 18,
                   flexShrink: 0,
                   '& .MuiChip-icon': { color: '#FF9500', ml: 0.5 },
+                  '& .MuiChip-label': { px: 0.5 },
+                }}
+              />
+            )}
+            {isPrivate && (
+              <Chip
+                icon={<LockOutlinedIcon sx={{ fontSize: 11 }} />}
+                label="Private"
+                size="small"
+                sx={{
+                  bgcolor: darkMode ? 'rgba(139, 92, 246, 0.15)' : 'rgba(139, 92, 246, 0.1)',
+                  color: '#8b5cf6',
+                  fontWeight: 600,
+                  fontSize: 9,
+                  height: 18,
+                  flexShrink: 0,
+                  '& .MuiChip-icon': { color: '#8b5cf6', ml: 0.5 },
                   '& .MuiChip-label': { px: 0.5 },
                 }}
               />

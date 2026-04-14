@@ -122,8 +122,8 @@ export default function ExpressionsSection({ isBusy: isBusyProp = false, darkMod
         emoji = DANCE_EMOJIS[action.name] || null;
       }
 
-      const logMessage = emoji ? `${emoji} ${action.label}` : action.label;
-      logger.userAction(logMessage);
+      const prefix = action.type === 'dance' ? 'Playing dance' : 'Playing emotion';
+      logger.userAction(`${prefix}: ${action.label}`);
 
       // 📊 Telemetry
       telemetry.expressionPlayed({ name: action.name, type: action.type });

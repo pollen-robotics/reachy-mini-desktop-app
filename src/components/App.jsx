@@ -129,7 +129,6 @@ function App() {
 
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      telemetry.appClosed();
       disableSimulationMode();
     };
   }, []);

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Box, Typography, Tooltip, IconButton, Avatar } from '@mui/material';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import LogoutIcon from '@mui/icons-material/Logout';
@@ -14,8 +14,6 @@ import { InstalledAppsSection } from '../../application-store/installed';
 import { Modal as DiscoverModal } from '../../application-store/discover';
 import { CreateAppTutorial as CreateAppTutorialModal } from '../../application-store/modals';
 import { Overlay as InstallOverlay } from '../../application-store/installation';
-import SimulationDisclaimer from './SimulationDisclaimer';
-import { isSimulationMode } from '../../../../utils/simulationMode';
 
 /**
  * Applications Section - Displays installed and available apps from Hugging Face
@@ -49,8 +47,10 @@ export default function ApplicationsSection({
 
   // State
   const [officialOnly, setOfficialOnly] = useState(false);
+  const [privateOnly, setPrivateOnly] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const previousHfUsernameRef = useRef(hfUser?.username || null);
 
   // ✅ Modal stack hook - declared BEFORE useAppInstallation to avoid stale closure
   const { openModal, closeModal, discoverModalOpen, createAppTutorialModalOpen } = useModalStack();
@@ -81,6 +81,17 @@ export default function ApplicationsSection({
       onLoadingChange(isLoading);
     }
   }, [isLoading, onLoadingChange]);
+
+  // Refresh the catalog when HF auth state changes so private spaces appear/disappear promptly.
+  useEffect(() => {
+    const currentUsername = hfUser?.username || null;
+    if (previousHfUsernameRef.current === currentUsername) {
+      return;
+    }
+
+    previousHfUsernameRef.current = currentUsername;
+    fetchAvailableApps(true);
+  }, [hfUser?.username, fetchAvailableApps]);
 
   // Reset category when switching between official/non-official
   useEffect(() => {
@@ -168,11 +179,9 @@ export default function ApplicationsSection({
     availableApps,
     searchQuery,
     selectedCategory,
-    officialOnly
+    officialOnly,
+    privateOnly
   );
-
-  // Check if we're in simulation mode
-  const inSimulationMode = isSimulationMode();
 
   return (
     <>
@@ -303,15 +312,11 @@ export default function ApplicationsSection({
                 fontWeight: 500,
               }}
             >
-              Extend Reachy's capabilities
+              Extend Reachy&apos;s capabilities
             </Typography>
           </Box>
         </Box>
-        {/* Apps list container with simulation disclaimer overlay */}
         <Box sx={{ px: 0, mb: 0, bgcolor: 'transparent', position: 'relative' }}>
-          {/* Simulation mode disclaimer - only covers the apps list box */}
-          {inSimulationMode && <SimulationDisclaimer darkMode={effectiveDarkMode} />}
-
           <InstalledAppsSection
             installedApps={installedApps}
             darkMode={effectiveDarkMode}
@@ -353,6 +358,8 @@ export default function ApplicationsSection({
         setSearchQuery={setSearchQuery}
         officialOnly={officialOnly}
         setOfficialOnly={setOfficialOnly}
+        privateOnly={privateOnly}
+        setPrivateOnly={setPrivateOnly}
         categories={categories}
         selectedCategory={selectedCategory}
         setSelectedCategory={setSelectedCategory}

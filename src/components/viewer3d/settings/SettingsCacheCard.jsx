@@ -6,8 +6,12 @@ import { buildApiUrl, fetchWithTimeout, DAEMON_CONFIG } from '../../../config/da
 import { useToast } from '../../../hooks/useToast';
 
 /**
- * Cache Card Component
- * Allows clearing HuggingFace cache and resetting apps on the robot
+ * Maintenance Card
+ * Clear HuggingFace cache and reset apps (via daemon API).
+ * Shown in all connection modes.
+ *
+ * Heavier environment resets (apps venv, full Python env) are available
+ * from the robot selection screen (FindingRobotView).
  */
 export default function SettingsCacheCard({
   darkMode,
@@ -46,10 +50,33 @@ export default function SettingsCacheCard({
   };
 
   const textSecondary = darkMode ? '#888' : '#666';
+  const dangerColor = darkMode ? '#f87171' : '#dc2626';
+  const dangerBorder = darkMode ? 'rgba(248, 113, 113, 0.5)' : 'rgba(220, 38, 38, 0.5)';
+  const dangerHoverBg = darkMode ? 'rgba(248, 113, 113, 0.1)' : 'rgba(220, 38, 38, 0.08)';
+  const disabledBorder = darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+  const disabledColor = darkMode ? '#555' : '#bbb';
+
+  const dangerButtonStyle = {
+    ...buttonStyle,
+    fontSize: 12,
+    py: 0.75,
+    px: 2,
+    borderRadius: '8px',
+    color: dangerColor,
+    borderColor: dangerBorder,
+    '&:hover': {
+      borderColor: dangerColor,
+      bgcolor: dangerHoverBg,
+    },
+    '&:disabled': {
+      borderColor: disabledBorder,
+      color: disabledColor,
+    },
+  };
 
   return (
     <Box sx={cardStyle}>
-      <SectionHeader title="Cache Management" icon={DeleteOutlineIcon} darkMode={darkMode} />
+      <SectionHeader title="Maintenance" icon={DeleteOutlineIcon} darkMode={darkMode} />
 
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
         <Typography sx={{ fontSize: 12, color: textSecondary, lineHeight: 1.5 }}>
@@ -63,24 +90,7 @@ export default function SettingsCacheCard({
           startIcon={
             isClearing ? <CircularProgress size={16} color="inherit" /> : <DeleteOutlineIcon />
           }
-          sx={{
-            ...buttonStyle,
-            fontSize: 12,
-            py: 0.75,
-            px: 2,
-            borderRadius: '8px',
-            // Use warning color for destructive action
-            color: darkMode ? '#f87171' : '#dc2626',
-            borderColor: darkMode ? 'rgba(248, 113, 113, 0.5)' : 'rgba(220, 38, 38, 0.5)',
-            '&:hover': {
-              borderColor: darkMode ? '#f87171' : '#dc2626',
-              bgcolor: darkMode ? 'rgba(248, 113, 113, 0.1)' : 'rgba(220, 38, 38, 0.08)',
-            },
-            '&:disabled': {
-              borderColor: darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
-              color: darkMode ? '#555' : '#bbb',
-            },
-          }}
+          sx={dangerButtonStyle}
         >
           {isClearing ? 'Clearing...' : 'Clear HuggingFace Cache'}
         </Button>
@@ -96,23 +106,7 @@ export default function SettingsCacheCard({
           startIcon={
             isResettingApps ? <CircularProgress size={16} color="inherit" /> : <DeleteOutlineIcon />
           }
-          sx={{
-            ...buttonStyle,
-            fontSize: 12,
-            py: 0.75,
-            px: 2,
-            borderRadius: '8px',
-            color: darkMode ? '#f87171' : '#dc2626',
-            borderColor: darkMode ? 'rgba(248, 113, 113, 0.5)' : 'rgba(220, 38, 38, 0.5)',
-            '&:hover': {
-              borderColor: darkMode ? '#f87171' : '#dc2626',
-              bgcolor: darkMode ? 'rgba(248, 113, 113, 0.1)' : 'rgba(220, 38, 38, 0.08)',
-            },
-            '&:disabled': {
-              borderColor: darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
-              color: darkMode ? '#555' : '#bbb',
-            },
-          }}
+          sx={dangerButtonStyle}
         >
           {isResettingApps ? 'Resetting...' : 'Reset Apps Cache'}
         </Button>

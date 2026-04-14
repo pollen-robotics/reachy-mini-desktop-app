@@ -18,7 +18,6 @@ import {
   SettingsPreferencesCard,
   SettingsCacheCard,
   SettingsDaemonCard,
-  SettingsResetCard,
   ChangeWifiOverlay,
 } from './settings';
 
@@ -686,7 +685,7 @@ export default function SettingsOverlay({ open, onClose, darkMode }) {
         <Box
           sx={{
             width: '90%',
-            maxWidth: isWifiMode ? '680px' : '360px',
+            maxWidth: '680px',
             mx: 'auto',
             display: 'flex',
             flexDirection: 'column',
@@ -750,11 +749,11 @@ export default function SettingsOverlay({ open, onClose, darkMode }) {
           <Box
             sx={{
               display: 'grid',
-              gridTemplateColumns: isWifiMode ? 'repeat(2, 1fr)' : '1fr',
+              gridTemplateColumns: 'repeat(2, 1fr)',
               gap: 2,
             }}
           >
-            {/* Row 1: Update + WiFi (or Update alone) */}
+            {/* Row 1: Update + WiFi (WiFi) or Update + Daemon Control (USB/Sim) */}
             <SettingsUpdateCard
               darkMode={darkMode}
               title={isWifiMode ? 'System Update' : 'Daemon Update'}
@@ -770,7 +769,7 @@ export default function SettingsOverlay({ open, onClose, darkMode }) {
               isOnline={navigator.onLine}
             />
 
-            {isWifiMode && (
+            {isWifiMode ? (
               <SettingsWifiCard
                 darkMode={darkMode}
                 wifiStatus={wifiStatus}
@@ -780,15 +779,16 @@ export default function SettingsOverlay({ open, onClose, darkMode }) {
                 onClearAllNetworks={() => setShowClearNetworksConfirm(true)}
                 cardStyle={cardStyle}
               />
+            ) : (
+              <SettingsDaemonCard darkMode={darkMode} cardStyle={cardStyle} />
             )}
 
-            {/* Row 2: Preferences + Daemon Control (WiFi) or just Preferences */}
+            {/* Row 2: Preferences + Daemon Control (WiFi) or Preferences + Maintenance (USB/Sim) */}
             <SettingsPreferencesCard darkMode={darkMode} cardStyle={cardStyle} />
 
-            {isWifiMode && <SettingsDaemonCard darkMode={darkMode} cardStyle={cardStyle} />}
-
-            {/* Row 3: Cache (WiFi only) / Environment Reset (USB/Sim only) */}
-            {isWifiMode && (
+            {isWifiMode ? (
+              <SettingsDaemonCard darkMode={darkMode} cardStyle={cardStyle} />
+            ) : (
               <SettingsCacheCard
                 darkMode={darkMode}
                 cardStyle={cardStyle}
@@ -797,15 +797,15 @@ export default function SettingsOverlay({ open, onClose, darkMode }) {
                 isResettingApps={isResettingApps}
               />
             )}
-            {!isWifiMode && (
-              <SettingsResetCard
+
+            {/* Row 3: Maintenance (WiFi only) */}
+            {isWifiMode && (
+              <SettingsCacheCard
                 darkMode={darkMode}
                 cardStyle={cardStyle}
                 buttonStyle={buttonStyle}
-                onResetAppsVenv={handleResetAppsVenvClick}
-                isResettingAppsVenv={isResettingAppsVenv}
-                onResetPythonEnv={handleResetPythonEnvClick}
-                isResettingPythonEnv={isResettingPythonEnv}
+                onResetAppsClick={handleResetAppsClick}
+                isResettingApps={isResettingApps}
               />
             )}
           </Box>

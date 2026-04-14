@@ -90,12 +90,6 @@ fn start_daemon(
         );
     }
 
-    let success_msg = if sim_mode {
-        "Daemon started in simulation mode (mockup-sim)"
-    } else {
-        "Daemon started via embedded sidecar"
-    };
-    add_log(&state, success_msg.to_string());
     Ok("Daemon started successfully".to_string())
 }
 
@@ -229,6 +223,50 @@ async fn set_local_proxy_target(
 async fn clear_local_proxy_target(state: State<'_, Arc<LocalProxyState>>) -> Result<(), String> {
     local_proxy::clear_target_host(&state).await;
     Ok(())
+}
+
+// ============================================================================
+// SIDECAR BUILD INFO
+// ============================================================================
+
+#[tauri::command]
+fn get_sidecar_source() -> serde_json::Value {
+    let marker_path = {
+        #[cfg(target_os = "macos")]
+        {
+            std::env::var("HOME").ok().map(|h| {
+                std::path::PathBuf::from(h).join(
+                    "Library/Application Support/com.pollen-robotics.reachy-mini/.reachy_mini_spec",
+                )
+            })
+        }
+        #[cfg(target_os = "windows")]
+        {
+            std::env::var("LOCALAPPDATA")
+                .ok()
+                .map(|d| std::path::PathBuf::from(d).join("Reachy Mini Control\\.reachy_mini_spec"))
+        }
+        #[cfg(target_os = "linux")]
+        {
+            std::env::var("HOME").ok().map(|h| {
+                std::path::PathBuf::from(h)
+                    .join(".local/share/reachy-mini-control/.reachy_mini_spec")
+            })
+        }
+    };
+
+    let spec = marker_path
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+
+    let branch = spec.split('@').nth(1).map(String::from);
+
+    serde_json::json!({
+        "source": branch.as_deref().unwrap_or("pypi"),
+        "spec": spec,
+    })
 }
 
 // ============================================================================
@@ -420,6 +458,7 @@ pub fn run() {
             update::update_daemon,
             reset::reset_apps_venv,
             reset::reset_python_env,
+            get_sidecar_source,
             set_local_proxy_target,
             clear_local_proxy_target,
             // Robot discovery (mDNS + manual IP)
