@@ -49,6 +49,13 @@ export const uiInitialState = {
     message: '',
     severity: 'info', // 'success' | 'error' | 'warning' | 'info'
   },
+
+  // 🌐 Central-signaling-server robot status (polled via the daemon proxy).
+  // Tells us whether any of the user's robots is currently held by a remote
+  // JS app — so we can show a badge and block local app runs that would
+  // fight the remote session over the robot's single control slot.
+  // Shape: { available: bool, robots: [{ peerId, robotName, busy, activeApp }] }
+  centralRobotStatus: { available: false, robots: [] },
 };
 
 /**
@@ -162,6 +169,9 @@ export const createUISlice = (set, get) => ({
     set(state => ({
       toast: { ...state.toast, open: false },
     })),
+
+  // 🌐 Central robot status setter (written by useCentralRobotStatus hook)
+  setCentralRobotStatus: status => set({ centralRobotStatus: status }),
 });
 
 /**

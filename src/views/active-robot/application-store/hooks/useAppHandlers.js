@@ -128,6 +128,9 @@ export function useAppHandlers({
         showToast('Please wait for the current action to finish', 'warning');
         return;
       }
+      // NOTE: concurrent-launch gate lives in RightPanel via
+      // <CentralBusyOverlay>, which masks the launcher whenever a remote
+      // web app holds the robot. No secondary gate needed here.
 
       const isCurrentAppActive =
         currentApp &&

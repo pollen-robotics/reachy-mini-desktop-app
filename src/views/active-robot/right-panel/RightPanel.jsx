@@ -1,13 +1,17 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { Box } from '@mui/material';
+import { useShallow } from 'zustand/react/shallow';
 import { ApplicationsSection } from './applications';
 import ControlButtons from './ControlButtons';
 import HfLoginOverlay from './applications/HfLoginOverlay';
 import { ControllerSection } from './controller';
 import ExpressionsSection from './expressions';
 import EmbeddedAppView from './EmbeddedAppView';
+import CentralBusyOverlay from './CentralBusyOverlay';
 import { useActiveRobotContext } from '../context';
 import { useHfAuth } from '../../../hooks/auth';
+import useAppStore from '../../../store/useAppStore';
+import { selectCentralBusy } from '../../../hooks/system/useCentralRobotStatus';
 
 /**
  * Right Panel - Assembles Control Buttons and Applications sections
@@ -46,6 +50,13 @@ export default function RightPanel({
 
   const [loginSkipped, setLoginSkipped] = useState(false);
   const isEmbeddedApp = rightPanelView === 'embedded-app';
+
+  // When a remote web app is holding the robot via the cloud relay, we
+  // mask the panel to physically prevent concurrent launches. Local apps
+  // that are already running (embedded view) keep their own UI — the
+  // overlay only blocks *new* launches from the apps list / control views.
+  const centralBusy = useAppStore(useShallow(selectCentralBusy));
+  const showBusyOverlay = centralBusy.isBusy && !isEmbeddedApp;
 
   const scrollRef = useRef(null);
   const [showTopGradient, setShowTopGradient] = useState(false);
@@ -153,6 +164,8 @@ export default function RightPanel({
         {/* Conditional rendering based on rightPanelView */}
         {isEmbeddedApp ? (
           <EmbeddedAppView darkMode={darkMode} />
+        ) : showBusyOverlay ? (
+          <CentralBusyOverlay activeApp={centralBusy.activeApp} darkMode={darkMode} />
         ) : rightPanelView === 'controller' ? (
           <ControllerSection showToast={showToast} isBusy={isBusy} darkMode={darkMode} />
         ) : rightPanelView === 'expressions' ? (
