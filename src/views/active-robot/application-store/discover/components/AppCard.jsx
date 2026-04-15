@@ -1,13 +1,13 @@
-import React, { memo } from 'react';
-import { Box, Typography, Button, Avatar, Chip, CircularProgress } from '@mui/material';
+import React, { memo, useState } from 'react';
+import { Box, Typography, Button, Avatar, Chip, CircularProgress, Popover } from '@mui/material';
 import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import VerifiedIcon from '@mui/icons-material/Verified';
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import { QRCodeSVG } from 'qrcode.react';
 import { useActiveRobotContext } from '../../../context';
-import { openJsApp } from '../../../../../utils/jsAppLauncher';
 
 /**
  * App card component for Discover Modal
@@ -27,6 +27,8 @@ function AppCard({
 }) {
   const { shellApi } = useActiveRobotContext();
   const open = shellApi.open;
+  // QR popover anchor — clicking the inline QR thumbnail enlarges it.
+  const [qrAnchor, setQrAnchor] = useState(null);
   // Extract data from HF Space API
   const cardData = app.extra?.cardData || {};
   const author = app.extra?.id?.split('/')?.[0] || app.extra?.author || null;
@@ -80,16 +82,9 @@ function AppCard({
         app.url
           ? async () => {
               try {
-                if (!isPythonApp) {
-                  // JS apps: embed in panel (Win/Mac) or spawn Chromium (Linux)
-                  await openJsApp(app, { shellApi });
-                } else {
-                  // Python apps: card body click is an "info" action — open the
-                  // HF Space page in the user's browser so they can read more.
-                  await open(app.url);
-                }
+                await open(app.url);
               } catch (err) {
-                console.error('Failed to open app:', err);
+                console.error('Failed to open space URL:', err);
               }
             }
           : undefined
@@ -385,38 +380,129 @@ function AppCard({
                   : 'Install'}
           </Button>
         ) : (
-          <Button
-            variant="outlined"
-            size="small"
-            endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
-            onClick={async e => {
-              e.stopPropagation();
-              try {
-                await openJsApp(app, { shellApi });
-              } catch (err) {
-                console.error('Failed to open JS app:', err);
-              }
-            }}
-            sx={{
-              mt: 'auto',
-              width: '100%',
-              py: 1,
-              fontSize: 12,
-              fontWeight: 600,
-              textTransform: 'none',
-              borderRadius: '10px',
-              bgcolor: 'transparent',
-              color: '#6366f1',
-              border: '1px solid #6366f1',
-              transition: 'all 0.2s ease',
-              '&:hover': {
-                bgcolor: 'rgba(99, 102, 241, 0.08)',
-                borderColor: '#6366f1',
-              },
-            }}
-          >
-            Open
-          </Button>
+          <Box sx={{ mt: 'auto', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            {/* Open in browser */}
+            <Button
+              variant="outlined"
+              size="small"
+              endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
+              onClick={async e => {
+                e.stopPropagation();
+                try {
+                  await open(spaceUrl);
+                } catch (err) {
+                  console.error('Failed to open web app URL:', err);
+                }
+              }}
+              sx={{
+                flex: 1,
+                py: 1,
+                fontSize: 12,
+                fontWeight: 600,
+                textTransform: 'none',
+                borderRadius: '10px',
+                bgcolor: 'transparent',
+                color: '#6366f1',
+                border: '1px solid #6366f1',
+                transition: 'all 0.2s ease',
+                '&:hover': {
+                  bgcolor: 'rgba(99, 102, 241, 0.08)',
+                  borderColor: '#6366f1',
+                },
+              }}
+            >
+              Open
+            </Button>
+
+            {/* QR thumbnail — click to enlarge in a popover for phone scanning */}
+            <Box
+              onClick={e => {
+                e.stopPropagation();
+                setQrAnchor(e.currentTarget);
+              }}
+              sx={{
+                flexShrink: 0,
+                p: 0.5,
+                borderRadius: '8px',
+                bgcolor: '#ffffff',
+                border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.1)'}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                transition: 'transform 0.15s ease, border-color 0.15s ease',
+                '&:hover': {
+                  transform: 'scale(1.05)',
+                  borderColor: '#6366f1',
+                },
+              }}
+            >
+              <QRCodeSVG value={spaceUrl} size={48} level="L" />
+            </Box>
+
+            <Popover
+              open={Boolean(qrAnchor)}
+              anchorEl={qrAnchor}
+              onClose={() => setQrAnchor(null)}
+              anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+              transformOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+              onClick={e => e.stopPropagation()}
+              slotProps={{
+                paper: {
+                  sx: {
+                    p: 2,
+                    borderRadius: '14px',
+                    bgcolor: darkMode ? '#1a1a1a' : '#ffffff',
+                    border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.1)'}`,
+                    boxShadow: darkMode
+                      ? '0 8px 24px rgba(0, 0, 0, 0.6)'
+                      : '0 8px 24px rgba(0, 0, 0, 0.15)',
+                  },
+                },
+              }}
+            >
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 1.25,
+                  maxWidth: 260,
+                }}
+              >
+                <Typography
+                  sx={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: darkMode ? '#aaa' : '#666',
+                  }}
+                >
+                  Scan to open on your phone
+                </Typography>
+                <Box
+                  sx={{
+                    p: 1.5,
+                    borderRadius: '10px',
+                    bgcolor: '#ffffff',
+                  }}
+                >
+                  <QRCodeSVG value={spaceUrl} size={220} level="M" />
+                </Box>
+                <Typography
+                  sx={{
+                    fontSize: 10,
+                    color: darkMode ? '#888' : '#888',
+                    fontFamily: 'monospace',
+                    wordBreak: 'break-all',
+                    textAlign: 'center',
+                    maxWidth: '100%',
+                  }}
+                >
+                  {spaceUrl}
+                </Typography>
+              </Box>
+            </Popover>
+          </Box>
         )}
       </Box>
     </Box>

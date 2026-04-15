@@ -32,8 +32,6 @@ export const uiInitialState = {
   openWindows: [],
   rightPanelView: null, // null | 'controller' | 'expressions' | 'embedded-app'
   embeddedAppUrl: null, // URL to display in the right panel iframe when rightPanelView === 'embedded-app'
-  embeddedAppKind: null, // 'python' | 'js' — Python apps are daemon-managed (need stop call); JS apps are pure iframes to HF Spaces
-  embeddedAppName: null, // Display name (used for JS apps; Python apps use currentAppName from daemon)
   embeddedAppDismissed: false, // true when user manually closed the embedded view (prevents auto-reopen)
   showFirstTimeWifiSetup: false, // true when showing first time WiFi setup view
   showBluetoothSupportView: false, // true when showing Bluetooth support/reset view
@@ -87,37 +85,10 @@ export const createUISlice = (set, get) => ({
   // Embedded app management
   setEmbeddedAppUrl: url => set({ embeddedAppUrl: url }),
   openEmbeddedApp: url =>
-    set({
-      rightPanelView: 'embedded-app',
-      embeddedAppUrl: url,
-      embeddedAppKind: 'python',
-      embeddedAppName: null,
-      embeddedAppDismissed: false,
-    }),
-  // JS app: pure iframe to a remote (e.g. HF Space) URL — no daemon involvement
-  openEmbeddedJsApp: ({ url, name }) =>
-    set({
-      rightPanelView: 'embedded-app',
-      embeddedAppUrl: url,
-      embeddedAppKind: 'js',
-      embeddedAppName: name || null,
-      embeddedAppDismissed: false,
-    }),
-  closeEmbeddedApp: () =>
-    set({
-      rightPanelView: null,
-      embeddedAppUrl: null,
-      embeddedAppKind: null,
-      embeddedAppName: null,
-    }),
+    set({ rightPanelView: 'embedded-app', embeddedAppUrl: url, embeddedAppDismissed: false }),
+  closeEmbeddedApp: () => set({ rightPanelView: null, embeddedAppUrl: null }),
   dismissEmbeddedApp: () =>
-    set({
-      rightPanelView: null,
-      embeddedAppUrl: null,
-      embeddedAppKind: null,
-      embeddedAppName: null,
-      embeddedAppDismissed: true,
-    }),
+    set({ rightPanelView: null, embeddedAppUrl: null, embeddedAppDismissed: true }),
   resetEmbeddedAppDismissed: () => set({ embeddedAppDismissed: false }),
 
   // First time WiFi setup view management

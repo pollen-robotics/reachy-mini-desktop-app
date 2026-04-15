@@ -13,9 +13,19 @@ const EXCLUDED_TAGS = new Set([
 ]);
 
 // Synthetic category for live (browser-side / no-install) apps.
-// Filters to apps where isPythonApp === false (set by the website API based
-// on whether the HF Space carries the reachy_mini_python_app tag).
+// Filters to apps explicitly tagged `reachy_mini_js_app` on their HF Space.
+// We deliberately do NOT use `isPythonApp === false` as the criterion: the
+// website API marks any space lacking `reachy_mini_python_app` as non-Python,
+// which sweeps in legacy/untagged spaces (assembly guides, drafts, demos)
+// that aren't really live JS apps.
 export const LIVE_CATEGORY = 'live';
+const LIVE_TAG = 'reachy_mini_js_app';
+
+function isLiveApp(app) {
+  const root = app.extra?.tags || [];
+  const card = app.extra?.cardData?.tags || [];
+  return [...root, ...card].some(t => typeof t === 'string' && t.toLowerCase() === LIVE_TAG);
+}
 
 const FUSE_OPTIONS = {
   keys: [
@@ -108,7 +118,7 @@ export function useAppFiltering(
 
     // Prepend the synthetic "Live" category when at least one live app is
     // present. Lives at the front of the chip row to make it discoverable.
-    const liveCount = appsForMode.filter(app => app.extra?.isPythonApp === false).length;
+    const liveCount = appsForMode.filter(isLiveApp).length;
     if (liveCount > 0) {
       return [{ name: LIVE_CATEGORY, count: liveCount }, ...tagCategories];
     }
@@ -120,9 +130,9 @@ export function useAppFiltering(
 
     // Filter by category
     if (selectedCategory) {
-      // Synthetic "Live" category: browser-side apps only (no install needed).
+      // Synthetic "Live" category: only spaces explicitly tagged as live JS apps.
       if (selectedCategory === LIVE_CATEGORY) {
-        apps = apps.filter(app => app.extra?.isPythonApp === false);
+        apps = apps.filter(isLiveApp);
       } else {
         apps = apps.filter(app => {
           const rootTags = app.extra?.tags || [];
