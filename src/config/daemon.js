@@ -35,6 +35,7 @@ export const DAEMON_CONFIG = {
     HEALTHCHECK_POLLING_WIFI: 5000, // WiFi health check every 5s (higher latency, avoid false positives)
     LOGS_FETCH: 1000, // Logs every 1s
     USB_CHECK: 3000, // USB every 3s (reduced to prevent terminal flicker on Windows)
+    DISCOVERY_SCAN: 10000, // Full discovery cycle every 10s (cache 2s + peers 3s + mDNS 5s)
     VERSION_FETCH: 10000, // Version every 10s
     APP_STATUS: 2000, // Current app status every 2s
     JOB_POLLING: 500, // Poll job install/remove every 500ms

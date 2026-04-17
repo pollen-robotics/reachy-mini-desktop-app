@@ -7,6 +7,7 @@ import {
   getAdapterState,
   readString,
   sendString,
+  listServices,
 } from '@mnlphlp/plugin-blec';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { emit, listen } from '../../utils/tauriCompat';
@@ -65,7 +66,13 @@ export default function useBluetooth() {
     try {
       // Start the scan (on Windows, the promise may resolve before the timeout)
       startScan(devices => {
-        // Filter for ReachyMini devices client-side
+        const named = devices.filter(d => d.name);
+        if (named.length > 0) {
+          console.log(
+            '[BLE] Devices found:',
+            named.map(d => `${d.name} (${d.address})`).join(', ')
+          );
+        }
         const reachyDevices = devices.filter(
           d => d.name && d.name.toLowerCase().replace(/-/g, '').includes('reachymini')
         );
@@ -127,6 +134,14 @@ export default function useBluetooth() {
         setBleDeviceAddress(address);
         loadBlePinForDevice(address);
         setBleStatus('connected');
+
+        // Debug: log discovered services and characteristics
+        try {
+          const services = await listServices(address);
+          console.log('[BLE] Discovered services:', JSON.stringify(services, null, 2));
+        } catch (e) {
+          console.warn('[BLE] Could not list services:', e);
+        }
       } catch (e) {
         console.error('[BLE] Connect error:', e);
         setBleStatus('disconnected');
@@ -216,7 +231,15 @@ export default function useBluetooth() {
     if (bleStatus !== 'connected') {
       throw new Error('Not connected');
     }
-    return await readString(NETWORK_STATUS_CHAR_UUID, STATUS_SERVICE_UUID);
+    console.log(
+      '[BLE] Reading network status from',
+      NETWORK_STATUS_CHAR_UUID,
+      'service',
+      STATUS_SERVICE_UUID
+    );
+    const result = await readString(NETWORK_STATUS_CHAR_UUID, STATUS_SERVICE_UUID);
+    console.log('[BLE] Network status result:', result);
+    return result;
   }, [bleStatus]);
 
   const journalActiveRef = useRef(false);

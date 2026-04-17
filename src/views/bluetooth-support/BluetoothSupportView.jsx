@@ -343,10 +343,8 @@ export default function BluetoothSupportView() {
                   onClick={async () => {
                     setAdapterWarning('');
                     const state = await checkAdapterState();
-                    if (!state || state === 'Off' || state === 'Unknown') {
-                      setAdapterWarning(
-                        'Bluetooth is off or unavailable. Enable it in System Settings.'
-                      );
+                    if (state === 'Off') {
+                      setAdapterWarning('Bluetooth is off. Enable it in System Settings.');
                       return;
                     }
                     scan();

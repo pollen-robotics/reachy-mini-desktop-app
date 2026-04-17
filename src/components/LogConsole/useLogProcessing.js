@@ -138,8 +138,9 @@ export const useLogProcessing = (
     for (let i = 0; i < safeLogs.length; i++) {
       const raw = safeLogs[i];
 
-      // In simple mode, pre-filter noisy logs before normalizing (cheaper)
-      if (!isDev) {
+      // In simple mode, pre-filter noisy logs before normalizing (cheaper).
+      // Skip this filter when showing only local logs (includeStoreLogs=false).
+      if (!isDev && includeStoreLogs) {
         try {
           const msg =
             typeof raw === 'string'
@@ -204,9 +205,11 @@ export const useLogProcessing = (
     }
 
     // --- Mode-specific filtering ---
-    if (mode === 'simple') {
+    // Skip simple-mode allowlist when only showing local logs (no store logs),
+    // since those are explicitly added by the component and should always appear.
+    if (mode === 'simple' && includeStoreLogs) {
       filtered = filtered.filter(isSimpleModeVisible);
-    } else {
+    } else if (mode !== 'simple') {
       if (categoryFilters && categoryFilters.length > 0) {
         filtered = filtered.filter(log => categoryFilters.includes(log.category));
       }

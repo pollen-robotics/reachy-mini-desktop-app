@@ -175,7 +175,7 @@ export function useRobotDiscovery() {
       if (isMountedRef.current) {
         performScan();
       }
-    }, DAEMON_CONFIG.INTERVALS.USB_CHECK);
+    }, DAEMON_CONFIG.INTERVALS.DISCOVERY_SCAN);
   }, [performScan]);
 
   /**

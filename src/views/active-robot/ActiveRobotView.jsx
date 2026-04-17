@@ -173,9 +173,13 @@ function ActiveRobotView({
   // Logs fullscreen modal
   const [logsFullscreenOpen, setLogsFullscreenOpen] = useState(false);
 
-  // Remote daemon log stream
-  const [daemonLogFilters] = useState([]);
-  const remoteLogs = useDaemonLogStream(daemonLogFilters);
+  // Remote daemon log stream (WiFi mode only)
+  const logMode = useAppStore(s => s.logMode);
+  const remoteCategories = useMemo(
+    () => (logMode === 'dev' ? ['daemon', 'app', 'api'] : ['daemon']),
+    [logMode]
+  );
+  const remoteLogs = useDaemonLogStream(remoteCategories);
 
   // Audio controls - Extracted to hook
   const {

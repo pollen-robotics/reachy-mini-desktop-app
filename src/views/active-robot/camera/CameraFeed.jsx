@@ -60,7 +60,7 @@ export default function CameraFeed({ isLarge = false }) {
     borderRadius: isLarge ? '16px' : '12px',
     overflow: 'hidden',
     border: isLarge ? 'none' : '1px solid rgba(0, 0, 0, 0.08)',
-    bgcolor: '#000000',
+    bgcolor: '#e8e8e8',
   };
 
   // WebRTC not available (e.g. simulation without WebRTC support)

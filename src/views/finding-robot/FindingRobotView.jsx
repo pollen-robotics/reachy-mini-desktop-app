@@ -268,7 +268,8 @@ function ConnectionCard({
  * Uses useConnection hook for unified connection handling
  */
 export default function FindingRobotView() {
-  const { darkMode, setShowFirstTimeWifiSetup, clearApps } = useAppStore();
+  const { darkMode, setShowFirstTimeWifiSetup, setShowBluetoothSupportView, clearApps } =
+    useAppStore();
   const { isScanning, usbRobot, wifiRobot, wifiRobots, selectWifiRobot } = useRobotDiscovery();
   const { connect, isConnecting, isDisconnecting } = useConnection();
   const [selectedMode, setSelectedMode] = useState(null);
@@ -976,6 +977,29 @@ export default function FindingRobotView() {
             }}
           >
             First time WiFi setup
+          </Box>
+          <Box
+            component="span"
+            sx={{
+              fontSize: 12,
+              color: 'text.secondary',
+              userSelect: 'none',
+            }}
+          >
+            ·
+          </Box>
+          <Box
+            component="span"
+            onClick={() => setShowBluetoothSupportView(true)}
+            sx={{
+              fontSize: 12,
+              color: 'primary.main',
+              cursor: 'pointer',
+              fontWeight: 500,
+              textDecoration: 'underline',
+            }}
+          >
+            Troubleshooting
           </Box>
         </Box>
       </Box>
