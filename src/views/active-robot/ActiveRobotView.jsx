@@ -25,6 +25,8 @@ import RobotHeader from './RobotHeader';
 import { PowerButton } from './controls';
 import AudioControls from './audio/AudioControls';
 import { useRobotPowerState, useRobotMovementStatus } from './hooks';
+import { useCentralRobotStatus } from '../../hooks/system/useCentralRobotStatus';
+import { useHfAuth } from '../../hooks/auth';
 import { useAudioControls } from './audio/hooks';
 import { useAppLogs, useApps, useAppHandlers } from './application-store/hooks';
 import { useActiveRobotContext } from './context';
@@ -77,6 +79,13 @@ function ActiveRobotView({
 
   // ✅ Monitor active movements and update store status (robotStatus: 'busy', busyReason: 'moving')
   useRobotMovementStatus(isActive);
+
+  // 🌐 Poll the central signaling server (via the daemon proxy) to know
+  // whether any of the user's robots is currently held by a remote JS app.
+  // Only polls while the user is logged in to HF — otherwise the central
+  // has nothing to tell us.
+  const { isAuthenticated: hfAuthenticated } = useHfAuth();
+  useCentralRobotStatus({ enabled: isActive && hfAuthenticated });
 
   // Toast notifications (global - rendered in App.jsx)
   const { showToast } = useToast();

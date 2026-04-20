@@ -91,11 +91,31 @@ export default function CategoryFilters({
         />
         {categories.length > 0 &&
           categories.map(category => {
-            const displayName = category.name.startsWith('sdk:')
-              ? category.name.replace('sdk:', '').charAt(0).toUpperCase() +
-                category.name.replace('sdk:', '').slice(1).toLowerCase()
-              : category.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            // Synthetic "Live" pseudo-category gets a globe + indigo accent
+            // (matches the "Web" badge on individual cards).
+            const isLive = category.name === 'live';
+            const displayName = isLive
+              ? '🌐 Live'
+              : category.name.startsWith('sdk:')
+                ? category.name.replace('sdk:', '').charAt(0).toUpperCase() +
+                  category.name.replace('sdk:', '').slice(1).toLowerCase()
+                : category.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
             const isSelected = selectedCategory === category.name;
+            const accent = isLive ? '#6366f1' : '#FF9500';
+            const accentBgSelected = isLive
+              ? darkMode
+                ? 'rgba(99, 102, 241, 0.2)'
+                : 'rgba(99, 102, 241, 0.15)'
+              : darkMode
+                ? 'rgba(255, 149, 0, 0.2)'
+                : 'rgba(255, 149, 0, 0.15)';
+            const accentBgHover = isLive
+              ? darkMode
+                ? 'rgba(99, 102, 241, 0.25)'
+                : 'rgba(99, 102, 241, 0.2)'
+              : darkMode
+                ? 'rgba(255, 149, 0, 0.25)'
+                : 'rgba(255, 149, 0, 0.2)';
 
             return (
               <Chip
@@ -107,7 +127,7 @@ export default function CategoryFilters({
                       sx={{
                         fontSize: 11,
                         fontWeight: 600,
-                        color: isSelected ? '#FF9500' : darkMode ? '#888' : '#999',
+                        color: isSelected ? accent : darkMode ? '#888' : '#999',
                         opacity: 0.8,
                       }}
                     >
@@ -122,22 +142,18 @@ export default function CategoryFilters({
                   fontSize: 12,
                   fontWeight: isSelected ? 700 : 500,
                   bgcolor: isSelected
-                    ? darkMode
-                      ? 'rgba(255, 149, 0, 0.2)'
-                      : 'rgba(255, 149, 0, 0.15)'
+                    ? accentBgSelected
                     : darkMode
                       ? 'rgba(255, 255, 255, 0.08)'
                       : 'rgba(0, 0, 0, 0.05)',
-                  color: isSelected ? '#FF9500' : darkMode ? '#aaa' : '#666',
+                  color: isSelected ? accent : darkMode ? '#aaa' : '#666',
                   border: isSelected
-                    ? '1px solid #FF9500'
+                    ? `1px solid ${accent}`
                     : `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'}`,
                   cursor: 'pointer',
                   '&:hover': {
                     bgcolor: isSelected
-                      ? darkMode
-                        ? 'rgba(255, 149, 0, 0.25)'
-                        : 'rgba(255, 149, 0, 0.2)'
+                      ? accentBgHover
                       : darkMode
                         ? 'rgba(255, 255, 255, 0.12)'
                         : 'rgba(0, 0, 0, 0.08)',

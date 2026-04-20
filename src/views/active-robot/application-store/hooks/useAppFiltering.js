@@ -5,11 +5,27 @@ const EXCLUDED_TAGS = new Set([
   'reachy_mini',
   'reachy-mini',
   'reachy_mini_python_app',
+  'reachy_mini_js_app',
   'static',
   'docker',
   'region:us',
   'region:eu',
 ]);
+
+// Synthetic category for live (browser-side / no-install) apps.
+// Filters to apps explicitly tagged `reachy_mini_js_app` on their HF Space.
+// We deliberately do NOT use `isPythonApp === false` as the criterion: the
+// website API marks any space lacking `reachy_mini_python_app` as non-Python,
+// which sweeps in legacy/untagged spaces (assembly guides, drafts, demos)
+// that aren't really live JS apps.
+export const LIVE_CATEGORY = 'live';
+const LIVE_TAG = 'reachy_mini_js_app';
+
+function isLiveApp(app) {
+  const root = app.extra?.tags || [];
+  const card = app.extra?.cardData?.tags || [];
+  return [...root, ...card].some(t => typeof t === 'string' && t.toLowerCase() === LIVE_TAG);
+}
 
 const FUSE_OPTIONS = {
   keys: [
@@ -103,10 +119,18 @@ export function useAppFiltering(
       }
     });
 
-    return Array.from(categoryMap.entries())
+    const tagCategories = Array.from(categoryMap.entries())
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => (b.count !== a.count ? b.count - a.count : a.name.localeCompare(b.name)))
       .slice(0, 8);
+
+    // Prepend the synthetic "Live" category when at least one live app is
+    // present. Lives at the front of the chip row to make it discoverable.
+    const liveCount = appsForMode.filter(isLiveApp).length;
+    if (liveCount > 0) {
+      return [{ name: LIVE_CATEGORY, count: liveCount }, ...tagCategories];
+    }
+    return tagCategories;
   }, [appsForMode]);
 
   const filteredApps = useMemo(() => {
@@ -114,23 +138,28 @@ export function useAppFiltering(
 
     // Filter by category
     if (selectedCategory) {
-      apps = apps.filter(app => {
-        const rootTags = app.extra?.tags || [];
-        const cardDataTags = app.extra?.cardData?.tags || [];
-        const allTags = [...new Set([...rootTags, ...cardDataTags])];
-        const sdk = app.extra?.sdk || app.extra?.cardData?.sdk;
+      // Synthetic "Live" category: only spaces explicitly tagged as live JS apps.
+      if (selectedCategory === LIVE_CATEGORY) {
+        apps = apps.filter(isLiveApp);
+      } else {
+        apps = apps.filter(app => {
+          const rootTags = app.extra?.tags || [];
+          const cardDataTags = app.extra?.cardData?.tags || [];
+          const allTags = [...new Set([...rootTags, ...cardDataTags])];
+          const sdk = app.extra?.sdk || app.extra?.cardData?.sdk;
 
-        if (selectedCategory.startsWith('sdk:')) {
-          return sdk === selectedCategory.replace('sdk:', '');
-        }
-        const tagMatch = allTags.some(
-          tag =>
-            tag && typeof tag === 'string' && tag.toLowerCase() === selectedCategory.toLowerCase()
-        );
-        const sdkMatch =
-          sdk && typeof sdk === 'string' && sdk.toLowerCase() === selectedCategory.toLowerCase();
-        return tagMatch || sdkMatch;
-      });
+          if (selectedCategory.startsWith('sdk:')) {
+            return sdk === selectedCategory.replace('sdk:', '');
+          }
+          const tagMatch = allTags.some(
+            tag =>
+              tag && typeof tag === 'string' && tag.toLowerCase() === selectedCategory.toLowerCase()
+          );
+          const sdkMatch =
+            sdk && typeof sdk === 'string' && sdk.toLowerCase() === selectedCategory.toLowerCase();
+          return tagMatch || sdkMatch;
+        });
+      }
     }
 
     // Fuzzy search with Fuse.js
