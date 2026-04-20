@@ -7,7 +7,6 @@ import { WebRTCStreamProvider } from '../../contexts/WebRTCStreamContext';
 import { useFirstWakeUpApi } from './useFirstWakeUpApi';
 import { ACCENT } from './theme';
 import {
-  WelcomeStep,
   SleepPositionStep,
   MicrophoneTestStep,
   MotorTestStep,
@@ -16,7 +15,7 @@ import {
   SuccessStep,
 } from './steps';
 
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 6;
 
 const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(8px); }
@@ -132,8 +131,15 @@ export default function FirstWakeUpView({ onComplete }) {
             animation: `${fadeIn} 0.3s ease-out`,
           }}
         >
-          {activeStep === 0 && <WelcomeStep darkMode={darkMode} onNext={goNext} />}
-          {activeStep === 1 && <SleepPositionStep darkMode={darkMode} onNext={goNext} />}
+          {activeStep === 0 && <SleepPositionStep darkMode={darkMode} onNext={goNext} />}
+          {activeStep === 1 && (
+            <MicrophoneTestStep
+              darkMode={darkMode}
+              api={api}
+              onNext={goNext}
+              onRobotWoken={markRobotWoken}
+            />
+          )}
           {activeStep === 2 && (
             <MotorTestStep
               darkMode={darkMode}
@@ -143,9 +149,8 @@ export default function FirstWakeUpView({ onComplete }) {
             />
           )}
           {activeStep === 3 && <SpeakerTestStep darkMode={darkMode} api={api} onNext={goNext} />}
-          {activeStep === 4 && <MicrophoneTestStep darkMode={darkMode} onNext={goNext} />}
-          {activeStep === 5 && <CameraTestStep darkMode={darkMode} onNext={goNext} />}
-          {activeStep === 6 && (
+          {activeStep === 4 && <CameraTestStep darkMode={darkMode} onNext={goNext} />}
+          {activeStep === 5 && (
             <SuccessStep darkMode={darkMode} api={api} onComplete={handleComplete} />
           )}
         </Box>

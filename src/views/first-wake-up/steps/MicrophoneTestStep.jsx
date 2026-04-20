@@ -30,7 +30,7 @@ function getMicTips(connectionMode) {
   return tips;
 }
 
-export default function MicrophoneTestStep({ darkMode, onNext }) {
+export default function MicrophoneTestStep({ darkMode, api, onNext, onRobotWoken }) {
   const { connectionMode } = useAppStore();
   const [showTroubleshoot, setShowTroubleshoot] = useState(false);
 
@@ -43,6 +43,7 @@ export default function MicrophoneTestStep({ darkMode, onNext }) {
 
   const [progress, setProgress] = useState(0);
   const [complete, setComplete] = useState(false);
+  const [wakingUp, setWakingUp] = useState(false);
   const textSecondary = getTextSecondary(darkMode);
 
   const accumulatedRef = useRef(0);
@@ -54,6 +55,24 @@ export default function MicrophoneTestStep({ darkMode, onNext }) {
   useEffect(() => {
     return () => clearTimeout(successTimerRef.current);
   }, []);
+
+  const triggerWakeUp = useCallback(async () => {
+    if (!api) {
+      onNext();
+      return;
+    }
+    setWakingUp(true);
+    try {
+      await api.enableMotors();
+      await new Promise(r => setTimeout(r, 300));
+      await api.playMove('wake_up');
+      if (onRobotWoken) onRobotWoken();
+      await new Promise(r => setTimeout(r, 2500));
+    } catch (err) {
+      console.error('[MicrophoneTest] Wake up failed:', err);
+    }
+    onNext();
+  }, [api, onNext, onRobotWoken]);
 
   useEffect(() => {
     if (complete) return;
@@ -72,7 +91,7 @@ export default function MicrophoneTestStep({ darkMode, onNext }) {
       if (accumulatedRef.current >= DETECTION_DURATION_REQUIRED) {
         setComplete(true);
         setProgress(1);
-        successTimerRef.current = setTimeout(onNext, 800);
+        successTimerRef.current = setTimeout(triggerWakeUp, 800);
       }
     } else {
       if (lastTickRef.current != null) {
@@ -84,7 +103,7 @@ export default function MicrophoneTestStep({ darkMode, onNext }) {
         }
       }
     }
-  }, [level, detected, complete, onNext]);
+  }, [level, detected, complete, triggerWakeUp]);
 
   const handleShowTroubleshoot = useCallback(() => setShowTroubleshoot(true), []);
   const handleBackToTest = useCallback(() => setShowTroubleshoot(false), []);
@@ -128,13 +147,15 @@ export default function MicrophoneTestStep({ darkMode, onNext }) {
         <Typography sx={{ fontSize: 12, color: textSecondary, textAlign: 'center' }}>
           {!isConnected
             ? 'Connecting to microphone...'
-            : complete
-              ? ''
-              : detected
-                ? "Keep going! Don't stop..."
-                : progress > 0
-                  ? "Keep rubbing! Don't stop now..."
-                  : 'Listening... make some noise near the robot'}
+            : wakingUp
+              ? 'Waking up...'
+              : complete
+                ? ''
+                : detected
+                  ? "Keep going! Don't stop..."
+                  : progress > 0
+                    ? "Keep rubbing! Don't stop now..."
+                    : 'Listening... make some noise near the robot'}
         </Typography>
 
         <Box sx={{ width: '100%', maxWidth: 320 }}>
@@ -155,7 +176,7 @@ export default function MicrophoneTestStep({ darkMode, onNext }) {
 
         {complete && (
           <Typography sx={{ fontSize: 13, fontWeight: 600, color: SUCCESS }}>
-            Microphone works! Moving on...
+            {wakingUp ? 'I heard you! Waking up...' : 'Microphone works! Moving on...'}
           </Typography>
         )}
 

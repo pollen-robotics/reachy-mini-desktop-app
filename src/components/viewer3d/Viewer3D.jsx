@@ -96,6 +96,7 @@ export default function RobotViewer3D({
   antennas = null, // Antenna positions [left, right] (null = default position)
   headPose = null, // Head position (null = default position)
   headJoints = null, // Head joints [yaw_body, stewart_1, ..., stewart_6] (null = use WebSocket data)
+  passiveJoints = null, // Passive joints [21 values] (null = calculate via WASM or use WebSocket)
   yawBody = null, // Body rotation (null = default position)
   // Status tag props
   showStatusTag = false, // Show status tag at bottom right
@@ -105,6 +106,9 @@ export default function RobotViewer3D({
   busyReason = null, // ✨ Reason if busy
   // Effect props
   hideEffects = false, // Hide particle effects (for small viewer)
+  // Auto-rotate props
+  autoRotate = false, // Enable slow auto-rotation
+  autoRotateSpeed = 1.0, // Rotation speed
   // Canvas transform props
   canvasScale = 1, // Scale for canvas (default 1)
   canvasTranslateX = 0, // TranslateX for canvas (default 0)
@@ -197,8 +201,9 @@ export default function RobotViewer3D({
     return prevYawBodyRef.current ?? value ?? null;
   }, [yawBody, shouldConnectWebSocket, robotState.yawBody]);
 
-  // 🚀 GAME-CHANGING: Extract passiveJoints from unified WebSocket
+  // Extract passiveJoints: prop override > WebSocket
   const finalPassiveJoints = useMemo(() => {
+    if (passiveJoints !== null) return passiveJoints;
     const value = shouldConnectWebSocket ? robotState.passiveJoints : null;
     const prevPassive = Array.isArray(prevPassiveJointsRef.current)
       ? prevPassiveJointsRef.current
@@ -213,7 +218,7 @@ export default function RobotViewer3D({
       return null;
     }
     return prevPassiveJointsRef.current || value;
-  }, [shouldConnectWebSocket, robotState.passiveJoints]);
+  }, [passiveJoints, shouldConnectWebSocket, robotState.passiveJoints]);
 
   const [isTransparent, setIsTransparent] = useState(initialMode === 'xray');
   const [showSettingsOverlay, setShowSettingsOverlay] = useState(false);
@@ -383,6 +388,8 @@ export default function RobotViewer3D({
           hideEffects={hideEffects}
           darkMode={darkMode}
           dataVersion={robotState.dataVersion} // ⚡ OPTIMIZED: Skip comparisons in URDFRobot
+          autoRotate={autoRotate}
+          autoRotateSpeed={autoRotateSpeed}
         />
       </Canvas>
 

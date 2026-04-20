@@ -4,6 +4,7 @@ import { Box, Typography } from '@mui/material';
 export default function StepLayout({
   darkMode,
   illustration,
+  illustrationNode,
   title,
   subtitle,
   lockHeight = true,
@@ -43,18 +44,20 @@ export default function StepLayout({
         gap: 2.5,
       }}
     >
-      {illustration && (
-        <Box
-          component="img"
-          src={illustration}
-          alt=""
-          sx={{
-            width: 150,
-            height: 'auto',
-            opacity: darkMode ? 0.85 : 1,
-          }}
-        />
-      )}
+      {illustrationNode
+        ? illustrationNode
+        : illustration && (
+            <Box
+              component="img"
+              src={illustration}
+              alt=""
+              sx={{
+                width: 150,
+                height: 'auto',
+                opacity: darkMode ? 0.85 : 1,
+              }}
+            />
+          )}
 
       <Box sx={{ textAlign: 'center' }}>
         <Typography

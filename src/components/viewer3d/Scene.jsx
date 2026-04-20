@@ -38,6 +38,8 @@ function Scene({
   hideEffects = false, // Hide particle effects
   darkMode = false, // Dark mode to adapt grid
   dataVersion = 0, // ⚡ OPTIMIZED: Skip comparisons in URDFRobot if version unchanged
+  autoRotate = false, // Enable slow auto-rotation via OrbitControls
+  autoRotateSpeed = 1.0, // Auto-rotation speed (degrees per frame refresh)
 }) {
   // State to store meshes to outline
   const [outlineMeshes, setOutlineMeshes] = useState([]);
@@ -387,10 +389,12 @@ function Scene({
         // Mode 2: Manual OrbitControls (default) - Free rotation with zoom
         <OrbitControls
           enablePan={false}
-          enableRotate={true}
-          enableZoom={true}
+          enableRotate={!autoRotate}
+          enableZoom={!autoRotate}
           enableDamping={true}
           dampingFactor={0.05}
+          autoRotate={autoRotate}
+          autoRotateSpeed={autoRotateSpeed}
           target={cameraConfig.target || [0, 0.2, 0]}
           minDistance={cameraConfig.minDistance || 0.2}
           maxDistance={cameraConfig.maxDistance || 10}
@@ -424,7 +428,8 @@ export default memo(Scene, (prevProps, nextProps) => {
     prevProps.showScanEffect !== nextProps.showScanEffect ||
     prevProps.useCinematicCamera !== nextProps.useCinematicCamera ||
     prevProps.hideEffects !== nextProps.hideEffects ||
-    prevProps.darkMode !== nextProps.darkMode
+    prevProps.darkMode !== nextProps.darkMode ||
+    prevProps.autoRotate !== nextProps.autoRotate
   ) {
     return false; // Re-render
   }
