@@ -9,11 +9,44 @@ import { DAEMON_CONFIG, fetchWithTimeout, buildApiUrl, getWsBaseUrl } from '../.
  * Wrapper around HardwareScanView that handles the transition logic
  */
 function StartingView({ startupError, startDaemon }) {
-  const { darkMode, transitionTo, setHardwareError } = useAppStore();
+  const { darkMode, transitionTo, setHardwareError, setShowFirstWakeUp } = useAppStore();
 
   const handleScanComplete = useCallback(async () => {
     setHardwareError(null);
 
+    // Check if first wake-up diagnostic is needed
+    // If endpoint exists: respect its response. If not: default to showing the wizard.
+    let needsFirstWakeUp = true; // Default: show wizard (safe default for first-time users)
+    try {
+      const statusRes = await fetchWithTimeout(
+        buildApiUrl('/api/first-wake-up/status'),
+        {},
+        DAEMON_CONFIG.TIMEOUTS.COMMAND,
+        { silent: true }
+      );
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        needsFirstWakeUp = !statusData.is_completed;
+      }
+    } catch {
+      // Endpoint doesn't exist yet: show wizard by default
+      console.log('[StartingView] /api/first-wake-up/status not available, showing wizard');
+    }
+
+    // Skip wizard with URL param ?skip-first-wake-up=true (dev override)
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('skip-first-wake-up') === 'true') {
+      needsFirstWakeUp = false;
+    }
+
+    if (needsFirstWakeUp) {
+      // Robot stays sleeping - MotorTestStep will enable motors + play wake_up
+      setShowFirstWakeUp(true);
+      transitionTo.ready();
+      return;
+    }
+
+    // Normal flow: enable motors + wake up animation
     try {
       await fetchWithTimeout(
         buildApiUrl('/api/motors/set_mode/enabled'),
@@ -84,7 +117,7 @@ function StartingView({ startupError, startDaemon }) {
     }
 
     transitionTo.ready();
-  }, [transitionTo, setHardwareError]);
+  }, [transitionTo, setHardwareError, setShowFirstWakeUp]);
 
   return (
     <Box

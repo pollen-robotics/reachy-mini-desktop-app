@@ -7,6 +7,7 @@ import {
   BluetoothSupportView,
   SetupChoiceView,
   StartingView,
+  FirstWakeUpView,
   ClosingView,
   UpdateView,
   ActiveRobotModule,
@@ -27,6 +28,7 @@ import useAppStore from '../../store/useAppStore';
  * 2.75. Bluetooth support - Native BLE reset tool
  * 3.   Finding robot - User selects connection (USB/WiFi/Sim) and clicks Start
  * 4.   Starting daemon (visual scan) - Also used for WiFi mode
+ * 4.5. First wake-up - Diagnostic wizard (shown once after first daemon startup)
  * 5.   Stopping daemon - Shutdown spinner
  * 6.   Active robot - Full control view (handles its own loading state)
  *
@@ -78,6 +80,8 @@ export function useViewRouter({
     setShowFirstTimeWifiSetup,
     showBluetoothSupportView,
     setShowBluetoothSupportView,
+    showFirstWakeUp,
+    setShowFirstWakeUp,
   } = useAppStore();
 
   return useMemo(() => {
@@ -162,6 +166,17 @@ export function useViewRouter({
       };
     }
 
+    // PRIORITY 4.5: First wake-up diagnostic wizard
+    if (showFirstWakeUp) {
+      return {
+        viewComponent: FirstWakeUpView,
+        viewProps: {
+          onComplete: () => setShowFirstWakeUp(false),
+        },
+        showTopBar: true,
+      };
+    }
+
     // PRIORITY 5: Stopping daemon
     if (isStopping) {
       return {
@@ -206,6 +221,8 @@ export function useViewRouter({
     setShowFirstTimeWifiSetup,
     showBluetoothSupportView,
     setShowBluetoothSupportView,
+    showFirstWakeUp,
+    setShowFirstWakeUp,
     shouldShowUsbCheck,
     isUsbConnected,
     connectionMode,

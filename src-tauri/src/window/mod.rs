@@ -1,5 +1,32 @@
 use tauri::{AppHandle, Manager};
 
+/// Enforce fixed window size on Linux.
+/// Some window managers ignore `resizable: false`, so we also set min/max size hints.
+#[cfg(target_os = "linux")]
+pub fn setup_fixed_window_size(window: &tauri::WebviewWindow) {
+    use tauri::{LogicalSize, Size};
+
+    let size = Size::Logical(LogicalSize {
+        width: 450.0,
+        height: 670.0,
+    });
+
+    if let Err(e) = window.set_min_size(Some(size)) {
+        log::warn!("[window] Failed to set min size on Linux: {}", e);
+    }
+    if let Err(e) = window.set_max_size(Some(size)) {
+        log::warn!("[window] Failed to set max size on Linux: {}", e);
+    }
+    if let Err(e) = window.set_size(size) {
+        log::warn!("[window] Failed to set size on Linux: {}", e);
+    }
+    if let Err(e) = window.set_resizable(false) {
+        log::warn!("[window] Failed to set resizable=false on Linux: {}", e);
+    }
+
+    log::info!("[window] Fixed window size enforced on Linux (450x670)");
+}
+
 /// Apply transparent titlebar + full-size content view on a macOS NSWindow.
 /// No-op on other platforms.
 #[cfg(target_os = "macos")]
