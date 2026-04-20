@@ -11,6 +11,7 @@ import {
   useModalStack,
 } from '../../application-store/hooks';
 import { InstalledAppsSection } from '../../application-store/installed';
+import BookmarkedLiveAppsSection from './BookmarkedLiveAppsSection';
 import { Modal as DiscoverModal } from '../../application-store/discover';
 import { CreateAppTutorial as CreateAppTutorialModal } from '../../application-store/modals';
 import { Overlay as InstallOverlay } from '../../application-store/installation';
@@ -311,6 +312,8 @@ export default function ApplicationsSection({
         <Box sx={{ px: 0, mb: 0, bgcolor: 'transparent', position: 'relative' }}>
           {/* Simulation mode disclaimer - only covers the apps list box */}
           {inSimulationMode && <SimulationDisclaimer darkMode={effectiveDarkMode} />}
+
+          <BookmarkedLiveAppsSection darkMode={effectiveDarkMode} />
 
           <InstalledAppsSection
             installedApps={installedApps}

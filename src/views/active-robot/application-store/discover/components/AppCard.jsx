@@ -1,13 +1,26 @@
 import React, { memo, useState } from 'react';
-import { Box, Typography, Button, Avatar, Chip, CircularProgress, Popover } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Button,
+  Avatar,
+  Chip,
+  CircularProgress,
+  Popover,
+  IconButton,
+  Tooltip,
+} from '@mui/material';
 import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import VerifiedIcon from '@mui/icons-material/Verified';
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
+import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
+import BookmarkIcon from '@mui/icons-material/Bookmark';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { QRCodeSVG } from 'qrcode.react';
 import { useActiveRobotContext } from '../../../context';
+import useAppStore from '../../../../../store/useAppStore';
 
 /**
  * App card component for Discover Modal
@@ -27,8 +40,12 @@ function AppCard({
 }) {
   const { shellApi } = useActiveRobotContext();
   const open = shellApi.open;
-  // QR popover anchor — clicking the inline QR thumbnail enlarges it.
   const [qrAnchor, setQrAnchor] = useState(null);
+  // Bookmark state for live (non-Python) apps.
+  const bookmarkLiveApp = useAppStore(state => state.bookmarkLiveApp);
+  const isBookmarked = useAppStore(state =>
+    state.bookmarkedLiveApps.some(a => a.name === app.name)
+  );
   // Extract data from HF Space API
   const cardData = app.extra?.cardData || {};
   const author = app.extra?.id?.split('/')?.[0] || app.extra?.author || null;
@@ -380,8 +397,40 @@ function AppCard({
                   : 'Install'}
           </Button>
         ) : (
-          <Box sx={{ mt: 'auto', display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            {/* Open in browser */}
+          <Box sx={{ mt: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
+            {/* Bookmark toggle */}
+            <Tooltip title={isBookmarked ? 'Remove from panel' : 'Add to panel'} arrow>
+              <IconButton
+                size="small"
+                onClick={e => {
+                  e.stopPropagation();
+                  const store = useAppStore.getState();
+                  if (isBookmarked) {
+                    store.unbookmarkLiveApp(app.name);
+                  } else {
+                    store.bookmarkLiveApp(app);
+                  }
+                }}
+                sx={{
+                  width: 32,
+                  height: 32,
+                  color: isBookmarked ? '#6366f1' : darkMode ? '#666' : '#aaa',
+                  transition: 'color 0.15s ease',
+                  '&:hover': {
+                    color: '#6366f1',
+                    bgcolor: 'rgba(99, 102, 241, 0.08)',
+                  },
+                }}
+              >
+                {isBookmarked ? (
+                  <BookmarkIcon sx={{ fontSize: 18 }} />
+                ) : (
+                  <BookmarkBorderIcon sx={{ fontSize: 18 }} />
+                )}
+              </IconButton>
+            </Tooltip>
+
+            {/* Open in browser (also auto-bookmarks on first Open) */}
             <Button
               variant="outlined"
               size="small"
@@ -389,6 +438,8 @@ function AppCard({
               onClick={async e => {
                 e.stopPropagation();
                 try {
+                  // Auto-bookmark on first open so it shows in the panel
+                  if (!isBookmarked) bookmarkLiveApp(app);
                   await open(spaceUrl);
                 } catch (err) {
                   console.error('Failed to open web app URL:', err);

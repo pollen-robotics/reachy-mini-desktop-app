@@ -51,11 +51,18 @@ export const uiInitialState = {
   },
 
   // 🌐 Central-signaling-server robot status (polled via the daemon proxy).
-  // Tells us whether any of the user's robots is currently held by a remote
-  // JS app — so we can show a badge and block local app runs that would
-  // fight the remote session over the robot's single control slot.
-  // Shape: { available: bool, robots: [{ peerId, robotName, busy, activeApp }] }
   centralRobotStatus: { available: false, robots: [] },
+
+  // 📌 Bookmarked live apps — saved to localStorage so they persist across
+  // sessions. Shape: array of { name, url, extra } app descriptors, same
+  // shape as what the website API returns for each app.
+  bookmarkedLiveApps: (() => {
+    try {
+      return JSON.parse(localStorage.getItem('bookmarkedLiveApps') || '[]');
+    } catch {
+      return [];
+    }
+  })(),
 };
 
 /**
@@ -172,6 +179,24 @@ export const createUISlice = (set, get) => ({
 
   // 🌐 Central robot status setter (written by useCentralRobotStatus hook)
   setCentralRobotStatus: status => set({ centralRobotStatus: status }),
+
+  // 📌 Bookmarked live apps
+  bookmarkLiveApp: app => {
+    const current = get().bookmarkedLiveApps;
+    if (current.some(a => a.name === app.name)) return; // already bookmarked
+    const entry = { name: app.name, url: app.url, extra: app.extra || {} };
+    const next = [...current, entry];
+    localStorage.setItem('bookmarkedLiveApps', JSON.stringify(next));
+    set({ bookmarkedLiveApps: next });
+  },
+  unbookmarkLiveApp: appName => {
+    const next = get().bookmarkedLiveApps.filter(a => a.name !== appName);
+    localStorage.setItem('bookmarkedLiveApps', JSON.stringify(next));
+    set({ bookmarkedLiveApps: next });
+  },
+  isLiveAppBookmarked: appName => {
+    return get().bookmarkedLiveApps.some(a => a.name === appName);
+  },
 });
 
 /**
