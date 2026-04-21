@@ -24,7 +24,7 @@ This desktop application provides a unified interface to manage your Reachy Mini
 ## ✨ Features
 
 - 🤖 **Robot Control** - Start, stop, and monitor your Reachy Mini daemon
-- 📊 **Real-time 3D Visualization** - Live robot state via WebSocket at 20Hz with URDF model, X-ray effects
+- 📊 **Real-time 3D Visualization** - Live robot state via WebSocket at 20Hz with URDF model, X-ray effects, smooth mount-flash-free loading (opaque spinner hides the default pose until the first real frame is applied)
 - 🏪 **Application Store** - Discover, install, and manage apps from Hugging Face Spaces
   - Browse official and community apps
   - Search and filter by categories
@@ -147,9 +147,9 @@ Apps are managed through the FastAPI daemon API, which handles installation and 
 
 | Mode | Entry Point | Description |
 |------|-------------|-------------|
-| **Desktop (Tauri)** | `App.jsx` | Full desktop app with native features (USB, daemon management, updates) |
-| **Web Dashboard** | `WebApp.jsx` | Standalone web version for daemon control (build with `yarn build:web`) |
-| **Dev Playground** | `DevPlayground.jsx` | Component playground accessible at `/#dev` in development mode |
+| **Desktop (Tauri)** | `App.tsx` | Full desktop app with native features (USB, daemon management, updates) |
+| **Web Dashboard** | `WebApp.tsx` | Standalone web version for daemon control (build with `yarn build:web`) |
+| **Dev Playground** | `DevPlayground.tsx` | Component playground accessible at `/#dev` in development mode |
 
 ## 🛠️ Development
 
@@ -250,57 +250,70 @@ This is useful for:
 
 ```
 reachy-mini-desktop-app/
-├── src/                              # Frontend React code
+├── src/                              # Frontend React code (fully TypeScript)
+│   ├── main.tsx                     # Vite entry point (bootstraps App/WebApp)
 │   ├── components/                   # Reusable React components
 │   │   ├── viewer3d/                # 3D robot visualization (README.md)
+│   │   │                            #   - Viewer3D + Scene + URDFRobot
+│   │   │                            #   - components/ (LoadingSpinner, StatusTag, SettingsButton)
+│   │   │                            #   - hooks/ (useRobotWebSocket, useCoalescedRobotState)
+│   │   │                            #   - effects/ (Scan, PremiumScan, ErrorHighlight, Particles)
+│   │   │                            #   - settings/ (cards for the settings panel)
 │   │   ├── emoji-grid/              # Emotion wheel and emoji display
 │   │   ├── camera/                  # Camera components (standalone CameraStream)
-│   │   ├── LogConsole/              # Log display components
+│   │   ├── LogConsole/              # Log console (Simple/Dev toggle, virtualized list)
 │   │   ├── Toast/                   # Toast notifications
 │   │   ├── wifi/                    # WiFi configuration components
-│   │   ├── ui/                      # Generic UI primitives (StepsProgressIndicator)
-│   │   ├── App.jsx                  # Main Tauri application entry
-│   │   ├── WebApp.jsx               # Web-only entry (daemon dashboard v2)
-│   │   ├── DevPlayground.jsx        # Development playground (/#dev)
-│   │   ├── AppTopBar.jsx            # Top bar with controls
-│   │   ├── FullscreenOverlay.jsx    # Fullscreen overlay component
-│   │   ├── ReachiesCarousel.jsx     # Robot carousel display
-│   │   ├── PulseButton.jsx          # Animated pulse button
-│   │   └── FPSMeter.jsx             # Performance monitor
+│   │   ├── ui/                      # Generic UI primitives (StepsProgressIndicator, ...)
+│   │   ├── App.tsx                  # Main Tauri application entry
+│   │   ├── WebApp.tsx               # Web-only entry (daemon dashboard v2)
+│   │   ├── DevPlayground.tsx        # Development playground (/#dev)
+│   │   ├── AppTopBar.tsx            # Top bar with controls
+│   │   ├── FullscreenOverlay.tsx    # Fullscreen overlay component
+│   │   ├── ReachiesCarousel.tsx     # Robot carousel display
+│   │   ├── ErrorBoundary.tsx        # Top-level React error boundary
+│   │   ├── PulseButton.tsx          # Animated pulse button
+│   │   └── FPSMeter.tsx             # Performance monitor
 │   ├── hooks/                        # Custom React hooks (organized by domain)
 │   │   ├── audio/                   # Audio hooks (useDoA)
+│   │   ├── auth/                    # Hugging Face auth hooks (useHfAuth)
+│   │   ├── bluetooth/               # Bluetooth hooks (useBluetooth)
 │   │   ├── daemon/                  # Daemon lifecycle hooks
-│   │   │   ├── useDaemon.js         # Start/stop daemon
-│   │   │   ├── useDaemonHealthCheck.js  # Health monitoring
-│   │   │   ├── useDaemonEventBus.js # Event bus for daemon events
-│   │   │   ├── useStartupStages.js  # Startup stage tracking
-│   │   │   └── useDaemonStartupLogs.js  # Daemon startup log streaming
+│   │   │   ├── useDaemon.ts               # Start/stop daemon
+│   │   │   ├── useDaemonLifecycle.ts      # Lifecycle orchestration
+│   │   │   ├── useDaemonHealthCheck.ts    # Health monitoring
+│   │   │   ├── useDaemonEventBus.ts       # Event bus for daemon events
+│   │   │   ├── useDaemonReconciliation.ts # Reconciliation with daemon state
+│   │   │   ├── useStartupStages.ts        # Startup stage tracking
+│   │   │   └── useDaemonStartupLogs.ts    # Daemon startup log streaming
 │   │   ├── media/                   # Media hooks
-│   │   │   ├── useAudioAnalyser.js  # Audio analysis
-│   │   │   └── useWebRTCStream.js   # WebRTC streaming
+│   │   │   ├── useAudioAnalyser.ts  # Audio analysis
+│   │   │   └── useWebRTCStream.ts   # WebRTC streaming
 │   │   ├── robot/                   # Robot state hooks
-│   │   │   ├── useRobotStateWebSocket.js  # Centralized WebSocket streaming (20Hz)
-│   │   │   ├── useRobotCommands.js  # Robot command execution
-│   │   │   └── useActiveMoves.js    # Active moves tracking
+│   │   │   ├── useRobotStateWebSocket.ts  # Centralized WebSocket streaming (20Hz)
+│   │   │   ├── useRobotCommands.ts        # Robot command execution
+│   │   │   └── useActiveMoves.ts          # Active moves tracking
 │   │   ├── system/                  # System hooks
-│   │   │   ├── useViewRouter.jsx    # View state machine (priority-based routing)
-│   │   │   ├── useUpdater.js        # Auto-update management
-│   │   │   ├── useUsbDetection.js   # USB robot detection
-│   │   │   ├── usePermissions.js    # macOS permissions
-│   │   │   ├── useRobotDiscovery.js # Robot discovery (WiFi/mDNS)
-│   │   │   ├── useRobotDiscoveryV2.js # Robot discovery v2
-│   │   │   ├── useNetworkStatus.js  # Network connectivity
-│   │   │   ├── useLocalWifiScan.js  # Local WiFi network scanning
-│   │   │   ├── useDeepLink.js       # Deep link handling (reachymini://)
-│   │   │   ├── useUpdateViewState.js # Update view state management
-│   │   │   ├── useWindowResize.js   # Window resize handling
-│   │   │   ├── useUsbCheckTiming.js # USB check timing logic
-│   │   │   └── useLogs.js           # Log management
-│   │   ├── useConnection.js         # Connection mode management (USB/WiFi/Simulation)
-│   │   ├── useActiveRobotAdapter.js # Adapter for ActiveRobot context (Tauri)
-│   │   ├── useWebActiveRobotAdapter.js # Adapter for ActiveRobot context (Web)
-│   │   ├── useToast.js              # Toast notification hook
-│   │   └── useResizeObserver.js     # Element resize observer
+│   │   │   ├── useViewRouter.tsx         # View state machine (priority-based routing)
+│   │   │   ├── useUpdater.ts             # Auto-update management
+│   │   │   ├── useUsbDetection.ts        # USB robot detection
+│   │   │   ├── usePermissions.ts         # macOS permissions
+│   │   │   ├── useRobotDiscovery.ts      # Robot discovery (WiFi/mDNS)
+│   │   │   ├── useLocalWifiScan.ts       # Local WiFi network scanning
+│   │   │   ├── useDeepLink.ts            # Deep link handling (reachymini://)
+│   │   │   ├── useUpdateViewState.ts     # Update view state management
+│   │   │   ├── useWindowResize.ts        # Window resize handling
+│   │   │   ├── useWindowVisible.ts       # Window visibility tracking
+│   │   │   ├── useUsbCheckTiming.ts      # USB check timing logic
+│   │   │   └── useLogs.ts                # Log management
+│   │   ├── adapters/                # Typed shapes for the ActiveRobot context
+│   │   ├── useConnection.ts         # Connection mode management (USB/WiFi/Simulation)
+│   │   ├── useActiveRobotAdapter.ts # Adapter for ActiveRobot context (Tauri)
+│   │   ├── useWebActiveRobotAdapter.ts # Adapter for ActiveRobot context (Web)
+│   │   ├── useDaemonLogStream.ts    # Pipe daemon logs into the store
+│   │   ├── useLogViewerBridge.ts    # Bridge for the log viewer window
+│   │   ├── useToast.ts              # Toast notification hook
+│   │   └── useResizeObserver.ts     # Element resize observer
 │   ├── views/                        # Main application views
 │   │   ├── update/                  # Update checking view
 │   │   ├── permissions-required/    # Permissions view (macOS)
@@ -309,33 +322,41 @@ reachy-mini-desktop-app/
 │   │   ├── bluetooth-support/       # Bluetooth help view
 │   │   ├── starting/                # Hardware scan view (3D animation)
 │   │   ├── closing/                 # Shutdown view
+│   │   ├── log-viewer/              # Standalone log viewer window
 │   │   ├── windows/                 # Multi-window sync (useWindowSync, useWindowFocus)
 │   │   └── active-robot/            # Active robot view
-│   │       ├── application-store/   # App store (README.md)
-│   │       ├── controller/          # Robot controller (README.md)
-│   │       ├── audio/               # Audio controls & DoA indicator
-│   │       ├── camera/              # Camera feed (WebRTC via context)
-│   │       ├── right-panel/         # Right panel (expressions, controller, apps)
-│   │       ├── controls/            # Power & sleep buttons
-│   │       ├── layout/              # ViewportSwapper
-│   │       ├── context/             # ActiveRobotContext
-│   │       └── hooks/               # View-specific hooks (wake/sleep, power state)
+│   │       ├── ActiveRobotView.tsx      # Main view
+│   │       ├── ActiveRobotModule.tsx    # Providers + adapters wiring
+│   │       ├── RobotHeader.tsx          # Top header
+│   │       ├── application-store/       # App store (README.md)
+│   │       ├── controller/              # Robot controller (README.md)
+│   │       ├── audio/                   # Audio controls & DoA indicator
+│   │       ├── camera/                  # Camera feed (WebRTC via context)
+│   │       ├── right-panel/             # Right panel (expressions, controller, apps)
+│   │       ├── controls/                # Power & sleep buttons
+│   │       ├── layout/                  # ViewportSwapper (3D <-> camera toggle)
+│   │       ├── context/                 # ActiveRobotContext
+│   │       └── hooks/                   # View-specific hooks (wake/sleep, power state)
 │   ├── contexts/                     # React contexts
-│   │   └── WebRTCStreamContext.jsx  # Shared WebRTC stream (avoids duplicate connections)
+│   │   └── WebRTCStreamContext.tsx  # Shared WebRTC stream (avoids duplicate connections)
 │   ├── store/                        # State management (Zustand)
-│   │   ├── slices/                  # Store slices (apps, logs, robot, ui)
+│   │   ├── slices/                  # Store slices (apps, logs, robot, ui, ...)
 │   │   ├── middleware/              # Store middleware (windowSync across Tauri windows)
-│   │   ├── useStore.js              # Main unified store
-│   │   ├── useAppStore.js           # Alias for useStore (backward compat)
-│   │   └── storeLogger.js          # Store debug logger
+│   │   ├── useStore.ts              # Main unified store
+│   │   ├── useAppStore.ts           # Alias for useStore (backward compat)
+│   │   └── storeLogger.ts           # Store debug logger
+│   ├── types/                        # Shared TypeScript types (robot, store, api, ...)
 │   ├── utils/                        # Utility functions
 │   │   ├── telemetry/               # PostHog analytics integration
 │   │   ├── kinematics-wasm/         # WASM bindings for passive joints
 │   │   ├── logging/                 # Logging utilities
-│   │   ├── viewer3d/                # 3D viewer helpers
-│   │   ├── robotModelCache.js       # URDF model caching
-│   │   ├── diagnosticExport.js      # Diagnostic report generation
-│   │   └── simulationMode.js        # Simulation mode utilities
+│   │   ├── viewer3d/                # 3D viewer helpers (materials, findErrorMeshes, ...)
+│   │   ├── robotModelCache.ts       # URDF model caching
+│   │   ├── diagnosticExport.ts      # Diagnostic report generation
+│   │   ├── hardwareErrors.ts        # Hardware error metadata & mesh resolution
+│   │   ├── scanParts.ts             # Mesh -> scan part mapping
+│   │   ├── arraysEqual.ts           # Tolerance-based array comparison
+│   │   └── simulationMode.ts        # Simulation mode utilities
 │   ├── config/                       # Centralized configuration (daemon URLs, timeouts)
 │   └── constants/                    # Shared constants (WiFi, robot status, choreographies)
 ├── src-tauri/                        # Rust backend
@@ -439,11 +460,14 @@ flowchart TB
 ```
 
 **Key Architecture Points:**
-- **Hooks** are organized by domain (daemon, robot, system, media, audio) for better maintainability
+- **TypeScript everywhere** - the `src/` tree is fully `.ts` / `.tsx`; shared types live in `src/types/`
+- **Hooks** are organized by domain (daemon, robot, system, media, audio, auth, bluetooth) for better maintainability
 - **Views** are organized in dedicated folders with their associated components
 - **Store** uses a unified Zustand store with slices (robot, logs, ui, apps) and cross-window sync middleware
 - **WebSocket** centralizes robot state streaming at 20Hz via `useRobotStateWebSocket`
 - **WebRTC** streams camera via a shared `WebRTCStreamContext` to avoid duplicate connections
+- **Viewer 3D** defers the first render until the first real pose is applied (via `useCoalescedRobotState` + `onPoseReady`) and shows an opaque spinner in the meantime, so users never see the default URDF pose flash
+- **LogConsole** shows a short spinner when toggling Simple / Dev modes so the list re-virtualization stays invisible
 - **Local Proxy** (Rust) forwards TCP/UDP traffic to bypass browser Private Network Access restrictions in WiFi mode
 - **Adapters** (`useActiveRobotAdapter` / `useWebActiveRobotAdapter`) inject platform-specific behavior into the ActiveRobot context
 - **Config** centralizes all configuration constants (timeouts, intervals, etc.)

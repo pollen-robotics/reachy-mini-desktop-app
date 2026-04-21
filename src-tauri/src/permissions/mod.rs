@@ -385,7 +385,16 @@ pub async fn check_bluetooth_permission() -> Result<Option<bool>, String> {
     // the permission gate and allow normal dev/debugging workflows.
     #[cfg(debug_assertions)]
     {
-        log::warn!("[dev] Skipping Bluetooth permission check in debug build — reporting granted");
+        // Emit the dev-only notice once per process. The Tauri command is
+        // called repeatedly (e.g. every permission refresh) and spamming the
+        // terminal makes real startup logs hard to spot.
+        use std::sync::Once;
+        static DEV_NOTICE: Once = Once::new();
+        DEV_NOTICE.call_once(|| {
+            log::info!(
+                "[dev] Skipping Bluetooth permission check in debug build — reporting granted (subsequent calls silent)"
+            );
+        });
         Ok(Some(true))
     }
 

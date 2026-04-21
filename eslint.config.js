@@ -1,5 +1,6 @@
 import js from '@eslint/js';
 import globals from 'globals';
+import tseslint from 'typescript-eslint';
 import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
@@ -87,12 +88,19 @@ export default [
   // Prettier config (disables conflicting rules)
   prettierConfig,
 
-  // Main config for React/JSX files
+  // TypeScript recommended rules (for .ts/.tsx files)
+  ...tseslint.configs.recommended.map(config => ({
+    ...config,
+    files: ['src/**/*.{ts,tsx}'],
+  })),
+
+  // Main config for React/JSX/TSX files
   {
-    files: ['src/**/*.{js,jsx}'],
+    files: ['src/**/*.{js,jsx,ts,tsx}'],
     languageOptions: {
       ecmaVersion: 2024,
       sourceType: 'module',
+      parser: tseslint.parser,
       globals: {
         ...globals.browser,
         ...globals.es2024,
@@ -107,6 +115,7 @@ export default [
       },
     },
     plugins: {
+      '@typescript-eslint': tseslint.plugin,
       react,
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,
@@ -160,6 +169,29 @@ export default [
       'no-var': 'error',
       eqeqeq: ['warn', 'smart'],
       'no-empty': 'off', // Allow empty blocks (often intentional in event handlers)
+    },
+  },
+
+  // TypeScript-specific overrides (swap base rules for TS-aware ones)
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    rules: {
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+        },
+      ],
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-empty-object-type': 'off',
+      '@typescript-eslint/no-require-imports': 'off',
+      '@typescript-eslint/ban-ts-comment': [
+        'warn',
+        { 'ts-expect-error': 'allow-with-description', 'ts-ignore': true },
+      ],
     },
   },
 ];

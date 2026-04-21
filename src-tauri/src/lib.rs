@@ -6,7 +6,6 @@
 mod daemon;
 mod discovery;
 mod local_proxy;
-mod network;
 mod paths;
 mod permissions;
 mod python;
@@ -225,6 +224,14 @@ async fn clear_local_proxy_target(state: State<'_, Arc<LocalProxyState>>) -> Res
     Ok(())
 }
 
+/// Return the current proxy target host (or `None` if the proxy is idle).
+/// Used by the frontend reconciliation to restore `remoteHost` after a webview
+/// reload when the Rust process (and its proxy target) survived.
+#[tauri::command]
+async fn get_local_proxy_target(state: State<'_, Arc<LocalProxyState>>) -> Result<Option<String>, String> {
+    Ok(local_proxy::get_target_host_public(&state).await)
+}
+
 // ============================================================================
 // SIDECAR BUILD INFO
 // ============================================================================
@@ -357,22 +364,53 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init());
 
     // BLE plugin panics if Bluetooth is unavailable (CI runners, VMs, no adapter).
-    // catch_unwind handles standard panics, but on macOS CoreBluetooth callbacks fire
-    // via Objective-C FFI (extern "C"), which cannot unwind — causing a fatal abort.
-    // In debug/dev builds the binary lacks signed Bluetooth entitlements, so CoreBluetooth
-    // immediately fires an "unauthorized" state callback that hits an `.expect()` and aborts.
-    // Skip BLE entirely in debug builds to keep dev mode stable.
-    #[cfg(not(all(debug_assertions, target_os = "macos")))]
-    let builder = match std::panic::catch_unwind(tauri_plugin_blec::init) {
-        Ok(plugin) => builder.plugin(plugin),
-        Err(_) => {
-            log::warn!("Bluetooth not available — BLE features disabled");
-            builder
+    // catch_unwind handles standard Rust panics as a safety net.
+    //
+    // On macOS (release builds), creating a CBCentralManager - which btleplug does
+    // inside the plugin's `init()` - triggers the system Bluetooth permission dialog
+    // when authorization is `notDetermined`. We don't want that dialog to appear at
+    // app startup; it should only appear when the user explicitly clicks the
+    // Bluetooth card on the permissions screen (handled by
+    // `permissions::request_bluetooth_permission`).
+    //
+    // Strategy: only register the BLE plugin when Bluetooth authorization is already
+    // `allowedAlways`. If not, we skip plugin registration and the user grants the
+    // permission from the permissions screen. Once granted, the app auto-restarts
+    // (see App.tsx) and the plugin is registered on the next launch without a
+    // dialog. In debug builds and on non-macOS platforms we always register.
+    let register_blec_plugin = {
+        #[cfg(all(target_os = "macos", not(debug_assertions)))]
+        {
+            extern "C" {
+                fn bluetooth_authorization_status() -> i32;
+            }
+            // CBManagerAuthorization: 0=notDetermined, 1=restricted, 2=denied, 3=allowedAlways
+            let status = unsafe { bluetooth_authorization_status() };
+            log::info!(
+                "[blec] Bluetooth authorization status at startup: {} (3=allowed)",
+                status
+            );
+            status == 3
+        }
+        #[cfg(not(all(target_os = "macos", not(debug_assertions))))]
+        {
+            true
         }
     };
-    #[cfg(all(debug_assertions, target_os = "macos"))]
-    let builder = {
-        log::warn!("[dev] Skipping BLE plugin in debug build — Bluetooth entitlements require a signed release build");
+
+    let builder = if register_blec_plugin {
+        match std::panic::catch_unwind(tauri_plugin_blec::init) {
+            Ok(plugin) => builder.plugin(plugin),
+            Err(_) => {
+                log::warn!("Bluetooth not available — BLE features disabled");
+                builder
+            }
+        }
+    } else {
+        log::info!(
+            "[blec] Skipping BLE plugin init — Bluetooth permission not granted yet. \
+             Plugin will initialize after the user grants permission and the app restarts."
+        );
         builder
     };
 
@@ -453,6 +491,7 @@ pub fn run() {
             get_sidecar_source,
             set_local_proxy_target,
             clear_local_proxy_target,
+            get_local_proxy_target,
             // Robot discovery (mDNS + manual IP)
             discovery::discover_robots,
             discovery::connect_to_ip,
@@ -460,24 +499,18 @@ pub fn run() {
             discovery::remove_static_peer,
             discovery::get_static_peers,
             discovery::clear_discovery_cache,
-            // Network detection (VPN)
-            network::detect_vpn
         ])
         .on_window_event(|window, event| match event {
-            tauri::WindowEvent::CloseRequested { .. } => {
-                if window.label() == "main" {
-                    log::info!("[tauri] Main window close requested - killing daemon");
-                    let state: tauri::State<DaemonState> = window.state();
-                    let _ = transition_status(&state.status, DaemonStatus::Stopping);
-                    kill_daemon(&state);
-                    let _ = transition_status(&state.status, DaemonStatus::Idle);
-                }
+            tauri::WindowEvent::CloseRequested { .. } if window.label() == "main" => {
+                log::info!("[tauri] Main window close requested - killing daemon");
+                let state: tauri::State<DaemonState> = window.state();
+                let _ = transition_status(&state.status, DaemonStatus::Stopping);
+                kill_daemon(&state);
+                let _ = transition_status(&state.status, DaemonStatus::Idle);
             }
-            tauri::WindowEvent::Destroyed => {
-                if window.label() == "main" {
-                    log::info!("[tauri] Main window destroyed - final cleanup");
-                    cleanup_system_daemons();
-                }
+            tauri::WindowEvent::Destroyed if window.label() == "main" => {
+                log::info!("[tauri] Main window destroyed - final cleanup");
+                cleanup_system_daemons();
             }
             _ => {}
         })

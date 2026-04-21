@@ -228,7 +228,7 @@ describe('Reachy Mini Control - Application Launch', () => {
    */
   it('should show loading state after clicking Start', async () => {
     // After clicking Start, the app should show some loading indication
-    // or transition to the HardwareScanView
+    // or transition to the StartupScanView
     await browser.pause(3000);
 
     const pageContent = await browser.execute(() => {

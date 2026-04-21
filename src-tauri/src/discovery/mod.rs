@@ -34,6 +34,10 @@ pub struct DiscoveryState {
     pub last_known_ip: Arc<RwLock<Option<String>>>,
     /// User-configured static peers (IPs that always get checked)
     pub static_peers: Arc<RwLock<Vec<String>>>,
+    /// Shared HTTP client (reuses TCP connections across discovery cycles)
+    pub http_client: reqwest::Client,
+    /// Persistent mDNS daemon (lives for the entire app lifetime)
+    pub mdns_daemon: ServiceDaemon,
 }
 
 impl DiscoveryState {
@@ -44,9 +48,12 @@ impl DiscoveryState {
                 // mDNS/DNS hostnames (resolved by router or Bonjour)
                 "reachy-mini.home".to_string(), // Router DNS (.home TLD)
                 "reachy-mini.local".to_string(), // Bonjour/mDNS (.local TLD)
-                // Common static IPs
-                "192.168.1.18".to_string(), // Default Reachy IP
             ])),
+            http_client: reqwest::Client::builder()
+                .pool_max_idle_per_host(2)
+                .build()
+                .expect("Failed to build shared HTTP client"),
+            mdns_daemon: ServiceDaemon::new().expect("Failed to start mDNS daemon"),
         }
     }
 }
@@ -79,15 +86,20 @@ async fn resolve_to_ip(host: &str, port: u16) -> Option<String> {
 }
 
 /// Check if a robot is available at a specific host (IP or hostname)
-async fn check_robot_at_ip(host: &str, port: u16, timeout_secs: u64) -> Result<RobotInfo, String> {
+async fn check_robot_at_ip(
+    client: &reqwest::Client,
+    host: &str,
+    port: u16,
+    timeout_secs: u64,
+) -> Result<RobotInfo, String> {
     let url = format!("http://{}:{}/api/daemon/status", host, port);
 
-    let client = reqwest::Client::builder()
+    match client
+        .get(&url)
         .timeout(Duration::from_secs(timeout_secs))
-        .build()
-        .map_err(|e| format!("HTTP client error: {}", e))?;
-
-    match client.get(&url).send().await {
+        .send()
+        .await
+    {
         Ok(response) => {
             if response.status().is_success() {
                 // Resolve hostname to actual IP for proper deduplication
@@ -116,26 +128,30 @@ async fn check_robot_at_ip(host: &str, port: u16, timeout_secs: u64) -> Result<R
 }
 
 /// Pick the best IP from an mDNS address set: prefer IPv4, fall back to first.
-fn pick_best_addr(addrs: &std::collections::HashSet<std::net::IpAddr>) -> Option<String> {
+fn pick_best_addr(addrs: &std::collections::HashSet<mdns_sd::ScopedIp>) -> Option<String> {
     addrs
         .iter()
-        .find(|a| a.is_ipv4())
+        .find(|a| a.to_ip_addr().is_ipv4())
         .or_else(|| addrs.iter().next())
-        .map(|a| a.to_string())
+        .map(|a| a.to_ip_addr().to_string())
 }
+
+const MDNS_SERVICE_REACHY: &str = "_reachy-mini._tcp.local.";
+const MDNS_SERVICE_HTTP: &str = "_http._tcp.local.";
 
 /// Discover robots via mDNS (Multicast DNS Service Discovery)
 /// Browses both `_reachy-mini._tcp.local.` (new specific service) and
 /// `_http._tcp.local.` (old generic HTTP, filtered for "reachy") concurrently.
-async fn discover_via_mdns(timeout: Duration) -> Result<Vec<RobotInfo>, String> {
-    let mdns = ServiceDaemon::new().map_err(|e| format!("Failed to start mDNS daemon: {}", e))?;
-
-    // Browse both service types concurrently
+/// Uses a persistent daemon - only starts/stops browse queries per cycle.
+async fn discover_via_mdns(
+    mdns: &ServiceDaemon,
+    timeout: Duration,
+) -> Result<Vec<RobotInfo>, String> {
     let receiver_reachy = mdns
-        .browse("_reachy-mini._tcp.local.")
+        .browse(MDNS_SERVICE_REACHY)
         .map_err(|e| format!("mDNS browse (_reachy-mini) failed: {}", e))?;
     let receiver_http = mdns
-        .browse("_http._tcp.local.")
+        .browse(MDNS_SERVICE_HTTP)
         .map_err(|e| format!("mDNS browse (_http) failed: {}", e))?;
 
     let mut robots = Vec::new();
@@ -225,10 +241,9 @@ async fn discover_via_mdns(timeout: Duration) -> Result<Vec<RobotInfo>, String> 
         }
     }
 
-    // Explicitly shut down the daemon so background threads are cleaned up
-    // before the next discovery cycle. Without this, subsequent calls see
-    // "sending on a closed channel" errors from stale receivers.
-    let _ = mdns.shutdown();
+    // Stop browsing until next cycle (daemon stays alive)
+    let _ = mdns.stop_browse(MDNS_SERVICE_REACHY);
+    let _ = mdns.stop_browse(MDNS_SERVICE_HTTP);
 
     log::info!(
         "[discovery] mDNS discovery finished ({} robots found)",
@@ -305,7 +320,7 @@ pub async fn discover_robots(
         let last_ip = state.last_known_ip.read().await;
         if let Some(ip) = last_ip.as_ref() {
             log::info!("[discovery] Checking cached IP: {}", ip);
-            match check_robot_at_ip(ip, port, 2).await {
+            match check_robot_at_ip(&state.http_client, ip, port, 2).await {
                 Ok(mut robot) => {
                     robot.discovery_method = "cache".to_string();
                     log::info!("[discovery] Cache hit at {} (resolved: {})", ip, robot.ip);
@@ -328,10 +343,11 @@ pub async fn discover_robots(
             peers_to_check.len()
         );
 
+        let client = &state.http_client;
         let results = join_all(
             peers_to_check
                 .iter()
-                .map(|ip| check_robot_at_ip(ip, port, 3)),
+                .map(|ip| check_robot_at_ip(client, ip, port, 3)),
         )
         .await;
 
@@ -354,7 +370,7 @@ pub async fn discover_robots(
 
     // STEP 3: mDNS discovery (automatic, works on LAN without VPN)
     log::info!("[discovery] Starting mDNS discovery");
-    match discover_via_mdns(Duration::from_secs(5)).await {
+    match discover_via_mdns(&state.mdns_daemon, Duration::from_secs(5)).await {
         Ok(mdns_robots) => {
             for robot in mdns_robots {
                 if discovered.try_add(robot) {
@@ -403,7 +419,7 @@ pub async fn connect_to_ip(
 
     log::info!("[discovery] Manual connection to IP: {}", ip);
 
-    match check_robot_at_ip(&ip, port, 5).await {
+    match check_robot_at_ip(&state.http_client, &ip, port, 5).await {
         Ok(mut robot) => {
             robot.discovery_method = "manual".to_string();
             log::info!("[discovery] Manual connection successful: {}", ip);

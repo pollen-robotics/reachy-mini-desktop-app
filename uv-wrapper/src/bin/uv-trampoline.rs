@@ -1,5 +1,10 @@
 use std::env;
-use std::process::{Command, ExitCode};
+use std::io::{BufRead, BufReader};
+use std::process::{ChildStderr, ChildStdout, Command, ExitCode, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 #[cfg(target_os = "macos")]
 use std::fs;
 #[cfg(target_os = "macos")]
@@ -9,6 +14,114 @@ use uv_wrapper::{get_data_dir, bootstrap, venv_exists, uv_exe_path, needs_upgrad
 
 #[cfg(not(target_os = "windows"))]
 use signal_hook::{consts::TERM_SIGNALS, flag::register};
+
+/// Interval at which we emit heartbeat messages during silent bootstrap phases.
+/// Tauri's sidecar-stdout listener on the frontend uses these lines to reset
+/// the activity-based startup timeout (ACTIVITY_RESET_DELAY = 15s).
+/// Keeping the heartbeat well under that window prevents spurious timeouts.
+const BOOTSTRAP_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
+
+/// RAII guard that spawns a background thread emitting `[bootstrap]` heartbeat
+/// lines on stdout every `BOOTSTRAP_HEARTBEAT_INTERVAL`. The thread stops on
+/// drop. This keeps the frontend's activity-reset alive during long silent
+/// phases (codesigning, GStreamer registry scan, Python import warmup).
+struct BootstrapHeartbeat {
+    stop: Arc<AtomicBool>,
+    handle: Option<thread::JoinHandle<()>>,
+}
+
+impl BootstrapHeartbeat {
+    fn start(label: &str) -> Self {
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_clone = Arc::clone(&stop);
+        let label = label.to_string();
+        let handle = thread::spawn(move || {
+            let mut tick: u64 = 0;
+            while !stop_clone.load(Ordering::Relaxed) {
+                // Sleep in short slices so we stop promptly when the guard is
+                // dropped, without waking up too often.
+                for _ in 0..(BOOTSTRAP_HEARTBEAT_INTERVAL.as_secs().max(1)) {
+                    if stop_clone.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    thread::sleep(Duration::from_secs(1));
+                }
+                tick += 1;
+                println!("[bootstrap] {} (still working... {}s)", label, tick * BOOTSTRAP_HEARTBEAT_INTERVAL.as_secs());
+            }
+        });
+        BootstrapHeartbeat { stop, handle: Some(handle) }
+    }
+}
+
+impl Drop for BootstrapHeartbeat {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+/// Spawn a thread that forwards each line from a piped child stream to our own
+/// stdout/stderr with a `[bootstrap] [<label>] ` prefix. This gives the frontend
+/// real visibility into what Python subprocesses are doing (GStreamer plugin
+/// scan, reachy_mini import, etc.) instead of swallowing them with `Stdio::null`.
+fn forward_stream_stdout(stream: ChildStdout, label: String) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        let reader = BufReader::new(stream);
+        for line in reader.lines().map_while(Result::ok) {
+            // Drop blank lines (GStreamer emits extra newlines between warnings).
+            // Trim trailing whitespace but keep leading indent for readability.
+            let trimmed = line.trim_end();
+            if trimmed.is_empty() {
+                continue;
+            }
+            println!("[bootstrap] [{}] {}", label, trimmed);
+        }
+    })
+}
+
+fn forward_stream_stderr(stream: ChildStderr, label: String) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        let reader = BufReader::new(stream);
+        for line in reader.lines().map_while(Result::ok) {
+            let trimmed = line.trim_end();
+            if trimmed.is_empty() {
+                continue;
+            }
+            eprintln!("[bootstrap] [{}] {}", label, trimmed);
+        }
+    })
+}
+
+/// Map a POSIX signal number to a short human-readable name.
+///
+/// Used when the Python daemon is killed by a native fault (segfault, abort,
+/// bus error) so the frontend log shows `SIGSEGV` instead of a cryptic
+/// `exit code 1`.
+#[cfg(not(target_os = "windows"))]
+fn signal_name(sig: i32) -> &'static str {
+    match sig {
+        1 => "SIGHUP",
+        2 => "SIGINT",
+        3 => "SIGQUIT",
+        4 => "SIGILL",
+        5 => "SIGTRAP",
+        6 => "SIGABRT",
+        7 => "SIGBUS",   // macOS: SIGEMT; Linux: SIGBUS
+        8 => "SIGFPE",
+        9 => "SIGKILL",
+        10 => "SIGBUS",  // macOS
+        11 => "SIGSEGV",
+        13 => "SIGPIPE",
+        14 => "SIGALRM",
+        15 => "SIGTERM",
+        24 => "SIGXCPU",
+        25 => "SIGXFSZ",
+        _ => "unknown",
+    }
+}
 
 /// Adhoc-sign Python executables and libpython with disable-library-validation entitlement.
 /// This allows Python to load pip-installed native extensions (.so/.dylib) regardless of
@@ -119,7 +232,10 @@ fn main() -> ExitCode {
         } else {
             "apps_venv/bin/python3"
         };
-        if let Err(e) = uv_wrapper::run_uv(&data_dir, &["venv", "--python", uv_wrapper::PYTHON_VERSION, "apps_venv"]) {
+        // `--clear` ensures idempotency: if a previous attempt crashed mid-creation
+        // (leaving e.g. `apps_venv/.cache/` only), the directory would prevent a
+        // fresh `uv venv` from succeeding. See bootstrap() in lib.rs for details.
+        if let Err(e) = uv_wrapper::run_uv(&data_dir, &["venv", "--clear", "--python", uv_wrapper::PYTHON_VERSION, "apps_venv"]) {
             eprintln!("❌ Failed to create apps_venv: {}", e);
         } else if let Err(e) = uv_wrapper::run_uv(
             &data_dir,
@@ -166,6 +282,9 @@ fn main() -> ExitCode {
                         let name_str = name.to_string_lossy();
                         if name_str.starts_with("cpython-") && entry.path().is_dir() {
                             println!("[bootstrap] Signing cpython: {}", name_str);
+                            // codesign can take several seconds per binary; heartbeat
+                            // keeps the frontend activity-reset ticking.
+                            let _hb = BootstrapHeartbeat::start(&format!("Signing {}", name_str));
                             sign_python_entitlements(&entry.path());
                         }
                     }
@@ -181,6 +300,7 @@ fn main() -> ExitCode {
                 let venv_dir = data_dir.join(venv_name);
                 if venv_dir.exists() {
                     println!("[bootstrap] Signing {}", venv_name);
+                    let _hb = BootstrapHeartbeat::start(&format!("Signing {}", venv_name));
                     sign_python_entitlements(&venv_dir);
                 }
             }
@@ -193,9 +313,38 @@ fn main() -> ExitCode {
         } else {
             &["apps_venv"]
         };
+        // Verbose pre-warm script: emits progress lines with `flush=True` so each
+        // step (GStreamer init, reachy_mini import) streams in real time and we
+        // can forward it to the frontend. The try/except keeps the import
+        // best-effort (same behaviour as before) while reporting failures.
+        const PREWARM_SCRIPT: &str = concat!(
+            "import sys, time\n",
+            "def log(msg):\n",
+            "    print(msg, flush=True)\n",
+            "t0 = time.monotonic()\n",
+            "def elapsed():\n",
+            "    return f'[+{time.monotonic() - t0:.1f}s]'\n",
+            "log(f'{elapsed()} importing gi')\n",
+            "try:\n",
+            "    import gi\n",
+            "    gi.require_version('Gst', '1.0')\n",
+            "    from gi.repository import Gst\n",
+            "    log(f'{elapsed()} initializing GStreamer (scanning plugin registry, first run only)')\n",
+            "    Gst.init([])\n",
+            "    log(f'{elapsed()} GStreamer ready')\n",
+            "except Exception as e:\n",
+            "    log(f'{elapsed()} GStreamer skipped: {e}')\n",
+            "log(f'{elapsed()} importing reachy_mini')\n",
+            "import reachy_mini\n",
+            "log(f'{elapsed()} reachy_mini imported')\n",
+            "log(f'{elapsed()} pre-warm done')\n",
+        );
+
         println!("[bootstrap] Pre-warming GStreamer and Python imports...");
         {
             let mut children = Vec::new();
+            let mut reader_handles: Vec<thread::JoinHandle<()>> = Vec::new();
+
             for venv_name in venvs_to_warm {
                 let python_path = if cfg!(target_os = "windows") {
                     data_dir.join(venv_name).join("Scripts").join("python.exe")
@@ -207,26 +356,39 @@ fn main() -> ExitCode {
                 }
 
                 println!("[bootstrap] Pre-warming {}...", venv_name);
-                match Command::new(&python_path)
+                let spawn_result = Command::new(&python_path)
                     .current_dir(&data_dir)
                     .env("GST_REGISTRY_FORK", "no")
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
+                    // `PYTHONUNBUFFERED=1` + `print(..., flush=True)` together
+                    // guarantee we observe each log line as it happens instead
+                    // of getting a silent block then a burst at process exit.
+                    .env("PYTHONUNBUFFERED", "1")
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
                     .arg("-c")
-                    .arg(concat!(
-                        "try:\n",
-                        "    import gi; gi.require_version('Gst', '1.0'); from gi.repository import Gst; Gst.init([])\n",
-                        "except Exception:\n",
-                        "    pass\n",
-                        "import reachy_mini\n",
-                    ))
-                    .spawn()
-                {
-                    Ok(child) => children.push((venv_name.to_string(), child)),
+                    .arg(PREWARM_SCRIPT)
+                    .spawn();
+
+                match spawn_result {
+                    Ok(mut child) => {
+                        let label = format!("prewarm:{}", venv_name);
+                        if let Some(out) = child.stdout.take() {
+                            reader_handles.push(forward_stream_stdout(out, label.clone()));
+                        }
+                        if let Some(err) = child.stderr.take() {
+                            reader_handles.push(forward_stream_stderr(err, label));
+                        }
+                        children.push((venv_name.to_string(), child));
+                    }
                     Err(e) => eprintln!("[bootstrap] Warning: failed to spawn pre-warm for {}: {}", venv_name, e),
                 }
             }
 
+            // Heartbeat as a safety net: if both subprocesses happen to be
+            // silent for longer than ACTIVITY_RESET_DELAY (e.g. blocked in a
+            // C-level call like the GStreamer registry scan before the first
+            // print), we still emit an activity line every 5s.
+            let _hb = BootstrapHeartbeat::start("Pre-warming Python imports");
             for (venv_name, mut child) in children {
                 match child.wait() {
                     Ok(status) if !status.success() => {
@@ -238,6 +400,13 @@ fn main() -> ExitCode {
                     _ => {}
                 }
             }
+            // Drain reader threads so we flush every buffered line before
+            // declaring pre-warm complete (avoids interleaved "complete" log
+            // appearing before the last subprocess line).
+            for handle in reader_handles {
+                let _ = handle.join();
+            }
+            drop(_hb);
             println!("[bootstrap] Pre-warming complete");
         }
 
@@ -282,6 +451,14 @@ fn main() -> ExitCode {
         c.current_dir(&data_dir)
          .env("UV_WORKING_DIR", &data_dir)
          .env("UV_PYTHON_INSTALL_DIR", &data_dir)
+         // Force Python to flush stdout/stderr line by line so we never
+         // lose the last error line if the interpreter dies abruptly.
+         .env("PYTHONUNBUFFERED", "1")
+         // Install the built-in faulthandler so native crashes (SIGSEGV,
+         // SIGABRT from C extensions) emit a Python/C traceback on stderr
+         // before the process dies. Essential for diagnosing GStreamer /
+         // PyGObject crashes that otherwise leave an empty `exit code 1`.
+         .env("PYTHONFAULTHANDLER", "1")
          .args(&args[1..]);
         c
     } else {
@@ -336,6 +513,21 @@ fn main() -> ExitCode {
 
             match child.try_wait() {
                 Ok(Some(status)) => {
+                    use std::os::unix::process::ExitStatusExt;
+                    if let Some(signal) = status.signal() {
+                        // Process was terminated by a signal (SIGSEGV, SIGABRT,
+                        // SIGBUS...). Surface it explicitly instead of masking
+                        // it as a generic exit code 1 - this is what we need
+                        // to diagnose native crashes (GStreamer, PyGObject,
+                        // libffi) that never reach Python's excepthook.
+                        eprintln!(
+                            "💥 Process terminated by signal {} ({})",
+                            signal,
+                            signal_name(signal),
+                        );
+                        // Follow POSIX convention: 128 + signal number.
+                        return ExitCode::from((128u16 + signal as u16).min(255) as u8);
+                    }
                     let exit_code = status.code().unwrap_or(1);
                     if exit_code != 0 {
                         eprintln!("⚠️  Process exited with code: {}", exit_code);
@@ -355,7 +547,18 @@ fn main() -> ExitCode {
         }
 
         match child.wait() {
-            Ok(status) => ExitCode::from(status.code().unwrap_or(1) as u8),
+            Ok(status) => {
+                use std::os::unix::process::ExitStatusExt;
+                if let Some(signal) = status.signal() {
+                    eprintln!(
+                        "💥 Process terminated by signal {} ({})",
+                        signal,
+                        signal_name(signal),
+                    );
+                    return ExitCode::from((128u16 + signal as u16).min(255) as u8);
+                }
+                ExitCode::from(status.code().unwrap_or(1) as u8)
+            }
             Err(e) => {
                 eprintln!("❌ Error during final wait: {}", e);
                 ExitCode::FAILURE
