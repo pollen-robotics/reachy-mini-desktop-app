@@ -169,7 +169,16 @@ export async function openAppWindow(
     });
 
     void win.once('tauri://error', () => purge(label));
-    void win.once('tauri://destroyed', () => purge(label));
+    void win.once('tauri://destroyed', () => {
+      if (useAppStore.getState().currentApp) {
+        try {
+          useAppStore.getState().openEmbeddedApp?.(url);
+        } catch {
+          // Store may be unavailable
+        }
+      }
+      purge(label);
+    });
 
     return win;
   } catch {
