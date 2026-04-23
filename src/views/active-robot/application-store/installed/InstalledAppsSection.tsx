@@ -274,12 +274,14 @@ interface OpenAppButtonProps {
   customAppUrl?: string;
   isStartingOrRunning: boolean;
   isRunning: boolean;
+  isPoppedOut?: boolean;
   onTimeout?: () => void;
 }
 
 function OpenAppButton({
   customAppUrl,
   isStartingOrRunning,
+  isPoppedOut,
   onTimeout,
 }: OpenAppButtonProps): React.ReactElement | null {
   const palette = useAppPalette();
@@ -350,6 +352,8 @@ function OpenAppButton({
       console.error('Failed to open app web interface:', err);
     }
   };
+
+  if (isPoppedOut) return null;
 
   const isGhostMode = isChecking && !isAccessible;
 
@@ -453,7 +457,10 @@ export default function InstalledAppsSection({
   onOpenCreateTutorial,
 }: InstalledAppsSectionProps): React.ReactElement {
   const palette = useAppPalette();
-  const { robotStatus } = useAppStore() as unknown as { robotStatus: string };
+  const { robotStatus, openWindows } = useAppStore() as unknown as {
+    robotStatus: string;
+    openWindows: string[];
+  };
   const isSleeping = robotStatus === 'sleeping';
 
   const [menuAnchorEl, setMenuAnchorEl] = useState<HTMLElement | null>(null);
@@ -583,6 +590,9 @@ export default function InstalledAppsSection({
               const isStartingOrRunning = isStarting || isCurrentlyRunning;
 
               const author = app.extra?.id?.split('/')?.[0] || app.extra?.author || null;
+              const isPoppedOut = openWindows.includes(
+                'app-' + app.name.replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase()
+              );
 
               const isMenuOpen = menuAppName === app.name;
 
@@ -773,6 +783,20 @@ export default function InstalledAppsSection({
                           }
                           return null;
                         })()}
+
+                        {isPoppedOut && (
+                          <Typography
+                            sx={{
+                              fontSize: TYPO.micro,
+                              fontWeight: FONT_WEIGHT.medium,
+                              color: palette.textMuted,
+                              fontStyle: 'italic',
+                              letterSpacing: '0.2px',
+                            }}
+                          >
+                            Viewing in separate window
+                          </Typography>
+                        )}
                       </Box>
                     </Box>
 
@@ -854,6 +878,7 @@ export default function InstalledAppsSection({
                         customAppUrl={app.extra?.custom_app_url}
                         isStartingOrRunning={isStartingOrRunning}
                         isRunning={isCurrentlyRunning}
+                        isPoppedOut={isPoppedOut}
                         onTimeout={() => {
                           console.error(`[${app.name}] Web interface timeout - stopping app`);
                           if (isThisAppCurrent) {
