@@ -97,9 +97,20 @@ async function checkWifiRobotV2(): Promise<{ available: boolean; robots: Discove
       | null;
 
     if (rawRobots && rawRobots.length > 0) {
+      // Prefer the mDNS hostname (e.g. `reachy-mini.local`) over the resolved
+      // IP. The IP exposed by `discover_robots` is whatever address the mDNS
+      // record advertised, which can be stale (DHCP renew, network switch,
+      // robot reboot on a different subnet). Hostnames go through Bonjour /
+      // the OS resolver, which uses live mDNS queries with proper TTLs - much
+      // more robust than carrying an IP forward in app state.
+      //
+      // We trim the trailing dot that mDNS hostnames carry by spec
+      // (`reachy-mini.local.` -> `reachy-mini.local`); local proxy + reqwest
+      // both accept either form, but the trimmed version reads better in the
+      // UI subtitle and in logs.
       const robots: DiscoveredRobot[] = rawRobots.map(robot => ({
         ...robot,
-        displayHost: robot.ip,
+        displayHost: robot.hostname?.replace(/\.$/, '') || robot.ip,
       }));
 
       return { available: true, robots };

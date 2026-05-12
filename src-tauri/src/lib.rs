@@ -500,7 +500,6 @@ pub fn run() {
             discovery::add_static_peer,
             discovery::remove_static_peer,
             discovery::get_static_peers,
-            discovery::clear_discovery_cache,
         ])
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::CloseRequested { .. } if window.label() == "main" => {
