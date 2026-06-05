@@ -174,65 +174,65 @@
     "@babel/helper-string-parser" "^7.27.1"
     "@babel/helper-validator-identifier" "^7.28.5"
 
-"@crabnebula/tauri-driver-darwin-arm64@2.0.8":
-  version "2.0.8"
-  resolved "https://registry.npmjs.org/@crabnebula/tauri-driver-darwin-arm64/-/tauri-driver-darwin-arm64-2.0.8.tgz"
-  integrity sha512-8dKiuhgBZ+5xpaaeONO6zCy3JXdyVUL6a8r2JwwpqW1GLzW831bn9r3kCpN7PW5uAk0vwV4qKQzioBtyUgEDqA==
+"@crabnebula/tauri-driver-darwin-arm64@2.0.9":
+  version "2.0.9"
+  resolved "https://registry.yarnpkg.com/@crabnebula/tauri-driver-darwin-arm64/-/tauri-driver-darwin-arm64-2.0.9.tgz#02dad8b40631b390dfab10729afd9dba8c28dbef"
+  integrity sha512-VvO7OC6UkuEP3eU3klyl+Ka/jgWFc3yIUeCw6e8BtibQWDXSwQ/r2tzqvC0d+5psF/mWYiCqNAKMlg4v5+muvg==
 
-"@crabnebula/tauri-driver-darwin-x64@2.0.8":
-  version "2.0.8"
-  resolved "https://registry.yarnpkg.com/@crabnebula/tauri-driver-darwin-x64/-/tauri-driver-darwin-x64-2.0.8.tgz#2c767ef6535b7448235919cf75e3af7f8e07ca8f"
-  integrity sha512-flOk5JGZIDuq1KlHV7o/XRb4JJlsE+/HVNzs9K8EJhIeXqP7iV6z2jd+R/WORDLeZsE8wlR3IGAEJqvGhmUiUQ==
+"@crabnebula/tauri-driver-darwin-x64@2.0.9":
+  version "2.0.9"
+  resolved "https://registry.yarnpkg.com/@crabnebula/tauri-driver-darwin-x64/-/tauri-driver-darwin-x64-2.0.9.tgz#a500165ee3b8639c1338d838a89a5b8e306c0329"
+  integrity sha512-AWm3CY+YjKRLxaaucYdBG9cA7sTPviBpuVjJW6rNsPHGIFlxiA3C7fOv0Eekf2L7ps6v9HRCgldjPjTLH0DvNQ==
 
-"@crabnebula/tauri-driver-linux-x64-gnu@2.0.8":
-  version "2.0.8"
-  resolved "https://registry.yarnpkg.com/@crabnebula/tauri-driver-linux-x64-gnu/-/tauri-driver-linux-x64-gnu-2.0.8.tgz#903268abc2940a3347d61d897b0d7f3ac3f4e8c1"
-  integrity sha512-xC+kF4VxwudeuIq1KCGoAQpGaW0ZYLvwc8sKnfBgdH/BiZcn8rNTFi/1ilNVKScHyqgY3Z/gYmYFowoXrJPIkQ==
+"@crabnebula/tauri-driver-linux-x64-gnu@2.0.9":
+  version "2.0.9"
+  resolved "https://registry.yarnpkg.com/@crabnebula/tauri-driver-linux-x64-gnu/-/tauri-driver-linux-x64-gnu-2.0.9.tgz#150bcf165154057ba99855316bc3d50d263829e4"
+  integrity sha512-+H2HQtjKQrVJ+A9C5x4LaTl/6oX1QpEBlfRJxA4WqCdbJEE2NsmLgODGSQNueav+9QV7MOgjppRMl9fiW7IIqg==
 
-"@crabnebula/tauri-driver-win32-x64-msvc@2.0.8":
-  version "2.0.8"
-  resolved "https://registry.yarnpkg.com/@crabnebula/tauri-driver-win32-x64-msvc/-/tauri-driver-win32-x64-msvc-2.0.8.tgz#b741800fe6f61a82a70e64653bec54a13b8171fe"
-  integrity sha512-XVgo2TZql6C+fNr9+aj+utiU+kYa1jPNEjdskbhJeoCNjbGzqr5PQbpF6fJnq+9GRO17syCQc/7imnbVWfvJDw==
+"@crabnebula/tauri-driver-win32-x64-msvc@2.0.9":
+  version "2.0.9"
+  resolved "https://registry.yarnpkg.com/@crabnebula/tauri-driver-win32-x64-msvc/-/tauri-driver-win32-x64-msvc-2.0.9.tgz#a412370877e492b8ece7564b3b38ad34331f0877"
+  integrity sha512-/xqSl8dmGy7u9FXXjtuxAe38PJuQ4g1yT6Txgft5SwRwicAVkcEvmtdLkHJ6wUqEcg64UBEsoja8Z0EbNqTIcg==
 
-"@crabnebula/tauri-driver@^2.0.8":
-  version "2.0.8"
-  resolved "https://registry.npmjs.org/@crabnebula/tauri-driver/-/tauri-driver-2.0.8.tgz"
-  integrity sha512-qKDwSjsXoPwcfrn/qVwnpZ7L7vxVQh6YnYaPQjjcMuFpV/TeUBxp4K1kgXNb8iYarPUI/EUXwuWiezJ6AR8mKA==
+"@crabnebula/tauri-driver@^2.0.9":
+  version "2.0.9"
+  resolved "https://registry.yarnpkg.com/@crabnebula/tauri-driver/-/tauri-driver-2.0.9.tgz#3d5a4d3ca46bc417247fdcf3c6ed1c253a895d3e"
+  integrity sha512-W+fOUkQnP0MOSu9jMykG7HSstYysTQLMnL2+b3IpenbyqPfBiBI/9uSoNC1nXjh0aYm46nPgwKC6RbiWsWa0XQ==
   optionalDependencies:
-    "@crabnebula/tauri-driver-darwin-arm64" "2.0.8"
-    "@crabnebula/tauri-driver-darwin-x64" "2.0.8"
-    "@crabnebula/tauri-driver-linux-x64-gnu" "2.0.8"
-    "@crabnebula/tauri-driver-win32-x64-msvc" "2.0.8"
+    "@crabnebula/tauri-driver-darwin-arm64" "2.0.9"
+    "@crabnebula/tauri-driver-darwin-x64" "2.0.9"
+    "@crabnebula/tauri-driver-linux-x64-gnu" "2.0.9"
+    "@crabnebula/tauri-driver-win32-x64-msvc" "2.0.9"
 
-"@crabnebula/test-runner-backend-darwin-arm64@0.1.18":
-  version "0.1.18"
-  resolved "https://registry.npmjs.org/@crabnebula/test-runner-backend-darwin-arm64/-/test-runner-backend-darwin-arm64-0.1.18.tgz"
-  integrity sha512-OrzDE0TqGhPhuvO4MkzcM08GsITfaciRy6ksmyHjFQhKMHhsqJV2i3pcVOiVpqHXJR881iI43NhduL0RWb7z0Q==
+"@crabnebula/test-runner-backend-darwin-arm64@0.2.8":
+  version "0.2.8"
+  resolved "https://registry.yarnpkg.com/@crabnebula/test-runner-backend-darwin-arm64/-/test-runner-backend-darwin-arm64-0.2.8.tgz#d0d7f51998ce9b86e30a5f67c6fcc8422d97b327"
+  integrity sha512-2FWWOdKHLP8fdkleQ104fggZnZei7bmXzg8Xw1mi/3QbCRWuzWYwMrGFW7PZRwgGfsqJ4HpT1H3oEyQLkAzvJg==
 
-"@crabnebula/test-runner-backend-darwin-x64@0.1.18":
-  version "0.1.18"
-  resolved "https://registry.yarnpkg.com/@crabnebula/test-runner-backend-darwin-x64/-/test-runner-backend-darwin-x64-0.1.18.tgz#05846d53f01d04a6c5aaf02e57a473cb237a5c40"
-  integrity sha512-uAqbq+z5Qa9HYTi2+CFNPcYr1CSe37TNGk+2XR15zRu3h1+1+FfIDrKNX4Mh0FqmaKZB3PWKSya35idvC7LHOQ==
+"@crabnebula/test-runner-backend-darwin-x64@0.2.8":
+  version "0.2.8"
+  resolved "https://registry.yarnpkg.com/@crabnebula/test-runner-backend-darwin-x64/-/test-runner-backend-darwin-x64-0.2.8.tgz#e081b1303b7166869a04e315d2951a1a75ac20a9"
+  integrity sha512-L7reGnRY8gVbUlvj4PF/xBK+NeFXgpcFu5iSJIWbjwV3+DTjHj6iXpGi68y7MjYpcyHvxwjKmqNrjriE04FA1g==
 
-"@crabnebula/test-runner-backend-linux-x64-gnu@0.1.18":
-  version "0.1.18"
-  resolved "https://registry.yarnpkg.com/@crabnebula/test-runner-backend-linux-x64-gnu/-/test-runner-backend-linux-x64-gnu-0.1.18.tgz#20f71cd2d5180af24d6d2ada2425c19fd64df9ee"
-  integrity sha512-fr0qNibQ/r9aCAk+Hb/K+sfiGw194vsg1MuX9w+NH83ZTMzkYWsPdGxCA+qQJ94g6I3PMaCYGVoQlWD1v3WoGA==
+"@crabnebula/test-runner-backend-linux-x64-gnu@0.2.8":
+  version "0.2.8"
+  resolved "https://registry.yarnpkg.com/@crabnebula/test-runner-backend-linux-x64-gnu/-/test-runner-backend-linux-x64-gnu-0.2.8.tgz#0b2884cbf1fb89c046a47362727a5ff3453f95dc"
+  integrity sha512-eGFBs66Zxy4xVhLubH4IEht0RMK/AJHLEcCP4q+Mvmt1FiqegTj2SZTnC0OoAY56XPC7ns3We2hrYg2gS4K4ag==
 
-"@crabnebula/test-runner-backend-win32-x64-msvc@0.1.18":
-  version "0.1.18"
-  resolved "https://registry.yarnpkg.com/@crabnebula/test-runner-backend-win32-x64-msvc/-/test-runner-backend-win32-x64-msvc-0.1.18.tgz#670c6c4bf4f41a7ab525829b98de29cf28a8d0d0"
-  integrity sha512-CImNzn1KbWAmc/qJx8pSdI37+b0ipz+gF5catxZUL/yk1S5vJH3n/+HByMrHbFxDGCbpGbSO8po14h2D7aZxcw==
+"@crabnebula/test-runner-backend-win32-x64-msvc@0.2.8":
+  version "0.2.8"
+  resolved "https://registry.yarnpkg.com/@crabnebula/test-runner-backend-win32-x64-msvc/-/test-runner-backend-win32-x64-msvc-0.2.8.tgz#56308211720d532dbe08c639917943a062f7ba14"
+  integrity sha512-nsrg7V8qjRF1qDk8Lw/gkNrmyt2SjksF6wzSAmgObjWzoy3VHNNCwUtpWl4RVNI6/NzpGVxkZ7L+Jgk2EoAqOg==
 
-"@crabnebula/test-runner-backend@^0.1.18":
-  version "0.1.18"
-  resolved "https://registry.npmjs.org/@crabnebula/test-runner-backend/-/test-runner-backend-0.1.18.tgz"
-  integrity sha512-ZxwxU3PuJ+Cl/ECn5PItGsLkyyZnFZeqW7wsmjh9yK7x5jHdwqx9pffOvkY+JhS0bgMoN/V6CkalacrHBFVrAw==
+"@crabnebula/test-runner-backend@^0.2.8":
+  version "0.2.8"
+  resolved "https://registry.yarnpkg.com/@crabnebula/test-runner-backend/-/test-runner-backend-0.2.8.tgz#8f4a1fb8091fa4eb1339c2997289e2e5efea9688"
+  integrity sha512-dxdJ4zbpBwuEdo5V5pIICtPqlh+x2Xv+Va+u+ImvgjcZpk8inlSF9LxzZYI/soSmw3FBLHK5yVrqhc1+FS3MzA==
   optionalDependencies:
-    "@crabnebula/test-runner-backend-darwin-arm64" "0.1.18"
-    "@crabnebula/test-runner-backend-darwin-x64" "0.1.18"
-    "@crabnebula/test-runner-backend-linux-x64-gnu" "0.1.18"
-    "@crabnebula/test-runner-backend-win32-x64-msvc" "0.1.18"
+    "@crabnebula/test-runner-backend-darwin-arm64" "0.2.8"
+    "@crabnebula/test-runner-backend-darwin-x64" "0.2.8"
+    "@crabnebula/test-runner-backend-linux-x64-gnu" "0.2.8"
+    "@crabnebula/test-runner-backend-win32-x64-msvc" "0.2.8"
 
 "@dimforge/rapier3d-compat@~0.12.0":
   version "0.12.0"
