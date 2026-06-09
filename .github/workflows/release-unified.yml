@@ -1069,8 +1069,19 @@ jobs:
           # never sees EOF and the step hangs until the job timeout. We redirect
           # to a file (no pipe), bound the run with `timeout`, then print the log
           # and kill any lingering processes before inspecting the signature.
+          # macOS runners do not ship GNU `timeout` (it lives in coreutils as
+          # `gtimeout`). Use whichever exists; if neither is present, run yarn
+          # directly. The hang we fixed came from the `tee` pipe, not from yarn
+          # itself, so the timeout is only a belt-and-suspenders bound.
+          if command -v timeout >/dev/null 2>&1; then
+            E2E_TIMEOUT="timeout 600"
+          elif command -v gtimeout >/dev/null 2>&1; then
+            E2E_TIMEOUT="gtimeout 600"
+          else
+            E2E_TIMEOUT=""
+          fi
           set +e
-          timeout 600 yarn test:e2e > e2e-macos.log 2>&1
+          $E2E_TIMEOUT yarn test:e2e > e2e-macos.log 2>&1
           e2e_status=$?
           set -e
           cat e2e-macos.log
