@@ -1010,6 +1010,14 @@ jobs:
         if: startsWith(matrix.os, 'macos')
         env:
           CN_API_KEY: ${{ secrets.CN_API_KEY }}
+          # The tolerance grep below keys on the panic backtrace frames
+          # (`tauri_plugin_automation::handle_message`) and the panic location
+          # (`btree/navigate.rs`). Those frames are ONLY emitted when a backtrace
+          # is enabled. Without it the crash still happens but prints no
+          # backtrace, so the signature never matches and the step fails. Proven
+          # by run 27131977597 (RUST_BACKTRACE=full -> frames present) vs a plain
+          # run (no backtrace -> only "Failed to create a session").
+          RUST_BACKTRACE: "full"
         run: |
           echo "🧪 ════════════════════════════════════════════════════════════════"
           echo "🧪 E2E TESTS - Validating macOS .app bundle"
@@ -1054,15 +1062,47 @@ jobs:
           # when upstream fixes the UAF (or the failure mode changes), the signature stops
           # matching and the step gates normally again.
           # Tracking: docs/E2E_MACOS_CRABNEBULA_INVESTIGATION.md
+          #
+          # IMPORTANT: do NOT pipe `yarn test:e2e` into `tee`. When the app
+          # crashes, CrabNebula's test-runner-backend and the leaked
+          # `[automation]` server keep the write end of the pipe open, so `tee`
+          # never sees EOF and the step hangs until the job timeout. We redirect
+          # to a file (no pipe), bound the run with `timeout`, then print the log
+          # and kill any lingering processes before inspecting the signature.
           set +e
-          yarn test:e2e 2>&1 | tee e2e-macos.log
-          e2e_status=${PIPESTATUS[0]}
+          timeout 600 yarn test:e2e > e2e-macos.log 2>&1
+          e2e_status=$?
           set -e
+          cat e2e-macos.log
+
+          # The app's panic backtrace is written by CrabNebula's
+          # test-runner-backend to its own log directory (printed at startup as
+          # "Log directory: ..."), which does not always reach this step's
+          # stdout. Search there too so the signature match is reliable.
+          CN_LOG_DIR="$(grep -oE 'Log directory: .*' e2e-macos.log | head -1 | sed 's/^Log directory: //')"
+          SIG_PATHS=(e2e-macos.log)
+          if [ -n "$CN_LOG_DIR" ] && [ -d "$CN_LOG_DIR" ]; then
+            SIG_PATHS+=("$CN_LOG_DIR")
+          fi
+
+          # Kill lingering automation/backend/app processes. These leaked file
+          # descriptors are what wedged the step before; clean them up so later
+          # signing/notarization steps run against a quiet machine.
+          pkill -f "test-runner-backend" 2>/dev/null || true
+          pkill -f "tauri-driver" 2>/dev/null || true
+          pkill -f "Reachy Mini Control" 2>/dev/null || true
+
+          # timeout(1) returns 124 when it had to kill a hung command.
+          if [ "$e2e_status" -eq 124 ]; then
+            echo "🧪 ❌ E2E TESTS TIMED OUT (macOS - ${{ matrix.target }}) after 600s"
+            echo "::error title=macOS E2E timed out::yarn test:e2e exceeded 600s. See logs."
+            exit 124
+          fi
 
           if [ "$e2e_status" -ne 0 ]; then
-            if grep -q "btree/navigate.rs" e2e-macos.log \
-               && grep -q "tauri_plugin_automation" e2e-macos.log \
-               && grep -q "Failed to create a session" e2e-macos.log; then
+            if grep -rqs "btree/navigate.rs" "${SIG_PATHS[@]}" \
+               && grep -rqs "tauri_plugin_automation" "${SIG_PATHS[@]}" \
+               && grep -rqs "Failed to create a session" "${SIG_PATHS[@]}"; then
               echo "🧪 ════════════════════════════════════════════════════════════════"
               echo "🧪 ⚠️ E2E TESTS TOLERATED (macOS - ${{ matrix.target }})"
               echo "🧪 Known tauri-plugin-automation crash (btree/navigate drop over oneshot)."
