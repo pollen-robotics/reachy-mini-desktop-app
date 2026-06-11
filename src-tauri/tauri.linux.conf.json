@@ -19,6 +19,31 @@
           "/usr/share/reachy-mini-control/gstreamer-plugins/libgstrswebrtc.so": "linux/gstreamer-plugins/x86_64/libgstrswebrtc.so",
           "/usr/share/reachy-mini-control/gstreamer-plugins/libgstrsrtp.so": "linux/gstreamer-plugins/x86_64/libgstrsrtp.so"
         }
+      },
+      "rpm": {
+        "depends": [
+          "webkit2gtk4.1",
+          "gtk3",
+          "libayatana-appindicator-gtk3",
+          "librsvg2",
+          "portaudio",
+          "gstreamer1",
+          "gstreamer1-plugins-base",
+          "gstreamer1-plugins-good",
+          "gstreamer1-plugins-bad-free",
+          "libnice",
+          "libnice-gstreamer1",
+          "gobject-introspection",
+          "python3-gobject",
+          "python3-cairo"
+        ],
+        "files": {
+          "/usr/share/reachy-mini-control/99-reachy-mini.rules": "linux/99-reachy-mini.rules",
+          "/usr/share/reachy-mini-control/gstreamer-plugins/libgstrswebrtc.so": "linux/gstreamer-plugins/x86_64/libgstrswebrtc.so",
+          "/usr/share/reachy-mini-control/gstreamer-plugins/libgstrsrtp.so": "linux/gstreamer-plugins/x86_64/libgstrsrtp.so"
+        },
+        "postInstallScript": "linux/rpm-postinst.sh",
+        "postRemoveScript": "linux/rpm-postrm.sh"
       }
     }
   }

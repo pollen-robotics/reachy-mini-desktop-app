@@ -18,6 +18,7 @@
     "tauri:dev": "tauri dev --no-watch",
     "tauri:dev:fresh": "yarn kill-daemon && yarn clean && yarn build:sidecar-macos && yarn tauri:dev",
     "tauri:build": "tauri build",
+    "tauri:build:rpm": "tauri build --bundles rpm",
     "build:sidecar-macos": "bash ./scripts/build/build-sidecar-unix.sh",
     "build:sidecar-linux": "bash ./scripts/build/build-sidecar-unix.sh",
     "build:sidecar-windows": "powershell ./scripts/build/build-sidecar-windows.ps1",

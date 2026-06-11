@@ -11,6 +11,9 @@ export interface GstWebRTCProducer {
 
 export interface GstWebRTCConsumerSession extends EventTarget {
   streams: readonly MediaStream[];
+  rtcPeerConnection?: RTCPeerConnection | null;
+  sessionId?: string;
+  state?: number;
   connect: () => void;
   close: () => void;
 }

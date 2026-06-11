@@ -57,6 +57,21 @@ Cela signifie que :
 
 > **Note** : Les builds Linux sont actuellement désactivés dans le workflow de release en raison de problèmes avec le bundling AppImage et les dépendances natives Python. Voir [issue #35](https://github.com/pollen-robotics/reachy-mini-desktop-app/issues/35).
 
+### Installation via Package .rpm (Fedora)
+
+Le package `.rpm` cible Fedora. Il déclare les dépendances runtime Fedora, installe les règles udev pour l'accès USB au robot et configure l'utilisateur dans le groupe `dialout` quand celui-ci existe.
+
+```bash
+# Installer le package
+sudo dnf install ./reachy-mini-control-*.rpm
+
+# Note: Après l'installation, vous devrez peut-être :
+# 1. Vous déconnecter et vous reconnecter (pour les changements de groupe)
+# 2. Débrancher et rebrancher le câble USB de votre Reachy Mini
+```
+
+Le support RPM est validé comme cible Fedora en priorité. Les distributions RHEL/openSUSE peuvent avoir des noms de dépendances GStreamer/WebKit différents et ne sont pas encore considérées comme supportées officiellement.
+
 ### Build Depuis les Sources
 
 #### Dépendances de Build
@@ -105,7 +120,16 @@ yarn build:sidecar-linux
 yarn tauri:build
 ```
 
-Le package `.deb` sera généré dans `src-tauri/target/release/bundle/deb/`.
+Les packages Linux seront générés dans :
+- `.deb` : `src-tauri/target/release/bundle/deb/`
+- `.rpm` : `src-tauri/target/release/bundle/rpm/`
+- AppImage : `src-tauri/target/release/bundle/appimage/`
+
+Pour compiler uniquement le RPM Fedora :
+
+```bash
+yarn tauri:build:rpm
+```
 
 ## Système de Mises à Jour
 

@@ -38,6 +38,7 @@
       "app",
       "msi",
       "deb",
+      "rpm",
       "appimage"
     ],
     "icon": [

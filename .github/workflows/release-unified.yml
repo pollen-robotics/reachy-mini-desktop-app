@@ -704,7 +704,7 @@ jobs:
           # Prevent linuxdeploy from leaving temp files
           NO_CLEANUP: 0
         run: |
-          # Install dependencies required for .deb and AppImage build
+          # Install dependencies required for .deb, .rpm and AppImage build
           # patchelf is CRITICAL for linuxdeploy to work
           sudo apt-get update
           sudo apt-get install -y \
@@ -728,6 +728,7 @@ jobs:
             file \
             libc-bin \
             dpkg-dev \
+            rpm \
             libfuse2t64 \
             squashfs-tools \
             patchelf
@@ -1423,6 +1424,15 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
           retention-days: 30
 
+      - name: Upload .rpm package (Linux)
+        if: matrix.os == 'ubuntu-24.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-${{ matrix.platform }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/rpm/*.rpm
+          retention-days: 30
+
       - name: Create GitHub Release
         if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin' && github.event.inputs.dry_run != 'true'
         uses: softprops/action-gh-release@v2
@@ -1435,6 +1445,8 @@ jobs:
           files: |
             src-tauri/target/*/release/bundle/deb/*.deb
             src-tauri/target/*/release/bundle/deb/*.deb.sig
+            src-tauri/target/*/release/bundle/rpm/*.rpm
+            src-tauri/target/*/release/bundle/rpm/*.rpm.sig
             src-tauri/target/*/release/bundle/msi/*.msi
             src-tauri/target/*/release/bundle/msi/*.msi.sig
             src-tauri/target/*/release/bundle/appimage/*.AppImage
@@ -1462,6 +1474,8 @@ jobs:
             ${{ matrix.os == 'windows-latest' && format('src-tauri/target/{0}/release/bundle/msi/*.msi.sig', matrix.target) || '' }}
             ${{ matrix.os == 'ubuntu-24.04' && format('src-tauri/target/{0}/release/bundle/deb/*.deb', matrix.target) || '' }}
             ${{ matrix.os == 'ubuntu-24.04' && format('src-tauri/target/{0}/release/bundle/deb/*.deb.sig', matrix.target) || '' }}
+            ${{ matrix.os == 'ubuntu-24.04' && format('src-tauri/target/{0}/release/bundle/rpm/*.rpm', matrix.target) || '' }}
+            ${{ matrix.os == 'ubuntu-24.04' && format('src-tauri/target/{0}/release/bundle/rpm/*.rpm.sig', matrix.target) || '' }}
             ${{ matrix.os == 'ubuntu-24.04' && format('src-tauri/target/{0}/release/bundle/appimage/*.AppImage', matrix.target) || '' }}
             ${{ matrix.os == 'ubuntu-24.04' && format('src-tauri/target/{0}/release/bundle/appimage/*.AppImage.tar.gz', matrix.target) || '' }}
             ${{ matrix.os == 'ubuntu-24.04' && format('src-tauri/target/{0}/release/bundle/appimage/*.AppImage.tar.gz.sig', matrix.target) || '' }}
@@ -1473,7 +1487,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Dry-run only: upload the raw installers (.msi / .dmg / .deb / .AppImage)
+      # Dry-run only: upload the raw installers (.msi / .dmg / .deb / .rpm / .AppImage)
       # so they can be downloaded from the Actions run directly, since no
       # GitHub Release is created in this mode.
       - name: Upload installers (dry run)
@@ -1488,6 +1502,8 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.zip
             src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
             src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb.sig
+            src-tauri/target/${{ matrix.target }}/release/bundle/rpm/*.rpm
+            src-tauri/target/${{ matrix.target }}/release/bundle/rpm/*.rpm.sig
             src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
             src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage.tar.gz
             src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage.tar.gz.sig
@@ -1505,7 +1521,7 @@ jobs:
           echo "🧪"
           echo "🧪 Artifacts available in this run:"
           echo "🧪   - update-${{ matrix.platform }}         (updater payload + signed manifests)"
-          echo "🧪   - dry-run-installer-${{ matrix.platform }} (raw installers: .msi / .dmg / .deb / .AppImage)"
+          echo "🧪   - dry-run-installer-${{ matrix.platform }} (raw installers: .msi / .dmg / .deb / .rpm / .AppImage)"
           echo "🧪"
           echo "🧪 Download them from the Actions tab → this workflow run → Artifacts section."
           echo "🧪 No release was created, no users will be notified."

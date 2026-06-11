@@ -30,6 +30,7 @@ use local_proxy::LocalProxyState;
 use std::sync::Arc;
 use tauri::{Manager, State};
 use tauri_plugin_log::{Target, TargetKind};
+use tauri_plugin_opener::OpenerExt;
 
 #[cfg(not(windows))]
 use signal_hook::{consts::TERM_SIGNALS, iterator::Signals};
@@ -140,6 +141,215 @@ fn get_logs(state: State<DaemonState>) -> Result<Vec<String>, String> {
         .lock()
         .map_err(|e| format!("Failed to read logs: {}", e))?;
     Ok(logs.iter().cloned().collect())
+}
+
+#[tauri::command]
+fn open_external_camera_viewer(
+    app_handle: tauri::AppHandle,
+    host: Option<String>,
+) -> Result<String, String> {
+    let host = host
+        .filter(|h| !h.trim().is_empty())
+        .unwrap_or_else(|| "localhost".to_string());
+    let signaling_url = format!("ws://{}:8443", host);
+    let signaling_url_json = serde_json::to_string(&signaling_url)
+        .map_err(|e| format!("Failed to serialize signaling URL: {}", e))?;
+    let html = external_camera_viewer_html().replace("__SIGNALING_URL__", &signaling_url_json);
+    let path = std::env::temp_dir().join("reachy-mini-camera-viewer.html");
+
+    std::fs::write(&path, html)
+        .map_err(|e| format!("Failed to write external camera viewer: {}", e))?;
+
+    let url = tauri::Url::from_file_path(&path)
+        .map_err(|_| format!("Failed to convert path to file URL: {}", path.display()))?
+        .to_string();
+
+    app_handle
+        .opener()
+        .open_url(url.clone(), None::<&str>)
+        .map_err(|e| format!("Failed to open external camera viewer: {}", e))?;
+
+    Ok(url)
+}
+
+fn external_camera_viewer_html() -> &'static str {
+    r#"<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reachy Mini Camera</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #0f1115;
+      color: #f4f4f5;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(100vw, 1280px);
+      height: min(100vh, 720px);
+      position: relative;
+      background: #050608;
+      overflow: hidden;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #050608;
+    }
+    #status {
+      position: absolute;
+      left: 16px;
+      bottom: 16px;
+      max-width: calc(100% - 32px);
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.65);
+      color: #d4d4d8;
+      font: 12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <video id="video" autoplay playsinline controls muted></video>
+    <div id="status">Connecting...</div>
+  </main>
+  <script>
+    const signalingUrl = __SIGNALING_URL__;
+    const video = document.getElementById('video');
+    const status = document.getElementById('status');
+    let ws = null;
+    let peerId = null;
+    let producerId = null;
+    let sessionId = null;
+    let pc = null;
+    let stream = new MediaStream();
+
+    function log(message) {
+      console.log('[Reachy Camera]', message);
+      status.textContent = message;
+    }
+
+    function send(message) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+      ws.send(JSON.stringify(message));
+      return true;
+    }
+
+    function closeSession() {
+      if (sessionId) send({ type: 'endSession', sessionId });
+      sessionId = null;
+      if (pc) pc.close();
+      pc = null;
+      stream = new MediaStream();
+      video.srcObject = stream;
+    }
+
+    function startProducer(id) {
+      if (sessionId || producerId === id) return;
+      producerId = id;
+      log('Starting stream session...');
+      send({ type: 'startSession', peerId: producerId });
+    }
+
+    async function handleOffer(sdp) {
+      if (!pc) {
+        pc = new RTCPeerConnection({
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+          ],
+        });
+        pc.ontrack = event => {
+          for (const track of event.streams[0]?.getTracks() ?? [event.track]) {
+            if (!stream.getTracks().some(existing => existing.id === track.id)) {
+              stream.addTrack(track);
+            }
+          }
+          video.srcObject = stream;
+          video.play().catch(() => {});
+          log('Stream connected');
+        };
+        pc.onicecandidate = event => {
+          if (event.candidate && sessionId) {
+            send({ type: 'peer', sessionId, ice: event.candidate.toJSON() });
+          }
+        };
+        pc.onconnectionstatechange = () => log(`Connection: ${pc.connectionState}`);
+        pc.oniceconnectionstatechange = () => log(`ICE: ${pc.iceConnectionState}`);
+      }
+
+      log('Applying offer...');
+      await pc.setRemoteDescription(sdp);
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      send({ type: 'peer', sessionId, sdp: pc.localDescription.toJSON() });
+      log('Answer sent, waiting for media...');
+    }
+
+    async function handleMessage(raw) {
+      const message = JSON.parse(raw.data);
+      switch (message.type) {
+        case 'welcome':
+          peerId = message.peerId;
+          send({ type: 'setPeerStatus', roles: ['listener'], meta: { name: 'reachy-external-browser' } });
+          break;
+        case 'peerStatusChanged':
+          if (message.peerId === peerId && message.roles?.includes('listener')) {
+            send({ type: 'list' });
+          } else if (message.roles?.includes('producer') && message.meta?.name === 'reachymini') {
+            startProducer(message.peerId);
+          }
+          break;
+        case 'list':
+          for (const producer of message.producers ?? []) {
+            if (producer.meta?.name === 'reachymini') startProducer(producer.peerId || producer.id);
+          }
+          break;
+        case 'sessionStarted':
+          sessionId = message.sessionId;
+          log('Session started, waiting for offer...');
+          break;
+        case 'peer':
+          if (message.sessionId !== sessionId) return;
+          if (message.sdp) await handleOffer(message.sdp);
+          if (message.ice && pc) await pc.addIceCandidate(new RTCIceCandidate(message.ice));
+          break;
+        case 'endSession':
+          log(message.reason || 'Session ended');
+          closeSession();
+          break;
+        case 'error':
+          throw new Error(message.details || 'Signaling server error');
+      }
+    }
+
+    if (!window.RTCPeerConnection) {
+      log('This browser does not support WebRTC');
+    } else {
+      ws = new WebSocket(signalingUrl);
+      ws.onopen = () => log(`Connected to ${signalingUrl}`);
+      ws.onmessage = event => handleMessage(event).catch(error => {
+        console.error(error);
+        log(`Error: ${error.name || 'Error'}: ${error.message || error}`);
+      });
+      ws.onerror = () => log('WebSocket error');
+      ws.onclose = () => log('Disconnected');
+      window.addEventListener('beforeunload', closeSession);
+    }
+  </script>
+</body>
+</html>
+"#
 }
 
 // ============================================================================
@@ -467,6 +677,7 @@ pub fn run() {
             set_daemon_external_mode,
             get_daemon_status,
             get_logs,
+            open_external_camera_viewer,
             check_crash_marker,
             usb::check_usb_robot,
             window::apply_transparent_titlebar,
