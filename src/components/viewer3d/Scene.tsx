@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef, memo } from 'react';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import URDFRobot from './URDFRobot';
+import GLTFRobot from './GLTFRobot';
 import ScanEffect from './effects/ScanEffect';
 import PremiumScanEffect from './effects/PremiumScanEffect';
 import ErrorHighlight from './effects/ErrorHighlight';
@@ -66,9 +66,6 @@ const SCENE = {
   fogDistance: 2.5,
 } as const;
 
-const XRAY_OPACITY_LIGHT = 0.2;
-const XRAY_OPACITY_DARK = 0.05;
-
 const FOG_COLOR_LIGHT = '#fdfcfa';
 const FOG_COLOR_DARK = '#1a1a1a';
 
@@ -105,9 +102,6 @@ function Scene({
   yawBody,
   antennas,
   isActive,
-  isTransparent,
-  wireframe = false,
-  forceLoad = false,
   hideGrid = false,
   showScanEffect = false,
   usePremiumScan = false,
@@ -118,8 +112,6 @@ function Scene({
   cameraConfig = {},
   useCinematicCamera = false,
   errorFocusMesh = null,
-  allowZeroPose,
-  dataVersion = 0,
 }: SceneProps): React.ReactElement {
   const { isDark } = useAppPalette();
   const [outlineMeshes, setOutlineMeshes] = useState<THREE.Mesh[]>([]);
@@ -149,7 +141,6 @@ function Scene({
     lastHasPassiveJointsRef.current = hasPassiveJoints;
   }, [headJoints, passiveJoints, headPose]);
 
-  const xrayOpacity = isDark ? XRAY_OPACITY_DARK : XRAY_OPACITY_LIGHT;
   const fogColor = isDark ? FOG_COLOR_DARK : FOG_COLOR_LIGHT;
 
   const gridHelper = useMemo(() => {
@@ -191,21 +182,14 @@ function Scene({
 
       {!hideGrid && SCENE.showGrid && <primitive object={gridHelper} position={[0, 0, 0]} />}
 
-      <URDFRobot
-        headJoints={headJoints}
-        passiveJoints={passiveJoints}
+      <GLTFRobot
+        headPose={headPose}
         yawBody={yawBody}
         antennas={antennas}
         isActive={isActive}
-        isTransparent={isTransparent}
-        wireframe={wireframe}
-        xrayOpacity={xrayOpacity}
         onMeshesReady={setOutlineMeshes}
         onRobotReady={(r: THREE.Object3D) => setRobotRef(r as URDFLinkedObject)}
         onPoseReady={onPoseReady ?? undefined}
-        forceLoad={forceLoad}
-        allowZeroPose={allowZeroPose}
-        dataVersion={dataVersion}
       />
 
       {showScanEffect &&
