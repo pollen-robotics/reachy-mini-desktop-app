@@ -61,6 +61,77 @@ function toMatrix(p: GLTFRobotProps['headPose']): THREE.Matrix4 | null {
   return new THREE.Matrix4().fromArray(p).transpose();
 }
 
+// GLTFLoader sanitizes '.' out of node names ("Core.001" -> "Core001"),
+// so look bones up by a normalized key.
+const norm = (s: string): string => s.replace(/[^a-z0-9]/gi, '').toLowerCase();
+
+// --- Neck leg IK -----------------------------------------------------------
+// Each leg is a 4-bone chain that, in Blender, IK-solves so its tip reaches a
+// target riding on the head. glTF can't carry that, so we re-solve it here with
+// a small CCD pass: target rides on the head bone, effector sits at the leg
+// tip, and we rotate the chain each frame to close the gap. Bielles/motors are
+// rigidly parented to these bones, so they follow.
+const LEG_IDS = ['A', 'B', 'C', 'D', 'E', 'F'] as const; // all 6 Stewart legs
+const LEG_IK_ITERATIONS = 8;
+
+interface LegChain {
+  chain: THREE.Object3D[]; // root -> tip bones (Neck.X.001 .. .004)
+  effector: THREE.Object3D; // tip point, child of the last bone
+  target: THREE.Object3D; // attach point, child of the head bone (rides on it)
+}
+
+function setupLeg(
+  id: string,
+  byName: Record<string, THREE.Object3D>,
+  head: THREE.Object3D
+): LegChain | null {
+  const chain = ['001', '002', '003', '004'].map(s => byName[norm(`Neck.${id}.${s}`)]);
+  const ikTarget = byName[norm(`Neck.loc.IK.${id}`)];
+  if (chain.some(b => !b) || !ikTarget) {
+    console.warn(`[GLTFRobot] leg ${id}: missing bones, IK skipped`);
+    return null;
+  }
+  // Rest attach point = the leg's IK target position (where the tip meets head).
+  const attach = ikTarget.getWorldPosition(new THREE.Vector3());
+  const effector = new THREE.Object3D();
+  chain[3].add(effector);
+  effector.position.copy(chain[3].worldToLocal(attach.clone()));
+  const target = new THREE.Object3D();
+  head.add(target);
+  target.position.copy(head.worldToLocal(attach.clone()));
+  return { chain: chain as THREE.Object3D[], effector, target };
+}
+
+// CCD scratch (module-level, no per-frame allocation).
+const _jp = new THREE.Vector3();
+const _ep = new THREE.Vector3();
+const _tp = new THREE.Vector3();
+const _v1 = new THREE.Vector3();
+const _v2 = new THREE.Vector3();
+const _qr = new THREE.Quaternion();
+const _qw = new THREE.Quaternion();
+const _qp = new THREE.Quaternion();
+
+function solveLeg(leg: LegChain, iterations: number): void {
+  leg.target.getWorldPosition(_tp);
+  for (let it = 0; it < iterations; it++) {
+    for (let i = leg.chain.length - 1; i >= 0; i--) {
+      const joint = leg.chain[i];
+      leg.effector.getWorldPosition(_ep);
+      if (_ep.distanceToSquared(_tp) < 1e-8) return;
+      joint.getWorldPosition(_jp);
+      _v1.subVectors(_ep, _jp).normalize();
+      _v2.subVectors(_tp, _jp).normalize();
+      _qr.setFromUnitVectors(_v1, _v2); // world-space delta about the joint
+      joint.getWorldQuaternion(_qw);
+      _qr.multiply(_qw); // -> desired world quaternion
+      joint.parent?.getWorldQuaternion(_qp);
+      joint.quaternion.copy(_qp.invert().multiply(_qr)); // back to local
+      joint.updateWorldMatrix(false, true); // refresh effector subtree
+    }
+  }
+}
+
 function GLTFRobot({
   headPose,
   yawBody = 0,
@@ -86,6 +157,7 @@ function GLTFRobot({
     p: THREE.Vector3; // head world (model-frame) rest position
     s: THREE.Vector3; // head world (model-frame) rest scale
   } | null>(null);
+  const legs = useRef<LegChain[]>([]);
 
   // Capture bones + rest pose ONCE per model. (Must not depend on the parent
   // callbacks — Scene passes inline arrows, so depending on them re-runs this
@@ -97,9 +169,6 @@ function GLTFRobot({
     });
     model.updateWorldMatrix(true, true);
     const modelInv = new THREE.Matrix4().copy(model.matrixWorld).invert();
-    // GLTFLoader sanitizes '.' out of node names ("Core.001" -> "Core001"),
-    // so match on a normalized key instead of the exact name.
-    const norm = (s: string): string => s.replace(/[^a-z0-9]/gi, '').toLowerCase();
     const byName: Record<string, THREE.Object3D> = {};
     model.traverse(o => {
       if (o.name) byName[norm(o.name)] = o;
@@ -119,6 +188,9 @@ function GLTFRobot({
       const s = new THREE.Vector3();
       headModel.decompose(p, q, s);
       headRest.current = { parentInv: parentModel.invert(), q, p, s };
+      legs.current = LEG_IDS.map(id => setupLeg(id, byName, head)).filter(
+        (l): l is LegChain => l !== null
+      );
     }
     onMeshesReady?.(meshes);
     onRobotReady?.(model);
@@ -168,6 +240,10 @@ function GLTFRobot({
       tmp.mat.premultiply(hr.parentInv);
       tmp.mat.decompose(head.position, head.quaternion, head.scale);
     }
+
+    // Neck leg IK: re-solve each leg so its tip tracks the head-mounted target.
+    // Runs after the head is posed (targets are children of the head bone).
+    for (const leg of legs.current) solveLeg(leg, LEG_IK_ITERATIONS);
 
     // Antennas
     if (antennas) {
