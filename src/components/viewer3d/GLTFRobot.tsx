@@ -22,17 +22,16 @@ const DISPLAY_YAW = -Math.PI;
 // (metres) maps to model units by this factor. Independent of display scale.
 const UNITS_PER_M = 3.1;
 const YAW_AXIS = new THREE.Vector3(0, 0, 1); // body spin = robot up axis (Z)
-// The glb head frame is offset from the robot frame by a rotation about Z.
-// Yaw is correct for any value here; tune this to fix pitch/roll axis mapping.
-// Try: -Math.PI/2, Math.PI/2, Math.PI, 0.
-const HEAD_FRAME_YAW_OFFSET = -Math.PI / 2;
+// Robot frame (X-fwd, Y-left, Z-up) -> glb model frame (Blender world: X-right,
+// Y-fwd, Z-up). That's the proper change of basis from the rig's `C` matrix,
+// which works out to Rz(+90) here. Applied as a conjugation R_model = M·R·M⁻¹
+// (det +1, no reflection).
+const HEAD_FRAME_YAW_OFFSET = Math.PI / 2;
 const HEAD_FIX = new THREE.Quaternion().setFromAxisAngle(
   new THREE.Vector3(0, 0, 1),
   HEAD_FRAME_YAW_OFFSET
 );
 const HEAD_FIX_INV = HEAD_FIX.clone().invert();
-// head_pose pitch (rotation about robot Y) comes in with the opposite sign.
-const PITCH_SIGN = -1;
 const YAW_SIGN = 1;
 const ANT_AXIS = new THREE.Vector3(0, 0, 1); // antenna hinge axis in glb space
 const ANT_SIGN = -1; // URDF path used -antennas[i]
@@ -225,10 +224,8 @@ function GLTFRobot({
     const hr = headRest.current;
     if (head && hr && m) {
       m.decompose(tmp.p, tmp.q, tmp.s); // tmp.q = R_robot, tmp.p = translation (m)
-      tmp.q.y *= PITCH_SIGN; // flip pitch (robot Y) sign convention
-      // Re-express the pose in the model's head frame: R_model = C * R * C^-1,
-      // t_model = C * t  (C = HEAD_FIX, a rotation about Z). Fixes pitch/roll
-      // axis mapping; yaw is unaffected.
+      // Change of basis robot -> model frame: R_model = M·R·M⁻¹, t_model = M·t
+      // (M = HEAD_FIX). Proper rotation, no reflection.
       tmp.q.premultiply(HEAD_FIX).multiply(HEAD_FIX_INV);
       tmp.p.applyQuaternion(HEAD_FIX);
       // target world (model-frame) orientation: rotate rest by R in model axes
