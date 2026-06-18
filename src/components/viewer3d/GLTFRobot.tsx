@@ -5,7 +5,10 @@ import * as THREE from 'three';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import glbUrl from '../../assets/robot-3d/reachy_mini_viz.glb?url';
 
-useGLTF.preload(glbUrl);
+// Draco-compressed glb; decoder vendored at public/draco (offline desktop app,
+// so we can't use drei's default CDN decoder path).
+const DRACO_PATH = '/draco/';
+useGLTF.preload(glbUrl, DRACO_PATH);
 
 // ============================================================================
 // The glb is exported Z-up (export_yup=False), i.e. the robot's native frame —
@@ -179,7 +182,7 @@ function GLTFRobot({
   onRobotReady,
   onPoseReady,
 }: GLTFRobotProps): React.ReactElement {
-  const { scene } = useGLTF(glbUrl);
+  const { scene } = useGLTF(glbUrl, DRACO_PATH);
   // SkeletonUtils.clone preserves the armature + skinned-mesh bindings.
   const model = useMemo(() => skeletonClone(scene) as THREE.Object3D, [scene]);
 
