@@ -18,9 +18,14 @@ const MODEL_SCALE = 0.5;
 // Yaw to align the glb's forward with the URDF (URDF wrapper is -PI/2; the glb
 // faces 90deg off, so one more -90deg). Flip if it ends up backwards.
 const DISPLAY_YAW = -Math.PI;
-// The glb robot is ~3.1 model-units per real metre, so head_pose translation
-// (metres) maps to model units by this factor. Independent of display scale.
-const UNITS_PER_M = 3.1;
+// head_pose translation (metres) -> model units. Calibrated so the head's
+// vertical travel stays within the Stewart platform's reach (see HEAD_Z_* below).
+const UNITS_PER_M = 1.7;
+// Platform head-Z reach measured from the rig (model units, relative to rest):
+// it saturates at +0.044 up / -0.085 down. Clamp so the head can't be driven
+// past where the legs physically reach (the real mechanical limit).
+const HEAD_Z_MAX = 0.044;
+const HEAD_Z_MIN = -0.085;
 const YAW_AXIS = new THREE.Vector3(0, 0, 1); // body spin = robot up axis (Z)
 // Robot frame (X-fwd, Y-left, Z-up) -> glb model frame (Blender world: X-right,
 // Y-fwd, Z-up). That's the proper change of basis from the rig's `C` matrix,
@@ -71,10 +76,20 @@ const norm = (s: string): string => s.replace(/[^a-z0-9]/gi, '').toLowerCase();
 // tip, and we rotate the chain each frame to close the gap. Bielles/motors are
 // rigidly parented to these bones, so they follow.
 const LEG_IDS = ['A', 'B', 'C', 'D', 'E', 'F'] as const; // all 6 Stewart legs
-const LEG_IK_ITERATIONS = 8;
+const LEG_IK_ITERATIONS = 12;
+// Per-chain-bone DOF (identical for all 6 legs). Verified against Blender's IK
+// solve (posed the head, measured each bone's rotation axis):
+//   .001 fixed base — outside the IK chain, never rotates
+//   .002 lower bielle: 1-DOF hinge about local X (purely, on all 6 legs)
+//   .003 rigid
+//   .004 .360 / Bielle_360: free ball joint (the IK-constrained bone)
+type Dof = 'free' | 'hingeX' | 'locked';
+const LEG_DOF: Dof[] = ['locked', 'hingeX', 'locked', 'free'];
+const HINGE_AXIS = new THREE.Vector3(1, 0, 0); // .002 bielle hinge = bone local X
 
 interface LegChain {
   chain: THREE.Object3D[]; // root -> tip bones (Neck.X.001 .. .004)
+  restQ: THREE.Quaternion[]; // chain bones' rest rotations (the correct fold)
   effector: THREE.Object3D; // tip point, child of the last bone
   target: THREE.Object3D; // attach point, child of the head bone (rides on it)
 }
@@ -98,7 +113,8 @@ function setupLeg(
   const target = new THREE.Object3D();
   head.add(target);
   target.position.copy(head.worldToLocal(attach.clone()));
-  return { chain: chain as THREE.Object3D[], effector, target };
+  const restQ = chain.map(b => b!.quaternion.clone());
+  return { chain: chain as THREE.Object3D[], restQ, effector, target };
 }
 
 // CCD scratch (module-level, no per-frame allocation).
@@ -107,22 +123,45 @@ const _ep = new THREE.Vector3();
 const _tp = new THREE.Vector3();
 const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
+const _hw = new THREE.Vector3();
+const _cx = new THREE.Vector3();
 const _qr = new THREE.Quaternion();
 const _qw = new THREE.Quaternion();
 const _qp = new THREE.Quaternion();
 
 function solveLeg(leg: LegChain, iterations: number): void {
+  // Start from the rest fold each frame so CCD converges in the correct branch
+  // (otherwise it can drift into a mirrored fold and a leg crosses to a
+  // neighbour's ball). Head motion is small, so a few iterations from rest reach.
+  for (let i = 0; i < leg.chain.length; i++) leg.chain[i].quaternion.copy(leg.restQ[i]);
+  leg.chain[0].updateWorldMatrix(false, true);
   leg.target.getWorldPosition(_tp);
   for (let it = 0; it < iterations; it++) {
-    for (let i = leg.chain.length - 1; i >= 0; i--) {
+    // Root-first: drive the reach DOF (.002 hinge) before the free tip ball
+    // (.004) can "cheat" by pointing the rod at the target and stalling .002.
+    for (let i = 0; i < leg.chain.length; i++) {
+      const dof = LEG_DOF[i];
+      if (dof === 'locked') continue; // rigid bone, never rotates
       const joint = leg.chain[i];
       leg.effector.getWorldPosition(_ep);
       if (_ep.distanceToSquared(_tp) < 1e-8) return;
       joint.getWorldPosition(_jp);
-      _v1.subVectors(_ep, _jp).normalize();
-      _v2.subVectors(_tp, _jp).normalize();
-      _qr.setFromUnitVectors(_v1, _v2); // world-space delta about the joint
       joint.getWorldQuaternion(_qw);
+      if (dof === 'free') {
+        _v1.subVectors(_ep, _jp).normalize();
+        _v2.subVectors(_tp, _jp).normalize();
+        _qr.setFromUnitVectors(_v1, _v2); // free 3-DOF: point effector at target
+      } else {
+        // 1-DOF hinge: optimal angle ABOUT the hinge axis (project to its plane).
+        _hw.copy(HINGE_AXIS).applyQuaternion(_qw).normalize(); // hinge axis in world
+        _v1.subVectors(_ep, _jp).projectOnPlane(_hw);
+        _v2.subVectors(_tp, _jp).projectOnPlane(_hw);
+        if (_v1.lengthSq() < 1e-12 || _v2.lengthSq() < 1e-12) continue;
+        _v1.normalize();
+        _v2.normalize();
+        const ang = Math.atan2(_cx.crossVectors(_v1, _v2).dot(_hw), _v1.dot(_v2));
+        _qr.setFromAxisAngle(_hw, ang);
+      }
       _qr.multiply(_qw); // -> desired world quaternion
       joint.parent?.getWorldQuaternion(_qp);
       joint.quaternion.copy(_qp.invert().multiply(_qr)); // back to local
@@ -230,8 +269,10 @@ function GLTFRobot({
       tmp.p.applyQuaternion(HEAD_FIX);
       // target world (model-frame) orientation: rotate rest by R in model axes
       tmp.worldQ.copy(tmp.q).multiply(hr.q);
-      // target world (model-frame) position: head pivot + translation
+      // target world (model-frame) position: head pivot + translation, with Z
+      // clamped to the platform's reach so the legs can always follow.
       tmp.worldP.copy(hr.p).addScaledVector(tmp.p, UNITS_PER_M);
+      tmp.worldP.z = Math.min(hr.p.z + HEAD_Z_MAX, Math.max(hr.p.z + HEAD_Z_MIN, tmp.worldP.z));
       tmp.mat.compose(tmp.worldP, tmp.worldQ, hr.s);
       // back to local (relative to the head bone's parent)
       tmp.mat.premultiply(hr.parentInv);
