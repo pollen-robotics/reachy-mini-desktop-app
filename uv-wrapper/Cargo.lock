@@ -37,6 +37,7 @@ dependencies = [
 name = "uv-wrapper"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "log",
  "signal-hook",
 ]

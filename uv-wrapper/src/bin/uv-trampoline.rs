@@ -196,6 +196,33 @@ fn sign_python_entitlements(dir: &PathBuf) {
 fn main() -> ExitCode {
     let args = env::args().skip(1).collect::<Vec<String>>();
 
+    // Step 0: Become the leader of our own process group.
+    //
+    // We spawn the Python daemon as a child, and it in turn forks workers
+    // (uvicorn, the GStreamer signaling server on :8443, etc.). The desktop /
+    // tray app stops us by SIGKILLing this trampoline AND `killpg`-ing our
+    // process group id. For that group kill to reach Python, our pgid must
+    // equal our pid — i.e. we must be a group leader — so the spawned Python
+    // (and its forks) inherit *our* group instead of the app's. Without this,
+    // SIGKILLing the trampoline orphans Python (reparented to pid 1), which
+    // keeps `:8000` / `:8443` and the USB serial port bound and breaks every
+    // subsequent restart with `address already in use`.
+    //
+    // setpgid(0, 0) is a no-op-ish call that can only fail with EPERM if we are
+    // already a session leader (we never are, being a spawned child), so we
+    // best-effort it and log on the off chance it fails.
+    #[cfg(unix)]
+    {
+        // SAFETY: setpgid(2) is a libc syscall with no Rust invariants.
+        let rc = unsafe { libc::setpgid(0, 0) };
+        if rc != 0 {
+            eprintln!(
+                "⚠️  setpgid(0, 0) failed: {} — daemon may survive tray shutdown",
+                std::io::Error::last_os_error()
+            );
+        }
+    }
+
     // Step 1: Determine the writable data directory
     let data_dir = match get_data_dir() {
         Some(dir) => dir,
