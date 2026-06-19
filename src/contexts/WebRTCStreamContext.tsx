@@ -17,7 +17,7 @@ import React, {
 import useAppStore from '../store/useAppStore';
 import { fetchWithTimeout, buildApiUrl } from '../config/daemon';
 import { ROBOT_STATUS } from '../constants/robotStatus';
-import { isLinux } from '../utils/platform';
+import { invoke } from '../utils/tauriCompat';
 
 // Import the GStreamer WebRTC API for its side effect (registers `window.GstWebRTCAPI`).
 import '../lib/gstwebrtc-api';
@@ -34,6 +34,20 @@ import type {
 const SIGNALING_PORT = 8443;
 const RECONNECT_DELAY = 2000;
 const INITIAL_RECONNECT_DELAY = 500;
+const STREAM_CONNECT_TIMEOUT = 10000;
+const WEBRTC_UNSUPPORTED_MESSAGE = 'WebRTC is not supported by this desktop WebView';
+
+function hasRTCPeerConnection(): boolean {
+  const webkitWindow = window as typeof window & {
+    webkitRTCPeerConnection?: typeof RTCPeerConnection;
+  };
+
+  if (!window.RTCPeerConnection && webkitWindow.webkitRTCPeerConnection) {
+    window.RTCPeerConnection = webkitWindow.webkitRTCPeerConnection;
+  }
+
+  return typeof window.RTCPeerConnection === 'function';
+}
 
 /** Connection states for the WebRTC stream. */
 export const StreamState = {
@@ -63,6 +77,7 @@ export interface WebRTCStreamContextValue {
   shouldConnect: boolean;
   connect: () => void;
   disconnect: () => void;
+  openExternalViewer: () => Promise<void>;
 }
 
 const WebRTCStreamContext = createContext<WebRTCStreamContextValue | null>(null);
@@ -96,10 +111,12 @@ export function WebRTCStreamProvider({ children }: WebRTCStreamProviderProps): R
   const producersListenerRef = useRef<GstWebRTCProducersListener | null>(null);
   const connectionListenerRef = useRef<GstWebRTCConnectionListener | null>(null);
   const hasConnectedRef = useRef<boolean>(false);
+  const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (isLinux()) {
-      // WebKit on Linux is not built with WebRTC support, so streaming is unavailable.
+    if (!hasRTCPeerConnection()) {
+      console.warn('[WebRTC]', WEBRTC_UNSUPPORTED_MESSAGE);
+      setError(WEBRTC_UNSUPPORTED_MESSAGE);
       setIsWebRTCAvailable(false);
       return;
     }
@@ -144,6 +161,11 @@ export function WebRTCStreamProvider({ children }: WebRTCStreamProviderProps): R
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
+    }
+
+    if (connectTimeoutRef.current) {
+      clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
     }
 
     if (sessionRef.current) {
@@ -195,10 +217,25 @@ export function WebRTCStreamProvider({ children }: WebRTCStreamProviderProps): R
     const signalingUrl = `ws://${host}:${SIGNALING_PORT}`;
 
     try {
+      console.info('[WebRTC] Connecting to signaling server:', signalingUrl);
+
+      if (!hasRTCPeerConnection()) {
+        throw new Error(WEBRTC_UNSUPPORTED_MESSAGE);
+      }
+
       const GstWebRTCAPI = window.GstWebRTCAPI;
       if (!GstWebRTCAPI) {
         throw new Error('GstWebRTCAPI not loaded');
       }
+
+      connectTimeoutRef.current = setTimeout(() => {
+        if (!mountedRef.current) return;
+
+        const message = `Timed out waiting for WebRTC stream from ${signalingUrl}`;
+        console.error('[WebRTC]', message);
+        setError(message);
+        setState(StreamState.ERROR);
+      }, STREAM_CONNECT_TIMEOUT);
 
       const api = new GstWebRTCAPI({
         signalingServerUrl: signalingUrl,
@@ -217,10 +254,12 @@ export function WebRTCStreamProvider({ children }: WebRTCStreamProviderProps): R
       connectionListenerRef.current = {
         connected: () => {
           if (!mountedRef.current) return;
+          console.info('[WebRTC] Signaling connected:', signalingUrl);
           hasConnectedRef.current = true;
         },
         disconnected: () => {
           if (!mountedRef.current) return;
+          console.warn('[WebRTC] Signaling disconnected:', signalingUrl);
           setState(StreamState.DISCONNECTED);
           setStream(null);
           setAudioTrack(null);
@@ -248,7 +287,10 @@ export function WebRTCStreamProvider({ children }: WebRTCStreamProviderProps): R
         producerAdded: (producer: GstWebRTCProducer) => {
           if (!mountedRef.current) return;
 
+          console.info('[WebRTC] Producer added:', producer.id, producer.meta);
+
           if (sessionRef.current) {
+            console.info('[WebRTC] Ignoring producer; session already exists');
             return;
           }
 
@@ -262,8 +304,17 @@ export function WebRTCStreamProvider({ children }: WebRTCStreamProviderProps): R
 
           session.addEventListener('error', (event: Event) => {
             if (!mountedRef.current) return;
-            const message = (event as Event & { message?: string }).message || 'Stream error';
-            console.error('[WebRTC] Session error:', message);
+            const errorEvent = event as ErrorEvent;
+            const details =
+              errorEvent.error instanceof Error
+                ? `${errorEvent.error.name}: ${errorEvent.error.message}`
+                : errorEvent.error
+                  ? String(errorEvent.error)
+                  : null;
+            const message = [errorEvent.message || 'Stream error', details]
+              .filter(Boolean)
+              .join(' - ');
+            console.error('[WebRTC] Session error:', message, errorEvent.error);
             setError(message);
 
             if (mountedRef.current && !reconnectTimeoutRef.current) {
@@ -284,18 +335,72 @@ export function WebRTCStreamProvider({ children }: WebRTCStreamProviderProps): R
 
           session.addEventListener('closed', () => {
             if (!mountedRef.current) return;
+            console.warn('[WebRTC] Session closed', {
+              sessionId: session.sessionId,
+              state: session.state,
+              peerConnection: session.rtcPeerConnection
+                ? {
+                    connectionState: session.rtcPeerConnection.connectionState,
+                    iceConnectionState: session.rtcPeerConnection.iceConnectionState,
+                    iceGatheringState: session.rtcPeerConnection.iceGatheringState,
+                    signalingState: session.rtcPeerConnection.signalingState,
+                  }
+                : null,
+            });
             sessionRef.current = null;
             setStream(null);
             setAudioTrack(null);
             setState(prev => (prev === StreamState.CONNECTED ? StreamState.DISCONNECTED : prev));
           });
 
+          session.addEventListener('rtcPeerConnectionChanged', () => {
+            if (!mountedRef.current) return;
+            const peerConnection = session.rtcPeerConnection;
+            if (!peerConnection) {
+              console.info('[WebRTC] Peer connection cleared');
+              return;
+            }
+
+            const logPeerState = (label: string): void => {
+              console.info(`[WebRTC] ${label}:`, {
+                connectionState: peerConnection.connectionState,
+                iceConnectionState: peerConnection.iceConnectionState,
+                iceGatheringState: peerConnection.iceGatheringState,
+                signalingState: peerConnection.signalingState,
+              });
+            };
+
+            logPeerState('Peer connection created');
+            peerConnection.addEventListener('connectionstatechange', () =>
+              logPeerState('Peer connection state changed')
+            );
+            peerConnection.addEventListener('iceconnectionstatechange', () =>
+              logPeerState('ICE connection state changed')
+            );
+            peerConnection.addEventListener('icegatheringstatechange', () =>
+              logPeerState('ICE gathering state changed')
+            );
+            peerConnection.addEventListener('signalingstatechange', () =>
+              logPeerState('Signaling state changed')
+            );
+          });
+
           session.addEventListener('streamsChanged', () => {
             if (!mountedRef.current) return;
             const streams = session.streams;
+            console.info('[WebRTC] Streams changed:', streams?.length ?? 0);
 
             if (streams && streams.length > 0) {
+              if (connectTimeoutRef.current) {
+                clearTimeout(connectTimeoutRef.current);
+                connectTimeoutRef.current = null;
+              }
+
               const mediaStream = streams[0];
+              console.info('[WebRTC] Stream connected:', {
+                audioTracks: mediaStream.getAudioTracks().length,
+                videoTracks: mediaStream.getVideoTracks().length,
+              });
               setStream(mediaStream);
               setState(StreamState.CONNECTED);
 
@@ -308,11 +413,14 @@ export function WebRTCStreamProvider({ children }: WebRTCStreamProviderProps): R
             }
           });
 
+          console.info('[WebRTC] Connecting consumer session');
           session.connect();
         },
 
         producerRemoved: () => {
           if (!mountedRef.current) return;
+
+          console.warn('[WebRTC] Producer removed');
 
           if (sessionRef.current) {
             sessionRef.current.close();
@@ -338,6 +446,18 @@ export function WebRTCStreamProvider({ children }: WebRTCStreamProviderProps): R
     cleanup();
     setState(StreamState.DISCONNECTED);
   }, [cleanup]);
+
+  const openExternalViewer = useCallback(async (): Promise<void> => {
+    const host = remoteHost || 'localhost';
+    try {
+      await invoke('open_external_camera_viewer', { host });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.error('[WebRTC] Failed to open external camera viewer:', message);
+      setError(message);
+      setState(StreamState.ERROR);
+    }
+  }, [remoteHost]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -372,6 +492,7 @@ export function WebRTCStreamProvider({ children }: WebRTCStreamProviderProps): R
 
     connect,
     disconnect,
+    openExternalViewer,
   };
 
   return <WebRTCStreamContext.Provider value={value}>{children}</WebRTCStreamContext.Provider>;

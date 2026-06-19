@@ -1,7 +1,8 @@
 import React, { useRef, useEffect } from 'react';
-import { Box, Typography, CircularProgress } from '@mui/material';
+import { Box, Typography, CircularProgress, Button } from '@mui/material';
 import VideocamOutlinedIcon from '@mui/icons-material/VideocamOutlined';
 import VideocamOffIcon from '@mui/icons-material/VideocamOff';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { STATUS, whiteAlpha, blackAlpha } from '@styles/tokens';
 import { DURATION, RADIUS, TYPO, transition, useAppPalette } from '@styles';
 import { useWebRTCStreamContext, StreamState } from '../../../contexts/WebRTCStreamContext';
@@ -29,7 +30,9 @@ export default function CameraFeed({ isLarge = false }: CameraFeedProps): React.
     isWebRTCAvailable,
     checkFailed,
     isRobotAwake,
+    error,
     connect,
+    openExternalViewer,
   } = useWebRTCStreamContext();
 
   // Attach/detach stream to video element
@@ -74,6 +77,9 @@ export default function CameraFeed({ isLarge = false }: CameraFeedProps): React.
   const spinnerColor = palette.isDark ? whiteAlpha(0.45) : blackAlpha(0.35);
   const errorIconColor = `${STATUS.error}99`;
   const errorTextColor = `${STATUS.error}b3`;
+  const canOpenExternalViewer = error === 'WebRTC is not supported by this desktop WebView';
+  const unavailableLabel =
+    !isLarge && canOpenExternalViewer ? 'Open in browser' : 'Stream not available';
 
   // Common placeholder box style
   const placeholderStyle = {
@@ -119,8 +125,47 @@ export default function CameraFeed({ isLarge = false }: CameraFeedProps): React.
               letterSpacing: '0.5px',
             }}
           >
-            Stream not available
+            {unavailableLabel}
           </Typography>
+          {error && isLarge && (
+            <Typography
+              sx={{
+                maxWidth: '85%',
+                fontSize: isLarge ? TYPO.xs : '9px',
+                color: textColorMuted,
+                fontFamily: 'SF Mono, Monaco, Menlo, monospace',
+                textAlign: 'center',
+                wordBreak: 'break-word',
+              }}
+            >
+              {error}
+            </Typography>
+          )}
+          {canOpenExternalViewer && (
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={isLarge ? <OpenInNewIcon /> : undefined}
+              onClick={openExternalViewer}
+              sx={{
+                mt: isLarge ? 1 : 0.25,
+                minWidth: 0,
+                px: isLarge ? 1.5 : 0.75,
+                py: isLarge ? 0.375 : 0.25,
+                color: textColorMuted,
+                borderColor: iconColorMuted,
+                fontSize: isLarge ? TYPO.xs : '9px',
+                fontFamily: 'SF Mono, Monaco, Menlo, monospace',
+                textTransform: 'uppercase',
+                '&:hover': {
+                  borderColor: textColorMuted,
+                  bgcolor: hoverBg,
+                },
+              }}
+            >
+              {isLarge ? 'Open in browser' : 'Open'}
+            </Button>
+          )}
         </Box>
       </Box>
     );
@@ -264,6 +309,21 @@ export default function CameraFeed({ isLarge = false }: CameraFeedProps): React.
           >
             {state === StreamState.ERROR ? 'Connection failed' : 'Click to connect'}
           </Typography>
+          {state === StreamState.ERROR && error && (
+            <Typography
+              sx={{
+                maxWidth: '85%',
+                fontSize: isLarge ? TYPO.xs : '9px',
+                color: errorTextColor,
+                fontFamily: 'SF Mono, Monaco, Menlo, monospace',
+                textAlign: 'center',
+                wordBreak: 'break-word',
+                textTransform: 'none',
+              }}
+            >
+              {error}
+            </Typography>
+          )}
         </Box>
       )}
     </Box>
