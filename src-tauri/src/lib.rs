@@ -154,7 +154,9 @@ fn open_external_camera_viewer(
     let signaling_url = format!("ws://{}:8443", host);
     let signaling_url_json = serde_json::to_string(&signaling_url)
         .map_err(|e| format!("Failed to serialize signaling URL: {}", e))?;
-    let html = external_camera_viewer_html().replace("__SIGNALING_URL__", &signaling_url_json);
+    let html = external_camera_viewer_html()
+        .replace("__SIGNALING_URL__", &signaling_url_json)
+        .replace("__GST_WEBRTC_API__", gstwebrtc_api_js());
     let path = std::env::temp_dir().join("reachy-mini-camera-viewer.html");
 
     std::fs::write(&path, html)
@@ -224,132 +226,107 @@ fn external_camera_viewer_html() -> &'static str {
     <div id="status">Connecting...</div>
   </main>
   <script>
+    __GST_WEBRTC_API__
+  </script>
+  <script>
     const signalingUrl = __SIGNALING_URL__;
     const video = document.getElementById('video');
     const status = document.getElementById('status');
-    let ws = null;
-    let peerId = null;
-    let producerId = null;
-    let sessionId = null;
-    let pc = null;
-    let stream = new MediaStream();
+    let api = null;
+    let session = null;
 
     function log(message) {
       console.log('[Reachy Camera]', message);
       status.textContent = message;
     }
 
-    function send(message) {
-      if (!ws || ws.readyState !== WebSocket.OPEN) return false;
-      ws.send(JSON.stringify(message));
-      return true;
-    }
-
     function closeSession() {
-      if (sessionId) send({ type: 'endSession', sessionId });
-      sessionId = null;
-      if (pc) pc.close();
-      pc = null;
-      stream = new MediaStream();
-      video.srcObject = stream;
+      if (session) {
+        session.close();
+        session = null;
+      }
+      if (api?._channel) {
+        api._channel.close();
+      }
+      api = null;
+      video.srcObject = null;
     }
 
-    function startProducer(id) {
-      if (sessionId || producerId === id) return;
-      producerId = id;
+    function connectToProducer(producer) {
+      if (session || producer.meta?.name !== 'reachymini') return;
+
       log('Starting stream session...');
-      send({ type: 'startSession', peerId: producerId });
+      session = api.createConsumerSession(producer.id);
+      if (!session) {
+        log('Failed to create stream session');
+        return;
+      }
+
+      session.addEventListener('error', event => {
+        console.error(event);
+        log(`Stream error: ${event.message || event.error || 'Unknown error'}`);
+      });
+      session.addEventListener('closed', () => {
+        log('Session closed');
+        session = null;
+        video.srcObject = null;
+      });
+      session.addEventListener('streamsChanged', () => {
+        const [stream] = session.streams || [];
+        if (!stream) return;
+
+        video.srcObject = stream;
+        video.play().catch(() => {});
+        log('Stream connected');
+      });
+      session.connect();
     }
 
-    async function handleOffer(sdp) {
-      if (!pc) {
-        pc = new RTCPeerConnection({
+    try {
+      if (!window.RTCPeerConnection) {
+        throw new Error('This browser does not support WebRTC');
+      }
+      if (!window.GstWebRTCAPI) {
+        throw new Error('GstWebRTCAPI not loaded');
+      }
+
+      api = new window.GstWebRTCAPI({
+        signalingServerUrl: signalingUrl,
+        reconnectionTimeout: 0,
+        meta: { name: 'reachy-external-browser' },
+        webrtcConfig: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
           ],
-        });
-        pc.ontrack = event => {
-          for (const track of event.streams[0]?.getTracks() ?? [event.track]) {
-            if (!stream.getTracks().some(existing => existing.id === track.id)) {
-              stream.addTrack(track);
-            }
-          }
-          video.srcObject = stream;
-          video.play().catch(() => {});
-          log('Stream connected');
-        };
-        pc.onicecandidate = event => {
-          if (event.candidate && sessionId) {
-            send({ type: 'peer', sessionId, ice: event.candidate.toJSON() });
-          }
-        };
-        pc.onconnectionstatechange = () => log(`Connection: ${pc.connectionState}`);
-        pc.oniceconnectionstatechange = () => log(`ICE: ${pc.iceConnectionState}`);
-      }
-
-      log('Applying offer...');
-      await pc.setRemoteDescription(sdp);
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      send({ type: 'peer', sessionId, sdp: pc.localDescription.toJSON() });
-      log('Answer sent, waiting for media...');
-    }
-
-    async function handleMessage(raw) {
-      const message = JSON.parse(raw.data);
-      switch (message.type) {
-        case 'welcome':
-          peerId = message.peerId;
-          send({ type: 'setPeerStatus', roles: ['listener'], meta: { name: 'reachy-external-browser' } });
-          break;
-        case 'peerStatusChanged':
-          if (message.peerId === peerId && message.roles?.includes('listener')) {
-            send({ type: 'list' });
-          } else if (message.roles?.includes('producer') && message.meta?.name === 'reachymini') {
-            startProducer(message.peerId);
-          }
-          break;
-        case 'list':
-          for (const producer of message.producers ?? []) {
-            if (producer.meta?.name === 'reachymini') startProducer(producer.peerId || producer.id);
-          }
-          break;
-        case 'sessionStarted':
-          sessionId = message.sessionId;
-          log('Session started, waiting for offer...');
-          break;
-        case 'peer':
-          if (message.sessionId !== sessionId) return;
-          if (message.sdp) await handleOffer(message.sdp);
-          if (message.ice && pc) await pc.addIceCandidate(new RTCIceCandidate(message.ice));
-          break;
-        case 'endSession':
-          log(message.reason || 'Session ended');
-          closeSession();
-          break;
-        case 'error':
-          throw new Error(message.details || 'Signaling server error');
-      }
-    }
-
-    if (!window.RTCPeerConnection) {
-      log('This browser does not support WebRTC');
-    } else {
-      ws = new WebSocket(signalingUrl);
-      ws.onopen = () => log(`Connected to ${signalingUrl}`);
-      ws.onmessage = event => handleMessage(event).catch(error => {
-        console.error(error);
-        log(`Error: ${error.name || 'Error'}: ${error.message || error}`);
+        },
       });
-      ws.onerror = () => log('WebSocket error');
-      ws.onclose = () => log('Disconnected');
+
+      api.registerConnectionListener({
+        connected: () => log(`Connected to ${signalingUrl}`),
+        disconnected: () => log('Disconnected'),
+      });
+      api.registerProducersListener({
+        producerAdded: connectToProducer,
+        producerRemoved: () => {
+          if (session) {
+            session.close();
+          }
+        },
+      });
       window.addEventListener('beforeunload', closeSession);
+    } catch (error) {
+      console.error(error);
+      log(`Error: ${error.name || 'Error'}: ${error.message || error}`);
     }
   </script>
 </body>
 </html>
 "#
+}
+
+fn gstwebrtc_api_js() -> &'static str {
+    include_str!("../../src/lib/gstwebrtc-api.js")
 }
 
 // ============================================================================

@@ -77,7 +77,8 @@ export default function CameraFeed({ isLarge = false }: CameraFeedProps): React.
   const spinnerColor = palette.isDark ? whiteAlpha(0.45) : blackAlpha(0.35);
   const errorIconColor = `${STATUS.error}99`;
   const errorTextColor = `${STATUS.error}b3`;
-  const canOpenExternalViewer = error === 'WebRTC is not supported by this desktop WebView';
+  const canOpenExternalViewer =
+    isWebRTCAvailable === false && error === 'WebRTC is not supported by this desktop WebView';
   const unavailableLabel =
     !isLarge && canOpenExternalViewer ? 'Open in browser' : 'Stream not available';
 
