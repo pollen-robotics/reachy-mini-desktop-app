@@ -18,8 +18,8 @@ export interface BootstrapDetection {
 /**
  * Parse sidecar stdout/stderr to decide whether the daemon is going through
  * a first-run Python environment setup ("bootstrap") and expose a
- * user-friendly label for the current step. WiFi mode is short-circuited
- * since there is no local sidecar.
+ * user-friendly label for the current step. WiFi and external modes are
+ * short-circuited since there is no local sidecar.
  *
  * Also clears any transient `hardwareError` produced during bootstrap:
  * those are false positives, real hardware comms haven't started yet.
@@ -32,10 +32,13 @@ export function useBootstrapDetection(isStarting: boolean): BootstrapDetection {
   useEffect(() => {
     if (!isStarting) return;
 
-    // WiFi mode: no local sidecar, bootstrap doesn't apply.
+    // WiFi and external modes: no local sidecar (the daemon is remote or was
+    // started outside the app), so no sidecar output ever arrives and bootstrap
+    // doesn't apply. Without this short-circuit `isBootstrapping` would stay
+    // `null` forever, stalling StartupView's scan-complete / post-ready gates.
     const currentConnectionMode = (useAppStore.getState() as { connectionMode: ConnectionModeLike })
       .connectionMode;
-    if (currentConnectionMode === 'wifi') {
+    if (currentConnectionMode === 'wifi' || currentConnectionMode === 'external') {
       setIsBootstrapping(false);
       return;
     }
