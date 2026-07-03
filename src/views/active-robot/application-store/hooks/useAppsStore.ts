@@ -465,6 +465,12 @@ export function useAppsStore(isActive: boolean) {
 
         createJob(jobId, 'remove', appName, null, setActiveJobs, startJobPollingRef);
 
+        // The daemon clears the startup app when it's the one removed; mirror it
+        // locally so the menu/border update without a reconnect.
+        if ((useAppStore.getState() as unknown as AnyRecord).startupAppName === appName) {
+          setStartupApp(null);
+        }
+
         return jobId;
       } catch (err) {
         console.error('❌ Removal error:', err);
@@ -484,7 +490,7 @@ export function useAppsStore(isActive: boolean) {
         throw err;
       }
     },
-    [setActiveJobs, logger, setAppsError]
+    [setActiveJobs, logger, setAppsError, setStartupApp]
   );
 
   const startApp = useCallback(
