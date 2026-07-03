@@ -30,6 +30,8 @@ interface UseAppHandlersParams {
   startApp: (appName: string) => Promise<unknown>;
   stopCurrentApp: () => Promise<unknown>;
   triggerUpdate: (appName: string) => Promise<unknown>;
+  applyStartupApp: (appName: string | null) => Promise<void>;
+  startupAppName: string | null;
   showToast?: ShowToast;
 }
 
@@ -41,6 +43,7 @@ interface UseAppHandlersReturn {
   handleUninstall: (appName: string) => Promise<void>;
   handleUpdate: (appName: string) => Promise<void>;
   handleStartApp: (appName: string) => Promise<void>;
+  handleToggleStartupApp: (appName: string) => Promise<void>;
   isJobRunning: (appName: string, jobType: string) => boolean;
   getJobInfo: (appName: string, jobType?: string) => JobLike | null;
   stopCurrentApp: () => Promise<unknown>;
@@ -54,6 +57,8 @@ export function useAppHandlers({
   startApp,
   stopCurrentApp,
   triggerUpdate,
+  applyStartupApp,
+  startupAppName,
   showToast,
 }: UseAppHandlersParams): UseAppHandlersReturn {
   const { robotState, actions, api } = useActiveRobotContext();
@@ -75,6 +80,8 @@ export function useAppHandlers({
     startApp: typeof startApp;
     stopCurrentApp: typeof stopCurrentApp;
     triggerUpdate: typeof triggerUpdate;
+    applyStartupApp: typeof applyStartupApp;
+    startupAppName: string | null;
     showToast: ShowToast | undefined;
     lockForApp: typeof lockForApp;
     unlockApp: typeof unlockApp;
@@ -90,6 +97,8 @@ export function useAppHandlers({
     startApp,
     stopCurrentApp,
     triggerUpdate,
+    applyStartupApp,
+    startupAppName,
     showToast,
     lockForApp,
     unlockApp,
@@ -106,6 +115,8 @@ export function useAppHandlers({
     startApp,
     stopCurrentApp,
     triggerUpdate,
+    applyStartupApp,
+    startupAppName,
     showToast,
     lockForApp,
     unlockApp,
@@ -156,6 +167,23 @@ export function useAppHandlers({
       } else {
         if (showToast) showToast(`Failed to uninstall ${appName}: ${error.message}`, 'error');
       }
+    }
+  }, []);
+
+  const handleToggleStartupApp = useCallback(async (appName: string): Promise<void> => {
+    const { applyStartupApp, startupAppName, showToast } = latest.current;
+    const enabling = appName !== startupAppName;
+    try {
+      await applyStartupApp(enabling ? appName : null);
+      if (showToast) {
+        showToast(
+          enabling ? `${appName} will launch on startup` : `${appName} removed from startup`,
+          'success'
+        );
+      }
+    } catch (err) {
+      const error = err as Error;
+      if (showToast) showToast(`Failed to update startup app: ${error.message}`, 'error');
     }
   }, []);
 
@@ -297,6 +325,7 @@ export function useAppHandlers({
     handleUninstall,
     handleUpdate,
     handleStartApp,
+    handleToggleStartupApp,
     isJobRunning,
     getJobInfo,
     stopCurrentApp,

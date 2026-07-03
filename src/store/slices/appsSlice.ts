@@ -39,6 +39,8 @@ export const appsInitialState: AppsSliceState = {
   isStoppingApp: false,
 
   pendingDeepLinkInstall: null,
+
+  startupAppName: null,
 };
 
 /**
@@ -114,6 +116,7 @@ export const createAppsSlice: StateCreator<AppState, [], [], AppsSlice> = (set, 
   setAppsLoading: loading => set({ appsLoading: loading }),
   setAppsError: error => set({ appsError: error }),
   setIsStoppingApp: isStopping => set({ isStoppingApp: isStopping }),
+  setStartupApp: appName => set({ startupAppName: appName }),
 
   setAppsOfficialMode: (mode: boolean) =>
     set({
@@ -136,6 +139,7 @@ export const createAppsSlice: StateCreator<AppState, [], [], AppsSlice> = (set, 
       appsCacheValid: false,
       isStoppingApp: false,
       pendingDeepLinkInstall: null,
+      startupAppName: null,
     }),
 
   // ============================================

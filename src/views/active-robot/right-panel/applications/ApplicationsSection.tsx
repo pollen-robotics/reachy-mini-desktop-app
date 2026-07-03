@@ -102,6 +102,8 @@ export default function ApplicationsSection({
     startApp: (appName: string) => Promise<unknown>;
     stopCurrentApp: () => Promise<unknown>;
     fetchAvailableApps: (force?: boolean) => Promise<unknown>;
+    applyStartupApp: (appName: string | null) => Promise<void>;
+    startupAppName: string | null;
     isLoading: boolean;
     isStoppingApp: boolean;
     error: string | null;
@@ -120,6 +122,8 @@ export default function ApplicationsSection({
     startApp,
     stopCurrentApp,
     fetchAvailableApps,
+    applyStartupApp,
+    startupAppName,
     isLoading,
     isStoppingApp,
     error: appsError,
@@ -195,6 +199,7 @@ export default function ApplicationsSection({
     handleUninstall,
     handleUpdate,
     handleStartApp,
+    handleToggleStartupApp,
     isJobRunning,
     getJobInfo,
   } = useAppHandlers({
@@ -205,6 +210,8 @@ export default function ApplicationsSection({
     startApp,
     stopCurrentApp,
     triggerUpdate,
+    applyStartupApp,
+    startupAppName,
     showToast,
   });
 
@@ -387,6 +394,8 @@ export default function ApplicationsSection({
             handleStartApp={handleStartApp}
             handleUninstall={handleUninstall}
             handleUpdate={handleUpdate}
+            handleToggleStartupApp={handleToggleStartupApp}
+            startupAppName={startupAppName}
             hasUpdate={hasUpdate as never}
             isCheckingUpdates={isCheckingUpdates}
             hasCheckedOnce={hasCheckedOnce}

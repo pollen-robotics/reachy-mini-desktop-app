@@ -145,6 +145,7 @@ export interface AppsSliceState {
   jobSeenOnce: boolean;
   isStoppingApp: boolean;
   pendingDeepLinkInstall: string | null;
+  startupAppName: string | null;
 }
 
 export interface AppsSliceActions {
@@ -160,6 +161,7 @@ export interface AppsSliceActions {
   setAppsLoading: (loading: boolean) => void;
   setAppsError: (error: string | null) => void;
   setIsStoppingApp: (isStopping: boolean) => void;
+  setStartupApp: (appName: string | null) => void;
   setAppsOfficialMode: (mode: boolean) => void;
   invalidateAppsCache: () => void;
   clearApps: () => void;
