@@ -153,6 +153,8 @@ function ActiveRobotView({
     startApp: noopAsync as (appName: string) => Promise<unknown>,
     stopCurrentApp: noopAsync as () => Promise<unknown>,
     triggerUpdate: noopAsync as (appName: string) => Promise<unknown>,
+    applyStartupApp: noopAsync as (appName: string | null) => Promise<void>,
+    startupAppName: null,
     showToast,
   });
 

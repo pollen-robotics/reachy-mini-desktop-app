@@ -23,6 +23,17 @@ function StartingView({ startupError, startDaemon }: StartingViewProps) {
     setHardwareError(null);
 
     try {
+      // Skip the wake if already awake (state WS is stable by now).
+      const controlMode = (
+        useAppStore.getState() as {
+          robotStateFull?: { data?: { control_mode?: string } };
+        }
+      ).robotStateFull?.data?.control_mode;
+      if (controlMode === 'enabled') {
+        transitionTo.ready();
+        return;
+      }
+
       await fetchWithTimeout(
         buildApiUrl('/api/motors/set_mode/enabled'),
         { method: 'POST' },

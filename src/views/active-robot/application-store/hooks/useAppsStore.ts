@@ -107,6 +107,8 @@ export function useAppsStore(isActive: boolean) {
   const appsLoading = useAppStore(s => s.appsLoading) as boolean;
   const appsError = useAppStore(s => s.appsError) as string | null;
   const isStoppingApp = useAppStore(s => (s as unknown as AnyRecord).isStoppingApp) as boolean;
+  const startupAppName = useAppStore(s => s.startupAppName) as string | null;
+  const setStartupApp = useAppStore(s => s.setStartupApp) as (name: string | null) => void;
   const setAvailableApps = useAppStore(s => s.setAvailableApps) as (apps: AppLike[]) => void;
   const setInstalledApps = useAppStore(s => s.setInstalledApps) as (apps: AppLike[]) => void;
   const setCurrentApp = useAppStore(s => s.setCurrentApp) as (app: CurrentAppStatus | null) => void;
@@ -286,6 +288,16 @@ export function useAppsStore(isActive: boolean) {
       const status = (await response.json()) as CurrentAppStatus | null;
       const store = useAppStore.getState() as unknown as AnyRecord;
 
+      // Close the opened app UI when it stops, independent of the robot lock
+      // (an external sleep clears the lock before this poll sees the stop).
+      const closeOpenedAppUi = (name?: string): void => {
+        if (name) closeAppWindow(name).catch(() => {});
+        // Don't clobber a non-embedded right-panel view.
+        if (store.rightPanelView === 'embedded-app') {
+          (store.closeEmbeddedApp as () => void)();
+        }
+      };
+
       if (status && status.info && status.state) {
         const appState = status.state;
         const appName = status.info.name as string;
@@ -334,10 +346,11 @@ export function useAppsStore(isActive: boolean) {
 
           if (appState === 'done') {
             setCurrentApp(null);
-            (store.closeEmbeddedApp as () => void)();
+            closeOpenedAppUi(appName);
+          } else if (appState === 'stopping') {
+            closeOpenedAppUi(appName);
           } else if (appState === 'error') {
-            closeAppWindow(appName).catch(() => {});
-            (store.closeEmbeddedApp as () => void)();
+            closeOpenedAppUi(appName);
 
             if (!errorClearTimerRef.current) {
               errorClearTimerRef.current = setTimeout(() => {
@@ -351,15 +364,11 @@ export function useAppsStore(isActive: boolean) {
       } else {
         setCurrentApp(null);
 
+        const lastAppName = (store.currentAppName as string) || undefined;
+        closeOpenedAppUi(lastAppName);
+
         if (store.isAppRunning && store.busyReason === 'app-running') {
-          const lastAppName = (store.currentAppName as string) || 'unknown';
-
-          if (lastAppName !== 'unknown') {
-            closeAppWindow(lastAppName).catch(() => {});
-          }
-          (store.closeEmbeddedApp as () => void)();
-
-          logger.warning(`App ${lastAppName} stopped unexpectedly`);
+          logger.warning(`App ${lastAppName ?? 'unknown'} stopped unexpectedly`);
           (store.unlockApp as () => void)();
         }
       }
@@ -456,6 +465,12 @@ export function useAppsStore(isActive: boolean) {
 
         createJob(jobId, 'remove', appName, null, setActiveJobs, startJobPollingRef);
 
+        // The daemon clears the startup app when it's the one removed; mirror it
+        // locally so the menu/border update without a reconnect.
+        if ((useAppStore.getState() as unknown as AnyRecord).startupAppName === appName) {
+          setStartupApp(null);
+        }
+
         return jobId;
       } catch (err) {
         console.error('❌ Removal error:', err);
@@ -475,7 +490,7 @@ export function useAppsStore(isActive: boolean) {
         throw err;
       }
     },
-    [setActiveJobs, logger, setAppsError]
+    [setActiveJobs, logger, setAppsError, setStartupApp]
   );
 
   const startApp = useCallback(
@@ -523,6 +538,52 @@ export function useAppsStore(isActive: boolean) {
       }
     },
     [fetchCurrentAppStatus, logger, setAppsError, setCurrentApp]
+  );
+
+  // Fetch the app configured to auto-start on the robot's next wake-up.
+  const fetchStartupApp = useCallback(async (): Promise<void> => {
+    try {
+      const response = await fetchWithTimeout(
+        buildApiUrl('/api/apps/startup-app'),
+        {},
+        DAEMON_CONFIG.TIMEOUTS.APPS_LIST,
+        { silent: true }
+      );
+      if (!response.ok) return;
+      const data = (await response.json()) as { startup_app: string | null };
+      setStartupApp(data.startup_app ?? null);
+    } catch {
+      // Best-effort; the border indicator just stays unset on failure.
+    }
+  }, [setStartupApp]);
+
+  // Set (name) or clear (null) the auto-start app; only installed apps are valid.
+  const applyStartupApp = useCallback(
+    async (appName: string | null): Promise<void> => {
+      try {
+        const response = await fetchWithTimeout(
+          buildApiUrl('/api/apps/startup-app'),
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ startup_app: appName }),
+          },
+          DAEMON_CONFIG.TIMEOUTS.COMMAND,
+          { label: appName ? `Set startup app to ${appName}` : 'Clear startup app' }
+        );
+        if (!response.ok) {
+          throw new Error(`Failed to set startup app: ${response.status}`);
+        }
+        setStartupApp(appName);
+      } catch (err) {
+        const error = err as Error;
+        console.error('❌ Failed to set startup app:', err);
+        logger.error(`Failed to set startup app (${error.message})`);
+        setAppsError(error.message);
+        throw err;
+      }
+    },
+    [logger, setAppsError, setStartupApp]
   );
 
   const stopCurrentApp = useCallback(async (): Promise<unknown> => {
@@ -599,12 +660,13 @@ export function useAppsStore(isActive: boolean) {
     }
 
     fetchAvailableApps(false);
+    fetchStartupApp();
 
     fetchCurrentAppStatus();
     const interval = setInterval(fetchCurrentAppStatus, DAEMON_CONFIG.INTERVALS.APP_STATUS);
 
     return () => clearInterval(interval);
-  }, [isActive, isWindowVisible, fetchAvailableApps, fetchCurrentAppStatus]);
+  }, [isActive, isWindowVisible, fetchAvailableApps, fetchStartupApp, fetchCurrentAppStatus]);
 
   return {
     availableApps,
@@ -615,11 +677,14 @@ export function useAppsStore(isActive: boolean) {
     error: appsError,
     isStoppingApp,
 
+    startupAppName,
     fetchAvailableApps,
     installApp,
     removeApp,
     startApp,
     stopCurrentApp,
+    fetchStartupApp,
+    applyStartupApp,
     fetchCurrentAppStatus,
     startJobPolling,
     invalidateCache: invalidateAppsCache,
