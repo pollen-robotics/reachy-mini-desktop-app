@@ -35,6 +35,23 @@ interface DaemonStatusResponse {
   [key: string]: unknown;
 }
 
+/** Whether a startup app is configured (false on error → proceed with the stop). */
+async function hasStartupApp(): Promise<boolean> {
+  try {
+    const res = await fetchWithTimeout(
+      buildApiUrl('/api/apps/startup-app'),
+      {},
+      DAEMON_CONFIG.TIMEOUTS.COMMAND,
+      { label: 'Check startup app', silent: true }
+    );
+    if (!res.ok) return false;
+    const data = (await res.json()) as { startup_app?: string | null };
+    return !!data?.startup_app;
+  } catch {
+    return false;
+  }
+}
+
 export interface UseDaemonResult {
   isActive: boolean;
   isStarting: boolean;
@@ -354,15 +371,19 @@ export const useDaemon = (): UseDaemonResult => {
     if (currentConnectionMode === 'wifi') {
       await performGracefulShutdown();
 
-      try {
-        await fetchWithTimeout(
-          buildApiUrl('/api/daemon/stop?goto_sleep=false'),
-          { method: 'POST' },
-          DAEMON_CONFIG.TIMEOUTS.COMMAND,
-          { label: 'Daemon stop' }
-        );
-      } catch {
-        // Continue with reset.
+      // Keep the daemon alive (asleep) when a startup app is set, so an antenna
+      // touch can still wake it — the watcher only runs while the backend is up.
+      if (!(await hasStartupApp())) {
+        try {
+          await fetchWithTimeout(
+            buildApiUrl('/api/daemon/stop?goto_sleep=false'),
+            { method: 'POST' },
+            DAEMON_CONFIG.TIMEOUTS.COMMAND,
+            { label: 'Daemon stop' }
+          );
+        } catch {
+          // Continue with reset.
+        }
       }
 
       try {
