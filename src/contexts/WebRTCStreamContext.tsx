@@ -35,7 +35,7 @@ const SIGNALING_PORT = 8443;
 const RECONNECT_DELAY = 2000;
 const INITIAL_RECONNECT_DELAY = 500;
 const STREAM_CONNECT_TIMEOUT = 10000;
-const WEBRTC_UNSUPPORTED_MESSAGE = 'WebRTC is not supported by this desktop WebView';
+export const WEBRTC_UNSUPPORTED_MESSAGE = 'WebRTC is not supported by this desktop WebView';
 
 function hasRTCPeerConnection(): boolean {
   const webkitWindow = window as typeof window & {

@@ -5,7 +5,11 @@ import VideocamOffIcon from '@mui/icons-material/VideocamOff';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { STATUS, whiteAlpha, blackAlpha } from '@styles/tokens';
 import { DURATION, RADIUS, TYPO, transition, useAppPalette } from '@styles';
-import { useWebRTCStreamContext, StreamState } from '../../../contexts/WebRTCStreamContext';
+import {
+  useWebRTCStreamContext,
+  StreamState,
+  WEBRTC_UNSUPPORTED_MESSAGE,
+} from '../../../contexts/WebRTCStreamContext';
 
 export interface CameraFeedProps {
   isLarge?: boolean;
@@ -77,8 +81,7 @@ export default function CameraFeed({ isLarge = false }: CameraFeedProps): React.
   const spinnerColor = palette.isDark ? whiteAlpha(0.45) : blackAlpha(0.35);
   const errorIconColor = `${STATUS.error}99`;
   const errorTextColor = `${STATUS.error}b3`;
-  const canOpenExternalViewer =
-    isWebRTCAvailable === false && error === 'WebRTC is not supported by this desktop WebView';
+  const canOpenExternalViewer = isWebRTCAvailable === false && error === WEBRTC_UNSUPPORTED_MESSAGE;
   const unavailableLabel =
     !isLarge && canOpenExternalViewer ? 'Open in browser' : 'Stream not available';
 
