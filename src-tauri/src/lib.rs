@@ -30,6 +30,7 @@ use local_proxy::LocalProxyState;
 use std::sync::Arc;
 use tauri::{Manager, State};
 use tauri_plugin_log::{Target, TargetKind};
+use tauri_plugin_opener::OpenerExt;
 
 #[cfg(not(windows))]
 use signal_hook::{consts::TERM_SIGNALS, iterator::Signals};
@@ -140,6 +141,192 @@ fn get_logs(state: State<DaemonState>) -> Result<Vec<String>, String> {
         .lock()
         .map_err(|e| format!("Failed to read logs: {}", e))?;
     Ok(logs.iter().cloned().collect())
+}
+
+#[tauri::command]
+fn open_external_camera_viewer(
+    app_handle: tauri::AppHandle,
+    host: Option<String>,
+) -> Result<String, String> {
+    let host = host
+        .filter(|h| !h.trim().is_empty())
+        .unwrap_or_else(|| "localhost".to_string());
+    let signaling_url = format!("ws://{}:8443", host);
+    let signaling_url_json = serde_json::to_string(&signaling_url)
+        .map_err(|e| format!("Failed to serialize signaling URL: {}", e))?;
+    let html = external_camera_viewer_html()
+        .replace("__SIGNALING_URL__", &signaling_url_json)
+        .replace("__GST_WEBRTC_API__", gstwebrtc_api_js());
+    let path = std::env::temp_dir().join("reachy-mini-camera-viewer.html");
+
+    std::fs::write(&path, html)
+        .map_err(|e| format!("Failed to write external camera viewer: {}", e))?;
+
+    let url = tauri::Url::from_file_path(&path)
+        .map_err(|_| format!("Failed to convert path to file URL: {}", path.display()))?
+        .to_string();
+
+    app_handle
+        .opener()
+        .open_url(url.clone(), None::<&str>)
+        .map_err(|e| format!("Failed to open external camera viewer: {}", e))?;
+
+    Ok(url)
+}
+
+fn external_camera_viewer_html() -> &'static str {
+    r#"<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reachy Mini Camera</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #0f1115;
+      color: #f4f4f5;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(100vw, 1280px);
+      height: min(100vh, 720px);
+      position: relative;
+      background: #050608;
+      overflow: hidden;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #050608;
+    }
+    #status {
+      position: absolute;
+      left: 16px;
+      bottom: 16px;
+      max-width: calc(100% - 32px);
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.65);
+      color: #d4d4d8;
+      font: 12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <video id="video" autoplay playsinline controls muted></video>
+    <div id="status">Connecting...</div>
+  </main>
+  <script>
+    __GST_WEBRTC_API__
+  </script>
+  <script>
+    const signalingUrl = __SIGNALING_URL__;
+    const video = document.getElementById('video');
+    const status = document.getElementById('status');
+    let api = null;
+    let session = null;
+
+    function log(message) {
+      console.log('[Reachy Camera]', message);
+      status.textContent = message;
+    }
+
+    function closeSession() {
+      if (session) {
+        session.close();
+        session = null;
+      }
+      if (api?._channel) {
+        api._channel.close();
+      }
+      api = null;
+      video.srcObject = null;
+    }
+
+    function connectToProducer(producer) {
+      if (session || producer.meta?.name !== 'reachymini') return;
+
+      log('Starting stream session...');
+      session = api.createConsumerSession(producer.id);
+      if (!session) {
+        log('Failed to create stream session');
+        return;
+      }
+
+      session.addEventListener('error', event => {
+        console.error(event);
+        log(`Stream error: ${event.message || event.error || 'Unknown error'}`);
+      });
+      session.addEventListener('closed', () => {
+        log('Session closed');
+        session = null;
+        video.srcObject = null;
+      });
+      session.addEventListener('streamsChanged', () => {
+        const [stream] = session.streams || [];
+        if (!stream) return;
+
+        video.srcObject = stream;
+        video.play().catch(() => {});
+        log('Stream connected');
+      });
+      session.connect();
+    }
+
+    try {
+      if (!window.RTCPeerConnection) {
+        throw new Error('This browser does not support WebRTC');
+      }
+      if (!window.GstWebRTCAPI) {
+        throw new Error('GstWebRTCAPI not loaded');
+      }
+
+      api = new window.GstWebRTCAPI({
+        signalingServerUrl: signalingUrl,
+        reconnectionTimeout: 0,
+        meta: { name: 'reachy-external-browser' },
+        webrtcConfig: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+          ],
+        },
+      });
+
+      api.registerConnectionListener({
+        connected: () => log(`Connected to ${signalingUrl}`),
+        disconnected: () => log('Disconnected'),
+      });
+      api.registerProducersListener({
+        producerAdded: connectToProducer,
+        producerRemoved: () => {
+          if (session) {
+            session.close();
+          }
+        },
+      });
+      window.addEventListener('beforeunload', closeSession);
+    } catch (error) {
+      console.error(error);
+      log(`Error: ${error.name || 'Error'}: ${error.message || error}`);
+    }
+  </script>
+</body>
+</html>
+"#
+}
+
+fn gstwebrtc_api_js() -> &'static str {
+    include_str!("../../src/lib/gstwebrtc-api.js")
 }
 
 // ============================================================================
@@ -467,6 +654,7 @@ pub fn run() {
             set_daemon_external_mode,
             get_daemon_status,
             get_logs,
+            open_external_camera_viewer,
             check_crash_marker,
             usb::check_usb_robot,
             window::apply_transparent_titlebar,
