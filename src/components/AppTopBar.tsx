@@ -16,7 +16,7 @@ import { useAppPalette, TYPO, FONT_WEIGHT, DURATION, transition } from '@styles'
  */
 export default function AppTopBar(): React.ReactPortal {
   const palette = useAppPalette();
-  const { connectionMode, rightPanelView } = useAppStore();
+  const { connectionMode, rightPanelView, isFullscreen, rightPanelWidth } = useAppStore();
   const [currentVersion, setCurrentVersion] = useState<string | null>('');
   const [isMainWindow, setIsMainWindow] = useState<boolean>(true);
   const appWindow = getAppWindow();
@@ -42,6 +42,12 @@ export default function AppTopBar(): React.ReactPortal {
     checkWindow();
   }, []);
 
+  // In fullscreen there is no window frame to drag, and the 33px drag strip would
+  // float over the scaled UI — so render nothing.
+  if (isFullscreen) {
+    return createPortal(null, document.body);
+  }
+
   // Render via portal to escape parent stacking context.
   // z-index 10000000 keeps AppTopBar above all modals so drag always works.
   // Any interactive element that must be clickable within the top 33px of a modal
@@ -61,7 +67,7 @@ export default function AppTopBar(): React.ReactPortal {
         position: 'fixed',
         top: 0,
         left: 65,
-        right: rightPanelView === 'embedded-app' ? '450px' : 0,
+        right: rightPanelView === 'embedded-app' ? `${rightPanelWidth}px` : 0,
         height: 33,
         cursor: 'move',
         userSelect: 'none',

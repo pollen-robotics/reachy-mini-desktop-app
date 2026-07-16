@@ -4,7 +4,10 @@ import type { SxProps, Theme } from '@mui/material/styles';
 import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined';
 import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined';
 import PrivacyTipOutlinedIcon from '@mui/icons-material/PrivacyTipOutlined';
+import FullscreenIcon from '@mui/icons-material/Fullscreen';
+import FullscreenExitIcon from '@mui/icons-material/FullscreenExit';
 import useAppStore from '../../../store/useAppStore';
+import type { FullAppState } from '../../../store/useStore';
 import { isTelemetryEnabled, setTelemetryEnabled } from '../../../utils/telemetry';
 import SectionHeader from './SectionHeader';
 import { DURATION, blackAlpha, transition } from '@styles/tokens';
@@ -25,6 +28,8 @@ export default function SettingsPreferencesCard({
 
   const rowBg = palette.isDark ? blackAlpha(0.2) : blackAlpha(0.02);
   const rowBgHover = palette.isDark ? blackAlpha(0.3) : blackAlpha(0.04);
+
+  const isFullscreen = useAppStore((state: FullAppState) => state.isFullscreen);
 
   const [telemetryEnabled, setTelemetryEnabledState] = useState<boolean>(isTelemetryEnabled());
 
@@ -68,6 +73,38 @@ export default function SettingsPreferencesCard({
           </Typography>
         </Box>
         <Switch checked={palette.isDark} size="small" color="primary" />
+      </Box>
+
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          p: 1.5,
+          borderRadius: RADIUS.xl,
+          bgcolor: rowBg,
+          cursor: 'pointer',
+          transition: transition('background', DURATION.fast),
+          mb: 1.5,
+          '&:hover': {
+            bgcolor: rowBgHover,
+          },
+        }}
+        onClick={() => useAppStore.getState().toggleFullscreen()}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          {isFullscreen ? (
+            <FullscreenExitIcon sx={{ fontSize: TYPO.xl, color: textSecondary }} />
+          ) : (
+            <FullscreenIcon sx={{ fontSize: TYPO.xl, color: textSecondary }} />
+          )}
+          <Typography
+            sx={{ fontSize: TYPO.body, fontWeight: FONT_WEIGHT.medium, color: textPrimary }}
+          >
+            Fullscreen
+          </Typography>
+        </Box>
+        <Switch checked={isFullscreen} size="small" color="primary" />
       </Box>
 
       <Box

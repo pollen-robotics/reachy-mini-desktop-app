@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Box, Typography, Button, CircularProgress } from '@mui/material';
 import useDaemonLogStream from '../../hooks/useDaemonLogStream';
+import { useResizeObserver } from '../../hooks/useResizeObserver';
 import { logInfo } from '../../utils/logging';
 import FullscreenOverlayUntyped from '../../components/FullscreenOverlay';
 import Viewer3DUntyped from '../../components/viewer3d';
@@ -103,6 +104,83 @@ function ActiveRobotView({
   usbPortName: _usbPortName,
 }: ActiveRobotViewProps): React.ReactElement {
   const palette = useAppPalette();
+
+  // Report the (now fluid) right-panel width so AppTopBar can offset its drag
+  // strip correctly in the embedded-app case (it used to assume a fixed 450px).
+  const rightColumnRef = useRef<HTMLDivElement | null>(null);
+  const rightColumnSize = useResizeObserver(rightColumnRef);
+  useEffect(() => {
+    if (rightColumnSize.width > 0) {
+      useAppStore.getState().setRightPanelWidth(rightColumnSize.width);
+    }
+  }, [rightColumnSize.width]);
+
+  // --- Resizable split between the two columns ---
+  // The left column width is derived from `leftFraction` but clamped in PX to
+  // MIN_PANE_PX so neither pane collapses — enforced on BOTH drag and window
+  // resize (a proportional fallback kicks in if the window is too small to honor
+  // both mins, so nothing overflows). The chosen ratio persists across sessions.
+  const MIN_PANE_PX = 280;
+  const DIVIDER_PX = 12;
+  // Floor for the left-column log console so it can't be shrunk to a sliver by
+  // the fixed content stacked above it (viewer + header + audio controls).
+  const LOGS_MIN_HEIGHT_PX = 200;
+  const contentRowRef = useRef<HTMLDivElement | null>(null);
+  const contentRowSize = useResizeObserver(contentRowRef);
+  const [leftFraction, setLeftFraction] = useState<number>(() => {
+    const stored =
+      typeof window !== 'undefined' ? localStorage.getItem('activeSplitFraction') : null;
+    const n = stored ? parseFloat(stored) : NaN;
+    return Number.isFinite(n) && n > 0.1 && n < 0.9 ? n : 0.5;
+  });
+  const [isDraggingSplit, setIsDraggingSplit] = useState<boolean>(false);
+  const leftFractionRef = useRef<number>(leftFraction);
+  leftFractionRef.current = leftFraction;
+
+  // Left pane width in px, recomputed whenever the row or ratio changes so the
+  // min pane size holds even as the window shrinks.
+  const leftPaneWidth = useMemo<number>(() => {
+    const container = contentRowSize.width || 900;
+    const usable = Math.max(0, container - DIVIDER_PX);
+    const desired = leftFraction * container;
+    if (usable >= 2 * MIN_PANE_PX) {
+      return Math.round(Math.max(MIN_PANE_PX, Math.min(usable - MIN_PANE_PX, desired)));
+    }
+    return Math.round(usable * leftFraction);
+  }, [contentRowSize.width, leftFraction]);
+
+  const updateSplitFromClientX = useCallback((clientX: number): void => {
+    const el = contentRowRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const roomy = rect.width >= 2 * MIN_PANE_PX + DIVIDER_PX;
+    const minFrac = roomy ? MIN_PANE_PX / rect.width : 0.1;
+    const maxFrac = roomy ? 1 - MIN_PANE_PX / rect.width : 0.9;
+    let frac = (clientX - rect.left) / rect.width;
+    frac = Math.max(minFrac, Math.min(maxFrac, frac));
+    if (Number.isFinite(frac)) setLeftFraction(frac);
+  }, []);
+
+  useEffect(() => {
+    if (!isDraggingSplit) return;
+    const onMove = (e: PointerEvent): void => updateSplitFromClientX(e.clientX);
+    const onUp = (): void => {
+      setIsDraggingSplit(false);
+      try {
+        localStorage.setItem('activeSplitFraction', String(leftFractionRef.current));
+      } catch {
+        /* ignore */
+      }
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [isDraggingSplit, updateSplitFromClientX]);
+
   // Get dependencies from context
   const { robotState, actions } = useActiveRobotContext();
 
@@ -504,6 +582,7 @@ function ActiveRobotView({
 
         {/* Content - 2 columns */}
         <Box
+          ref={contentRowRef}
           sx={{
             display: 'flex',
             flexDirection: 'row',
@@ -513,11 +592,12 @@ function ActiveRobotView({
             bgcolor: 'transparent',
           }}
         >
-          {/* Left column (450px) - Current content */}
+          {/* Left column - width driven by the draggable split */}
           <Box
             sx={{
-              width: '450px',
+              width: `${leftPaneWidth}px`,
               flexShrink: 0,
+              minWidth: 0,
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -593,13 +673,16 @@ function ActiveRobotView({
               />
             </Box>
 
-            {/* Logs Console - Use flex to take remaining space and prevent height issues */}
+            {/* Logs Console - grows to fill remaining space, but keeps a usable
+                floor (minHeight) so a tall stack above it can't squish the logs to
+                a sliver. When the column is short, the outer overflowY scroll
+                reveals the full console at the bottom instead of collapsing it. */}
             <Box
               sx={{
                 mt: 1,
                 width: '100%',
                 flex: '1 1 auto',
-                minHeight: 0,
+                minHeight: LOGS_MIN_HEIGHT_PX,
                 display: 'flex',
                 flexDirection: 'column',
               }}
@@ -610,7 +693,7 @@ function ActiveRobotView({
                 <LogConsole
                   logs={logs}
                   darkMode={palette.isDark}
-                  maxHeight={120}
+                  height="100%"
                   compact={true}
                   onExpand={() => setLogsFullscreenOpen(true)}
                 />
@@ -618,11 +701,47 @@ function ActiveRobotView({
             </Box>
           </Box>
 
-          {/* Right column (450px) - Application Store */}
+          {/* Draggable divider - drag to rebalance the two panes */}
           <Box
+            onPointerDown={(e: React.PointerEvent) => {
+              e.preventDefault();
+              setIsDraggingSplit(true);
+            }}
             sx={{
-              width: '450px',
               flexShrink: 0,
+              width: '12px',
+              cursor: 'col-resize',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              position: 'relative',
+              zIndex: 3,
+              '& .split-line': {
+                transition: 'background-color 0.15s ease, width 0.15s ease',
+              },
+              '&:hover .split-line': {
+                backgroundColor: palette.textMuted,
+                width: '3px',
+              },
+            }}
+          >
+            <Box
+              className="split-line"
+              sx={{
+                width: isDraggingSplit ? '3px' : '2px',
+                height: '100%',
+                borderRadius: '2px',
+                backgroundColor: isDraggingSplit ? palette.textMuted : palette.border,
+              }}
+            />
+          </Box>
+
+          {/* Right column - fluid, absorbs remaining width so the row fills 100% */}
+          <Box
+            ref={rightColumnRef}
+            sx={{
+              flex: '1 1 0',
+              minWidth: 0,
               display: 'flex',
               flexDirection: 'column',
               position: 'relative',
@@ -646,6 +765,12 @@ function ActiveRobotView({
             />
           </Box>
         </Box>
+
+        {/* While dragging the split, this overlay captures the pointer so it keeps
+            tracking over the 3D canvas / embedded app iframe. */}
+        {isDraggingSplit && (
+          <Box sx={{ position: 'fixed', inset: 0, zIndex: 10000001, cursor: 'col-resize' }} />
+        )}
 
         {/* Logs Fullscreen Modal - only mount LogConsole when open */}
         <FullscreenOverlay
