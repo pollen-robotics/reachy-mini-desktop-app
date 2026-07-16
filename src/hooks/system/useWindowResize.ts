@@ -31,6 +31,14 @@ async function resizeWindowInstantly(targetWidth: number, targetHeight: number):
 
   try {
     const appWindow = getAppWindow();
+
+    // Pin the minimum size to this view's dimensions so the window can't be
+    // shrunk below the view's natural layout (e.g. the 900px-wide expanded/sim
+    // view). Applied before the early-return so the minimum tracks the view even
+    // when the size already matches, and before setSize so an expanded→compact
+    // shrink isn't clamped by a stale, larger minimum.
+    await appWindow.setMinSize(new LogicalSize(targetWidth, targetHeight));
+
     // Get the current size AND the scale factor for consistent comparison.
     const currentSize = await appWindow.innerSize();
     const scaleFactor = await appWindow.scaleFactor();
@@ -104,6 +112,9 @@ export function useWindowResize(view: ViewName | string | undefined): void {
 
       if (window.__TAURI__) {
         const appWindow = getAppWindow();
+        // Match the initial minimum to the initial view (e.g. expanded when a
+        // launch lands straight on an active robot) so it can't shrink below it.
+        appWindow.setMinSize(new LogicalSize(targetSize.width, targetSize.height)).catch(() => {});
         appWindow.setSize(new LogicalSize(targetSize.width, targetSize.height)).catch(() => {
           // Ignore - window may have just closed.
         });

@@ -125,6 +125,15 @@ const VIEWER_ASPECT = 4 / 3;
 const CAMERA_OVERHANG_PX = 60;
 const SCREEN_EDGE_MARGIN_PX = 10;
 
+// Left-column log console scale reference. On develop the console was a fixed
+// 120px inside the fixed 900×670 "expanded" window (see useWindowResize.ts). We
+// keep that 120/670 ratio so the console — and therefore the gap below it — grow
+// proportionally as the window is resized or fullscreened, instead of the console
+// ballooning to eat all remaining height. 120px is also the floor: shorter windows
+// look like develop and the column scrolls rather than the console shrinking.
+const LOGS_BASELINE_HEIGHT_PX = 120;
+const LOGS_BASELINE_WINDOW_PX = 670;
+
 function ActiveRobotView({
   isActive,
   isStarting: _isStarting,
@@ -153,12 +162,15 @@ function ActiveRobotView({
   // it there, so nothing overflows). The chosen ratio persists across sessions.
   const LEFT_MIN_PX = 500;
   const LEFT_MAX_PX = 1900;
-  const RIGHT_MIN_PX = 280;
-  // When the HF username badge is on screen the divider is allowed to pass the
-  // comfortable RIGHT_MIN_PX and travel right until it just meets that badge (see
-  // collisionCapPx). RIGHT_HARD_MIN_PX is the absolute floor so the right pane can
-  // never fully collapse; COLLISION_MARGIN_PX is the gap left at the contact point.
-  const RIGHT_HARD_MIN_PX = 80;
+  // Hard minimum right-pane width, matching the main branch's fixed 450px right
+  // column (both the app store and the controller shipped at that width). The
+  // divider can never make the right pane narrower than this on any view, so the
+  // controller's HEAD row can't squish (Pitch/Yaw dropping below X/Y) and the apps
+  // tab stays consistent with main at the default 900×670 window. In CSS px, so it
+  // holds under the fullscreen webview zoom (which shrinks the CSS-px viewport while
+  // the controls keep a fixed CSS-px size).
+  const RIGHT_MIN_PX = 450;
+  // Gap left when the divider meets the tagged HF username badge (see collisionCapPx).
   const COLLISION_MARGIN_PX = 8;
   const DIVIDER_PX = 12;
   // Floor for the left-column log console so it can't be shrunk to a sliver by
@@ -180,6 +192,9 @@ function ActiveRobotView({
   // Seeded with sane defaults, corrected on the first committed layout.
   const chromeRef = useRef<number>(54);
   const viewerTopRef = useRef<number>(33);
+
+  // Left column element — resized imperatively during a drag (see below).
+  const leftColRef = useRef<HTMLDivElement | null>(null);
 
   // Widest the left pane may get before the 4:3 viewer grows tall enough that the
   // camera preview's bottom collides with the bottom of the screen. +Infinity
@@ -208,20 +223,22 @@ function ActiveRobotView({
   }, []);
 
   // Single source of truth for the divider clamp, shared by the drag path and the
-  // committed/relayout memo. Limits: left never below LEFT_MIN_PX; right stops at
-  // the username badge when it's on screen (down to RIGHT_HARD_MIN_PX), else keeps
-  // the comfortable RIGHT_MIN_PX; also bounded by LEFT_MAX_PX and the camera cap.
+  // committed/relayout memo. RIGHT_MIN_PX is a HARD floor (main's 450px column): the
+  // right pane can never be narrower than it on any view — so the controller's HEAD
+  // row can't squish and the apps tab stays consistent with main. On a narrow window
+  // the left pane yields below LEFT_MIN_PX to honor that floor. Also bounded by
+  // LEFT_MAX_PX, the username-badge collision cap (only ever keeps the right pane
+  // wider), and the camera-bottom cap.
   const clampPaneWidthPx = useCallback(
     (desiredPx: number, rowWidth: number): number => {
       const usable = Math.max(0, rowWidth - DIVIDER_PX);
       const maxByRight = usable - RIGHT_MIN_PX;
       // On a narrow window that can't honor LEFT_MIN_PX, yield to the right pane.
       const minPx = Math.min(LEFT_MIN_PX, Math.max(0, maxByRight));
-      const collision = collisionCapPx();
-      const rightLimit = Number.isFinite(collision)
-        ? Math.min(collision, usable - RIGHT_HARD_MIN_PX)
-        : maxByRight;
-      const maxPx = Math.max(minPx, Math.min(LEFT_MAX_PX, rightLimit, cameraBottomCapPx()));
+      const maxPx = Math.max(
+        minPx,
+        Math.min(LEFT_MAX_PX, maxByRight, collisionCapPx(), cameraBottomCapPx())
+      );
       return Math.max(minPx, Math.min(maxPx, desiredPx));
     },
     [collisionCapPx, cameraBottomCapPx]
@@ -234,8 +251,6 @@ function ActiveRobotView({
     return Math.round(clampPaneWidthPx(leftFraction * container, container));
   }, [contentRowSize.width, leftFraction, clampPaneWidthPx]);
 
-  // Left column element — resized imperatively during a drag (see below).
-  const leftColRef = useRef<HTMLDivElement | null>(null);
   // The viewer block inside the column — measured to derive the camera-bottom cap.
   const viewerBlockRef = useRef<HTMLDivElement | null>(null);
   const dragFracRef = useRef<number>(leftFraction);
@@ -257,6 +272,33 @@ function ActiveRobotView({
       viewerTopRef.current = vbRect.top - rowEl.getBoundingClientRect().top;
     }
   }, [leftPaneWidth]);
+
+  // Re-clamp the divider whenever the UI's effective resolution changes — a window
+  // resize, fullscreen enter/exit, or a display/DPR change all shift the fullscreen
+  // webview zoom, which changes the CSS-px viewport and therefore where the
+  // RIGHT_MIN_PX floor falls. The ResizeObserver-driven `leftPaneWidth` memo also
+  // reacts to the row-width change, but `setZoom()` is async, so we re-run the clamp
+  // from the committed fraction here on those events too — the right pane can't be
+  // left under its minimum after the resolution jumps. Skipped mid-drag, where the
+  // pointer handler owns the width.
+  useEffect(() => {
+    const reclamp = (): void => {
+      if (isDraggingSplit) return;
+      const rowEl = contentRowRef.current;
+      const el = leftColRef.current;
+      if (!rowEl || !el) return;
+      const rowWidth = rowEl.getBoundingClientRect().width;
+      if (rowWidth <= 0) return;
+      el.style.width = `${Math.round(clampPaneWidthPx(leftFraction * rowWidth, rowWidth))}px`;
+    };
+    const dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+    window.addEventListener('resize', reclamp);
+    dprQuery.addEventListener('change', reclamp);
+    return () => {
+      window.removeEventListener('resize', reclamp);
+      dprQuery.removeEventListener('change', reclamp);
+    };
+  }, [clampPaneWidthPx, leftFraction, isDraggingSplit]);
 
   // Clamp a pointer X to the pane travel range, returning both the pixel width
   // (to apply imperatively) and the fraction (to persist on release).
@@ -741,7 +783,7 @@ function ActiveRobotView({
               alignItems: 'center',
               px: 3,
               pt: '33px',
-              pb: '5px',
+              pb: '10px',
               // Hide the scrollbar entirely — the column stays scrollable via
               // wheel/trackpad. It's only a fallback scroll region for short
               // windows, and a visible bar here rendered as a bright vertical
