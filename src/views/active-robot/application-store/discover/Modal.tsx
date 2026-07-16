@@ -26,10 +26,17 @@ import {
   whiteAlpha,
 } from '@styles/tokens';
 import { useAppPalette } from '@styles';
+import { useResizeObserver } from '@hooks/useResizeObserver';
 
-const COLUMNS = 2;
+// The grid grows responsively from MIN_COLUMNS up to MAX_COLUMNS: a new column
+// is added each time the container is wide enough for another MIN_CARD_WIDTH
+// card (matches today's 2-col card width, so nothing changes at small sizes).
+const GRID_GAP = 20; // px gap between columns/rows (== MUI sx gap 2.5)
+const MIN_CARD_WIDTH = 340;
+const MIN_COLUMNS = 2;
+const MAX_COLUMNS = 4;
 const ESTIMATED_ROW_HEIGHT = 240;
-const ROW_GAP = 20;
+const ROW_GAP = GRID_GAP;
 
 // Amber-accent tones. `AMBER_LIGHT` aligns with `STATUS.warning`;
 // `AMBER_DARK` is a brighter amber tuned for dark surfaces.
@@ -112,16 +119,25 @@ export default function DiscoverModal({
 
   const overlayScrollRef = useRef<HTMLDivElement | null>(null);
   const gridAnchorRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
   const [scrollMargin, setScrollMargin] = useState<number>(0);
+
+  // Responsive column count derived from the measured content width. Starts at
+  // MIN_COLUMNS (also the fallback while gridWidth is still 0) and caps at MAX_COLUMNS.
+  const { width: gridWidth } = useResizeObserver(contentRef);
+  const columns = Math.min(
+    MAX_COLUMNS,
+    Math.max(MIN_COLUMNS, Math.floor((gridWidth + GRID_GAP) / (MIN_CARD_WIDTH + GRID_GAP)))
+  );
 
   useLayoutEffect(() => {
     if (!gridAnchorRef.current || !overlayScrollRef.current) return;
     const gridTop = gridAnchorRef.current.getBoundingClientRect().top;
     const scrollTop = overlayScrollRef.current.getBoundingClientRect().top;
     setScrollMargin(gridTop - scrollTop + overlayScrollRef.current.scrollTop);
-  }, [isOpen, isLoading, filteredApps.length, selectedCategory, searchQuery]);
+  }, [isOpen, isLoading, filteredApps.length, selectedCategory, searchQuery, columns]);
 
-  const rowCount = Math.ceil(filteredApps.length / COLUMNS);
+  const rowCount = Math.ceil(filteredApps.length / columns);
 
   const virtualizer = useVirtualizer({
     count: rowCount,
@@ -146,9 +162,10 @@ export default function DiscoverModal({
       scrollRef={overlayScrollRef}
     >
       <Box
+        ref={contentRef}
         sx={{
           width: '90%',
-          maxWidth: '700px',
+          maxWidth: '1440px',
           display: 'flex',
           flexDirection: 'column',
           mt: 8,
@@ -299,14 +316,12 @@ export default function DiscoverModal({
               }}
             >
               {virtualizer.getVirtualItems().map(virtualRow => {
-                const startIdx = virtualRow.index * COLUMNS;
-                const app1 = filteredApps[startIdx];
-                const app2 = filteredApps[startIdx + 1];
+                const startIdx = virtualRow.index * columns;
+                const rowApps = filteredApps.slice(startIdx, startIdx + columns);
 
                 const getCardProps = (app: AppLike, idx: number) => {
                   const installJob = getJobInfo(app.name, 'install');
                   return {
-                    key: app.name,
                     app,
                     isBusy,
                     isInstalling: isJobRunning(app.name, 'install'),
@@ -330,9 +345,17 @@ export default function DiscoverModal({
                       transform: `translateY(${virtualRow.start - scrollMargin}px)`,
                     }}
                   >
-                    <Box sx={{ display: 'flex', gap: 2.5, pb: `${ROW_GAP}px` }}>
-                      <AppCard {...getCardProps(app1, startIdx)} />
-                      {app2 && <AppCard {...getCardProps(app2, startIdx + 1)} />}
+                    <Box
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: `repeat(${columns}, 1fr)`,
+                        gap: 2.5,
+                        pb: `${ROW_GAP}px`,
+                      }}
+                    >
+                      {rowApps.map((app, i) => (
+                        <AppCard key={app.name} {...getCardProps(app, startIdx + i)} />
+                      ))}
                     </Box>
                   </div>
                 );

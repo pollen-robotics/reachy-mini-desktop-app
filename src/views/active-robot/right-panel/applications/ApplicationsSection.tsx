@@ -300,9 +300,12 @@ export default function ApplicationsSection({
                 />
               </Tooltip>
 
-              {/* HF User Badge - pushed to the right */}
+              {/* HF User Badge - pushed to the right.
+                  `data-divider-collision` marks it as the divider's right-side
+                  stop: the resizable split can't be dragged over this badge. */}
               {hfUser && (
                 <Box
+                  data-divider-collision
                   sx={{
                     ml: 'auto',
                     display: 'flex',

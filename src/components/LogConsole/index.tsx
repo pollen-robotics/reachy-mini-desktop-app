@@ -297,7 +297,9 @@ function LogConsole({
   // branch until a matching token lands.
   const consoleBg = isDark ? '#1a1a1a' : '#ffffff';
   const consoleBorder = palette.borderStrong;
-  const scrollThumb = palette.borderStrong;
+  // Blend the scrollbar into the console surface: a faint idle thumb over the
+  // transparent track so it's barely visible at rest and firms up on hover.
+  const scrollThumb = isDark ? whiteAlpha(0.08) : blackAlpha(0.08);
   // TODO(style-migration): scroll-thumb hover uses a stronger 0.25 alpha than
   // borderStrong (0.15); keep as isDark branch until a dedicated token lands.
   const scrollThumbHover = isDark ? whiteAlpha(0.25) : blackAlpha(0.25);

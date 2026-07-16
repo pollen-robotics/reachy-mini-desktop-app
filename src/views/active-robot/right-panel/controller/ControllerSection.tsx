@@ -4,7 +4,7 @@ import SportsEsportsOutlinedIcon from '@mui/icons-material/SportsEsportsOutlined
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { ACCENT, accentAlpha } from '@styles/tokens';
-import { FONT_WEIGHT, TYPO, useAppPalette } from '@styles';
+import { FONT_WEIGHT, TYPO, scrollbarSx, useAppPalette } from '@styles';
 import Controller from '../../controller';
 import { useGamepadConnected, useActiveDevice } from '../../../../utils/InputManager';
 import { useWindowFocus } from '../../../windows/hooks';
@@ -208,8 +208,24 @@ export default function ControllerSection({
         </Box>
       </Box>
 
-      {/* Controller component with padding */}
-      <Box sx={{ pt: 1, pr: 3, pb: 1.5, pl: 3 }}>
+      {/* Controller component with padding.
+          Own scroll region: the panel is height-locked (wrapperFillsPanel), so when
+          the fullscreen webview zoom enlarges the controls past the available height
+          they must scroll here instead of being clipped off the bottom. Header stays
+          pinned; only the controls below scroll. */}
+      <Box
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          pt: 1,
+          pr: 3,
+          pb: 1.5,
+          pl: 3,
+          ...scrollbarSx(palette),
+        }}
+      >
         <Controller
           isActive={isActive}
           darkMode={palette.isDark}
