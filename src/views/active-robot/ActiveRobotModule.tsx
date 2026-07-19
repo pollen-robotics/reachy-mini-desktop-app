@@ -19,8 +19,13 @@ export interface ActiveRobotModuleProps {
   isStarting: boolean;
   isStopping: boolean;
   stopDaemon: () => Promise<void> | void;
-  sendCommand: (...args: unknown[]) => unknown;
-  playRecordedMove: (...args: unknown[]) => unknown;
+  sendCommand: (
+    endpoint: string,
+    label: string,
+    lockDuration?: number,
+    silent?: boolean
+  ) => Promise<void>;
+  playRecordedMove: (dataset: string, move: string) => Promise<void>;
   isCommandRunning: boolean;
   logs: unknown[];
   daemonVersion?: string | null;

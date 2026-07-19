@@ -11,6 +11,7 @@ import { RightPanel } from './right-panel';
 import RobotHeader from './RobotHeader';
 import { PowerButton } from './controls';
 import AudioControls from './audio/AudioControls';
+import { isWebMode } from '../../utils/tauriCompat';
 
 // TODO(ts): The following components live outside this agent's migration scope
 // and either expose `.jsx`/`unknown`-typed props; cast locally to `React.FC` shapes
@@ -76,8 +77,13 @@ export interface ActiveRobotViewProps {
   isStarting: boolean;
   isStopping: boolean;
   stopDaemon: () => Promise<void> | void;
-  sendCommand: (...args: unknown[]) => unknown;
-  playRecordedMove: (...args: unknown[]) => unknown;
+  sendCommand: (
+    endpoint: string,
+    label: string,
+    lockDuration?: number,
+    silent?: boolean
+  ) => Promise<void>;
+  playRecordedMove: (dataset: string, move: string) => Promise<void>;
   isCommandRunning: boolean;
   logs: unknown[];
   daemonVersion?: string | null;
@@ -567,8 +573,13 @@ function ActiveRobotView({
                 viewCamera={<CameraFeed width={640} height={480} isLarge={true} />}
               />
 
-              {/* Power Button - top left corner (sleep + disable motors + kill daemon) */}
-              <PowerButton onStopDaemon={stopDaemon} isStopping={isStopping} isBusy={isBusyState} />
+              {!isWebMode && (
+                <PowerButton
+                  onStopDaemon={stopDaemon}
+                  isStopping={isStopping}
+                  isBusy={isBusyState}
+                />
+              )}
             </Box>
 
             {/* Robot Header - Title, version, status, mode */}
