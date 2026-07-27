@@ -71,6 +71,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { whiteAlpha, blackAlpha } from '@styles/tokens';
 import { BLUR, FONT_WEIGHT, RADIUS, TYPO, scrollbarSx, useAppPalette } from '@styles';
 import { getTitleBarOffset } from '../../utils/platform';
+import { useExpandedWindowOnMount } from '../../hooks/system/useWindowResize';
 
 export interface ActiveRobotViewProps {
   isActive: boolean;
@@ -104,6 +105,7 @@ function ActiveRobotView({
   usbPortName: _usbPortName,
 }: ActiveRobotViewProps): React.ReactElement {
   const palette = useAppPalette();
+  useExpandedWindowOnMount();
   // Get dependencies from context
   const { robotState, actions } = useActiveRobotContext();
 

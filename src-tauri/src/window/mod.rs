@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, LogicalSize, Manager, Size};
 
 /// Apply transparent titlebar + full-size content view on a macOS NSWindow.
 /// No-op on other platforms.
@@ -133,5 +133,49 @@ pub fn close_window(app: AppHandle, window_label: String) -> Result<(), String> 
     } else {
         return Err(format!("Window '{}' not found", window_label));
     }
+    Ok(())
+}
+
+/// Resize and optionally center the main application window.
+/// Used when switching between compact (450px) and expanded (900px) layouts.
+#[tauri::command]
+pub fn resize_main_window(
+    app: AppHandle,
+    width: f64,
+    height: f64,
+    center: Option<bool>,
+) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window not found".to_string())?;
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        window
+            .set_resizable(true)
+            .map_err(|e| format!("set_resizable failed: {e}"))?;
+        window
+            .set_maximizable(true)
+            .map_err(|e| format!("set_maximizable failed: {e}"))?;
+    }
+
+    let size = Size::Logical(LogicalSize::new(width, height));
+    window
+        .set_min_size(Some(size))
+        .map_err(|e| format!("set_min_size failed: {e}"))?;
+    window
+        .set_size(size)
+        .map_err(|e| format!("set_size failed: {e}"))?;
+
+    if center.unwrap_or(true) {
+        window.center().map_err(|e| format!("center failed: {e}"))?;
+    }
+
+    log::info!(
+        "[window] Resized main window to {}x{} (center={})",
+        width,
+        height,
+        center.unwrap_or(true)
+    );
     Ok(())
 }

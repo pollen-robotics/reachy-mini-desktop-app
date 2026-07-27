@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { LogicalSize } from '@tauri-apps/api/dpi';
-import { moveWindow, Position } from '@tauri-apps/plugin-positioner';
+import { invoke } from '../../utils/tauriCompat';
 import { getAppWindow } from '../../utils/windowUtils';
 import { isMacOS } from '../../utils/platform';
 
@@ -33,27 +33,23 @@ async function getLogicalWindowSize(): Promise<{ width: number; height: number }
 }
 
 async function applyWindowSize(targetWidth: number, targetHeight: number): Promise<void> {
-  const appWindow = getAppWindow();
-  await ensureWindowCanResize();
-
   if (!isMacOS()) {
-    await appWindow.setMinSize(new LogicalSize(targetWidth, targetHeight));
+    await invoke('resize_main_window', {
+      width: targetWidth,
+      height: targetHeight,
+      center: true,
+    });
+    return;
   }
 
+  const appWindow = getAppWindow();
+  await ensureWindowCanResize();
   await appWindow.setSize(new LogicalSize(targetWidth, targetHeight));
-  await moveWindow(Position.Center);
+  await appWindow.center();
 }
 
 /**
  * Resize the window instantly while keeping it centered.
- *
- * On macOS, animated resizes triggered by setSize() cause flickering.
- * The workaround: resize instantly and recenter explicitly.
- *
- * ⚠️ IMPORTANT: we use scaleFactor to convert PhysicalSize → LogicalSize
- * because innerSize() returns physical pixels, not logical ones.
- * On macOS with a transparent titlebar, height can drift by ~30px between
- * programmatic and manual resizes because of NSWindowStyleMaskFullSizeContentView.
  */
 async function resizeWindowInstantly(targetWidth: number, targetHeight: number): Promise<void> {
   if (!window.__TAURI__) {
@@ -68,26 +64,29 @@ async function resizeWindowInstantly(targetWidth: number, targetHeight: number):
     if (!widthMatch || !heightMatch) {
       await applyWindowSize(targetWidth, targetHeight);
 
-      // Linux/Windows GTK can ignore the first resize right after enabling resizable.
       if (!isMacOS()) {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise(resolve => setTimeout(resolve, 100));
         const { width: afterWidth } = await getLogicalWindowSize();
         if (Math.abs(afterWidth - targetWidth) > 2) {
           await applyWindowSize(targetWidth, targetHeight);
         }
       }
+    } else if (!isMacOS()) {
+      await invoke('resize_main_window', {
+        width: targetWidth,
+        height: targetHeight,
+        center: true,
+      });
     } else {
-      await moveWindow(Position.Center);
+      await getAppWindow().center();
     }
-  } catch {
-    // Tauri window APIs can fail in edge cases (window just closed, etc.).
+  } catch (error) {
+    console.warn('[window] Failed to resize window:', error);
   }
 }
 
 /**
  * Hook to automatically manage window resize based on the current view.
- *
- * @param view Current view name ('compact' or 'expanded').
  */
 export function useWindowResize(view: ViewName | string | undefined): void {
   const previousView = useRef<string | null>(null);
@@ -111,4 +110,25 @@ export function useWindowResize(view: ViewName | string | undefined): void {
     previousView.current = view ?? null;
     void resizeWindowInstantly(targetSize.width, targetSize.height);
   }, [view]);
+}
+
+/** Expanded layout size for the active robot view. */
+export const EXPANDED_WINDOW_SIZE = { width: 900, height: 670 } as const;
+
+/**
+ * Ensure the expanded layout is applied when the active robot view mounts.
+ * GTK/Linux can miss the first resize triggered during view transitions.
+ */
+export function useExpandedWindowOnMount(): void {
+  useEffect(() => {
+    if (!window.__TAURI__ || isMacOS()) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void resizeWindowInstantly(EXPANDED_WINDOW_SIZE.width, EXPANDED_WINDOW_SIZE.height);
+    }, 150);
+
+    return () => window.clearTimeout(timer);
+  }, []);
 }
