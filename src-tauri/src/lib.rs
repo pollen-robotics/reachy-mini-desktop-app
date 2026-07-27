@@ -157,7 +157,7 @@ fn open_external_camera_viewer(
     let html = external_camera_viewer_html()
         .replace("__SIGNALING_URL__", &signaling_url_json)
         .replace("__GST_WEBRTC_API__", gstwebrtc_api_js());
-    let path = std::env::temp_dir().join("reachy-mini-camera-viewer.html");
+    let path = paths::external_camera_viewer_path()?;
 
     std::fs::write(&path, html)
         .map_err(|e| format!("Failed to write external camera viewer: {}", e))?;
