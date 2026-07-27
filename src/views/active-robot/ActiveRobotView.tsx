@@ -70,6 +70,7 @@ import type { DaemonLogSource } from '../../hooks/useDaemonLogStream';
 import { useShallow } from 'zustand/react/shallow';
 import { whiteAlpha, blackAlpha } from '@styles/tokens';
 import { BLUR, FONT_WEIGHT, RADIUS, TYPO, scrollbarSx, useAppPalette } from '@styles';
+import { getTitleBarOffset } from '../../utils/platform';
 
 export interface ActiveRobotViewProps {
   isActive: boolean;
@@ -372,6 +373,8 @@ function ActiveRobotView({
     useAppStore.getState().resetAll();
   }, [resetTimeouts, stopDaemon]);
 
+  const titleBarOffset = getTitleBarOffset();
+
   return (
     <WebRTCStreamProvider>
       <Box
@@ -522,7 +525,7 @@ function ActiveRobotView({
               flexDirection: 'column',
               alignItems: 'center',
               px: 3,
-              pt: '33px',
+              pt: `${titleBarOffset}px`,
               overflowY: 'auto',
               overflowX: 'hidden',
               position: 'relative',
@@ -627,7 +630,7 @@ function ActiveRobotView({
               flexDirection: 'column',
               position: 'relative',
               zIndex: 2,
-              pt: rightPanelView === 'embedded-app' ? 0 : '33px',
+              pt: rightPanelView === 'embedded-app' ? 0 : `${titleBarOffset}px`,
               transform: rightPanelView === 'embedded-app' ? 'none' : 'translateY(-8px)',
               bgcolor: 'transparent !important',
               backgroundColor: 'transparent !important',

@@ -2,12 +2,23 @@ import { useEffect, useRef } from 'react';
 import { LogicalSize } from '@tauri-apps/api/dpi';
 import { moveWindow, Position } from '@tauri-apps/plugin-positioner';
 import { getAppWindow } from '../../utils/windowUtils';
+import { isMacOS } from '../../utils/platform';
 
 type ViewName = 'compact' | 'expanded';
 
 interface TargetSize {
   width: number;
   height: number;
+}
+
+async function ensureWindowCanResize(): Promise<void> {
+  if (isMacOS()) {
+    return;
+  }
+
+  const appWindow = getAppWindow();
+  await appWindow.setResizable(true);
+  await appWindow.setMaximizable(true);
 }
 
 /**
@@ -44,6 +55,8 @@ async function resizeWindowInstantly(targetWidth: number, targetHeight: number):
     if (widthMatch && heightMatch) {
       return;
     }
+
+    await ensureWindowCanResize();
 
     // setSize with LogicalSize handles the scale factor automatically.
     await appWindow.setSize(new LogicalSize(targetWidth, targetHeight));
@@ -83,10 +96,11 @@ export function useWindowResize(view: ViewName | string | undefined): void {
       previousView.current = view ?? null;
 
       if (window.__TAURI__) {
-        const appWindow = getAppWindow();
-        appWindow.setSize(new LogicalSize(targetSize.width, targetSize.height)).catch(() => {
-          // Ignore - window may have just closed.
-        });
+        ensureWindowCanResize()
+          .then(() => getAppWindow().setSize(new LogicalSize(targetSize.width, targetSize.height)))
+          .catch(() => {
+            // Ignore - window may have just closed.
+          });
       }
       return;
     }

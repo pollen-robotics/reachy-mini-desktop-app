@@ -40,3 +40,10 @@ export function isWindows(): boolean {
 export function isLinux(): boolean {
   return getPlatform() === 'linux';
 }
+
+/** Extra top padding for macOS transparent titlebar drag region. */
+export const MACOS_TITLEBAR_HEIGHT = 33;
+
+export function getTitleBarOffset(): number {
+  return isMacOS() ? MACOS_TITLEBAR_HEIGHT : 0;
+}

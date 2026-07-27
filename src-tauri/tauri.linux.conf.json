@@ -1,4 +1,15 @@
 {
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "resizable": true,
+        "maximizable": true,
+        "hiddenTitle": false,
+        "titleBarStyle": "Visible"
+      }
+    ]
+  },
   "bundle": {
     "linux": {
       "deb": {
