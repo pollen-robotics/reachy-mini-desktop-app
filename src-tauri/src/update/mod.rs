@@ -267,6 +267,34 @@ pub async fn check_daemon_update(
     })
 }
 
+/// Resolve the version available for a robot whose daemon runs remotely.
+///
+/// A Wireless normally answers this itself via `GET /update/available`, but
+/// daemons up to 1.9.0 sort the PyPI pre-release list as strings, so
+/// "1.9.0rc1" ranks above "1.10.0rc5" and the beta channel always answers
+/// "up to date" (fixed in reachy_mini 1.10.0). Resolving it here keeps the
+/// beta channel usable on robots that still run the broken check.
+#[tauri::command]
+pub async fn check_remote_daemon_update(
+    current_version: String,
+    pre_release: bool,
+) -> Result<DaemonUpdateInfo, String> {
+    let available_version = get_github_version(pre_release).await?;
+    let is_available = is_update_available(&current_version, &available_version)?;
+    log::info!(
+        "[update] Remote robot on {}: available {} (update: {})",
+        current_version,
+        available_version,
+        is_available
+    );
+
+    Ok(DaemonUpdateInfo {
+        current_version,
+        available_version,
+        is_available,
+    })
+}
+
 /// Run an upgrade via the uv-trampoline sidecar.
 /// This ensures macOS code signing happens automatically after pip install.
 /// Emits sidecar-stdout/stderr events so the UI can display progress.
