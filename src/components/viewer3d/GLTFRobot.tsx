@@ -29,7 +29,6 @@ const UNITS_PER_M = 1.7;
 // past where the legs physically reach (the real mechanical limit).
 const HEAD_Z_MAX = 0.044;
 const HEAD_Z_MIN = -0.085;
-const YAW_AXIS = new THREE.Vector3(0, 0, 1); // body spin = robot up axis (Z)
 // Robot frame (X-fwd, Y-left, Z-up) -> glb model frame (Blender world: X-right,
 // Y-fwd, Z-up). That's the proper change of basis from the rig's `C` matrix,
 // which works out to Rz(+90) here. Applied as a conjugation R_model = M·R·M⁻¹
@@ -199,6 +198,13 @@ function GLTFRobot({
     s: THREE.Vector3; // head world (model-frame) rest scale
   } | null>(null);
   const legs = useRef<LegChain[]>([]);
+  // Body-spin axis expressed in the Core bone's PARENT frame (see setup effect).
+  // Blender bones roll about their local Y, so the Core bone's local Z is NOT
+  // the vertical (it points along model -Y): spinning about it makes the robot
+  // tumble. We instead spin about the model's up axis (Z), mapped into the
+  // parent frame so a pre-multiply gives a clean vertical yaw regardless of the
+  // bone's rest orientation.
+  const bodyYawAxis = useRef(new THREE.Vector3(0, 0, 1));
 
   // Capture bones + rest pose ONCE per model. (Must not depend on the parent
   // callbacks — Scene passes inline arrows, so depending on them re-runs this
@@ -219,6 +225,18 @@ function GLTFRobot({
       bones.current[key] = node;
       if (node) rest.current[key] = node.quaternion.clone();
       else console.warn(`[GLTFRobot] bone node not found: ${name}`);
+    }
+    // Map the model's up axis (Z) into the Core bone's parent frame so a
+    // pre-multiplied yaw spins the body about the true vertical (see bodyYawAxis).
+    const bodyNode = bones.current.body;
+    if (bodyNode?.parent) {
+      const parentModel = new THREE.Matrix4().multiplyMatrices(
+        modelInv,
+        bodyNode.parent.matrixWorld
+      );
+      const pq = new THREE.Quaternion();
+      parentModel.decompose(new THREE.Vector3(), pq, new THREE.Vector3());
+      bodyYawAxis.current.set(0, 0, 1).applyQuaternion(pq.invert()).normalize();
     }
     const head = bones.current.head;
     if (head?.parent) {
@@ -255,8 +273,11 @@ function GLTFRobot({
 
     // Body yaw
     if (body && rest.current.body) {
-      tmp.q.setFromAxisAngle(YAW_AXIS, YAW_SIGN * yawBody);
-      body.quaternion.copy(rest.current.body).multiply(tmp.q);
+      // Pre-multiply: spin about the vertical (parent-frame) axis, then the rest
+      // pose. `rest * Rz(localZ)` (post-multiply) would spin about the bone's
+      // local Z, which isn't vertical -> tumbling.
+      tmp.q.setFromAxisAngle(bodyYawAxis.current, YAW_SIGN * yawBody);
+      body.quaternion.copy(tmp.q).multiply(rest.current.body);
     }
 
     // Head 6-DOF from the cartesian pose matrix (no Stewart IK needed — the
