@@ -182,10 +182,11 @@ advertised. Two reasons:
 1. **Freshness.** Hostnames are re-resolved by the OS resolver / Bonjour on
    every request, so DHCP renews and network switches are picked up
    automatically. An IP carried in app state goes stale silently.
-2. **macOS Local Network privacy.** `.local` hostnames go through the
-   already-granted Bonjour permission (declared via `NSBonjourServices` in
-   `Info.plist`); raw private-IP TCP requires the separate `NSLocalNetworkUsageDescription` grant which can be off without any
-   visible error.
+2. **Observed macOS behaviour.** User reports on macOS had `Connect` silently
+   failing against the resolved IP while typing `reachy-mini.local` in the
+   manual field worked, with the Local Network permission confirmed ON. The
+   exact mechanism is unconfirmed (ATS / WebKit local-network edge case);
+   hostname-first sidesteps it either way.
 
 ### No app-level cache
 
@@ -208,6 +209,10 @@ priority order:
 
 This means a robot whose IP changes between two scans is recognised as the
 same entity instead of appearing twice in the UI.
+
+Entries are *also* cross-matched by resolved IP, so one robot reached under
+several names (`reachy-mini.local` and `reachy-mini.home`, or a manually
+entered IP later re-found via mDNS) still collapses to a single entry.
 
 ---
 

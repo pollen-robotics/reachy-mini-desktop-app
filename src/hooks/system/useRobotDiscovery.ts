@@ -4,7 +4,7 @@
  * Scans for available robots via USB and WiFi in parallel.
  * Used by `FindingRobotView` to detect and list connection options.
  *
- * V2: Uses native Rust discovery (mDNS, cache, static peers) for reliability.
+ * V2: Uses native Rust discovery (static peers + mDNS) for reliability.
  * Supports multiple WiFi robots with selection.
  */
 
@@ -75,16 +75,16 @@ async function checkUsbRobot(): Promise<UsbRobotState> {
 }
 
 /**
- * Hard upper-bound for a single `discover_robots` call. The Rust command has
- * its own internal deadlines (~3s for mDNS, plus cache + static peer checks),
- * so anything past this cap means Rust is hung. We bail and let the next scan
- * cycle retry on a fresh command instance.
+ * Hard upper-bound for a single `discover_robots` call. The Rust command runs
+ * static peer probes (3s timeout) then a fixed 5s mDNS browse, so a legit call
+ * can take ~8s; anything past this cap means Rust is hung. We bail and let the
+ * next scan cycle retry on a fresh command instance.
  */
-const DISCOVER_TIMEOUT_MS = 8000;
+const DISCOVER_TIMEOUT_MS = 10000;
 
 /**
  * Discover WiFi robots using the native Rust discovery system.
- * Uses cache → static peers → mDNS in order for speed.
+ * Probes static peers, then mDNS.
  */
 async function checkWifiRobotV2(): Promise<{ available: boolean; robots: DiscoveredRobot[] }> {
   const timeoutPromise = new Promise<never>((_, reject) => {
