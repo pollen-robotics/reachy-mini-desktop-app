@@ -341,11 +341,15 @@ export function useAppFetching(): UseAppFetchingReturn {
     const RETRY_DELAYS = [1000, 2000, 3000];
 
     try {
+      // Stays on the shorter APPS_LIST budget: this route is served from local
+      // state (~0.4s measured) rather than the HuggingFace-backed catalog, and
+      // it is wrapped in a 3-attempt retry loop, so a long timeout here would
+      // multiply into a minute-long stall when the daemon is actually down.
       const installedUrl = buildApiUrl('/api/apps/list-available/installed');
       const installedResponse = await fetchWithTimeout(
         installedUrl,
         {},
-        DAEMON_CONFIG.TIMEOUTS.APPS_CATALOG,
+        DAEMON_CONFIG.TIMEOUTS.APPS_LIST,
         { silent: true }
       );
 

@@ -2,6 +2,7 @@ import { useEffect, useCallback, useRef, useMemo } from 'react';
 import useAppStore from '@store/useAppStore';
 import { DAEMON_CONFIG, fetchWithTimeout, buildApiUrl } from '@config/daemon';
 import { useLogger } from '@utils/logging';
+import { createSingleFlight } from '@utils/singleFlight';
 import { useAppFetching, mergeAppsData } from './useAppFetching';
 import { useAppJobs } from './useAppJobs';
 import { useAppUpdates } from './useAppUpdates';
@@ -103,8 +104,8 @@ const handlePermissionError = (
 // per-instance `useRef` guard cannot deduplicate anything: each instance had its
 // own flag and both issued the request. The daemon serialises them, which turned
 // a ~3.5s catalog call into ~6.8s and pushed it past the fetch timeout. Share
-// the in-flight promise across every instance instead.
-let inFlightCatalogFetch: Promise<AppLike[]> | null = null;
+// one in-flight fetch across every instance instead.
+const catalogSingleFlight = createSingleFlight<AppLike[]>();
 
 export function useAppsStore(isActive: boolean) {
   const logger = useLogger();
@@ -141,10 +142,6 @@ export function useAppsStore(isActive: boolean) {
 
   const fetchAvailableApps = useCallback(
     async (forceRefresh: boolean = false): Promise<AppLike[]> => {
-      if (inFlightCatalogFetch) {
-        return inFlightCatalogFetch;
-      }
-
       const storeState = useAppStore.getState() as unknown as AnyRecord;
       const currentAvailableApps = storeState.availableApps as AppLike[];
       const currentInstalledApps = storeState.installedApps as AppLike[];
@@ -233,12 +230,7 @@ export function useAppsStore(isActive: boolean) {
         }
       };
 
-      inFlightCatalogFetch = runCatalogFetch();
-      try {
-        return await inFlightCatalogFetch;
-      } finally {
-        inFlightCatalogFetch = null;
-      }
+      return catalogSingleFlight(runCatalogFetch);
     },
     [
       fetchAppsFromWebsite,
