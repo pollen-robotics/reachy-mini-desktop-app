@@ -2,6 +2,7 @@ import { useEffect, useCallback, useRef, useMemo } from 'react';
 import useAppStore from '@store/useAppStore';
 import { DAEMON_CONFIG, fetchWithTimeout, buildApiUrl } from '@config/daemon';
 import { useLogger } from '@utils/logging';
+import { createSingleFlight } from '@utils/singleFlight';
 import { useAppFetching, mergeAppsData } from './useAppFetching';
 import { useAppJobs } from './useAppJobs';
 import { useAppUpdates } from './useAppUpdates';
@@ -98,6 +99,14 @@ const handlePermissionError = (
   return null;
 };
 
+// The catalog is a single global resource but `useAppsStore` is instantiated by
+// more than one component (ActiveRobotView and ApplicationsSection), so a
+// per-instance `useRef` guard cannot deduplicate anything: each instance had its
+// own flag and both issued the request. The daemon serialises them, which turned
+// a ~3.5s catalog call into ~6.8s and pushed it past the fetch timeout. Share
+// one in-flight fetch across every instance instead.
+const catalogSingleFlight = createSingleFlight<AppLike[]>();
+
 export function useAppsStore(isActive: boolean) {
   const logger = useLogger();
   const availableApps = useAppStore(s => s.availableApps) as AppLike[];
@@ -125,8 +134,6 @@ export function useAppsStore(isActive: boolean) {
 
   const { fetchAppsFromWebsite, fetchInstalledApps } = useAppFetching();
 
-  const isFetchingRef = useRef<boolean>(false);
-
   const errorClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const lastDismissedErrorAppRef = useRef<string | null>(null);
@@ -135,10 +142,6 @@ export function useAppsStore(isActive: boolean) {
 
   const fetchAvailableApps = useCallback(
     async (forceRefresh: boolean = false): Promise<AppLike[]> => {
-      if (isFetchingRef.current) {
-        return useAppStore.getState().availableApps as AppLike[];
-      }
-
       const storeState = useAppStore.getState() as unknown as AnyRecord;
       const currentAvailableApps = storeState.availableApps as AppLike[];
       const currentInstalledApps = storeState.installedApps as AppLike[];
@@ -162,71 +165,72 @@ export function useAppsStore(isActive: boolean) {
         return currentAvailableApps;
       }
 
-      try {
-        isFetchingRef.current = true;
-        setAppsLoading(true);
-        setAppsError(null);
-
-        let availableAppsFromWebsite: AppLike[] = [];
-        let fetchError: Error | null = null;
-
+      const runCatalogFetch = async (): Promise<AppLike[]> => {
         try {
-          availableAppsFromWebsite = (await fetchAppsFromWebsite()) as AppLike[];
-        } catch (err) {
-          fetchError = err as Error;
-          console.error('❌ Failed to fetch apps from website:', (err as Error).message);
-        }
-
-        const installedResult = await fetchInstalledApps();
-        const installedAppsFromDaemon = (installedResult.apps || []) as AppLike[];
-
-        if (installedResult.error) {
-          console.warn(`⚠️ Error fetching installed apps: ${installedResult.error}`);
-        }
-
-        const hasNetworkIssue =
-          availableAppsFromWebsite.length === 0 && (fetchError || !navigator.onLine);
-
-        if (hasNetworkIssue) {
-          if (installedAppsFromDaemon.length === 0) {
-            const errorMessage = 'No internet connection. Please check your network and try again.';
-            console.error(`❌ ${errorMessage}`);
-            setAppsError(errorMessage);
-            setAppsLoading(false);
-            isFetchingRef.current = false;
-            return [];
-          } else {
-            const warningMessage = `No internet connection - showing ${installedAppsFromDaemon.length} installed app${installedAppsFromDaemon.length > 1 ? 's' : ''} only`;
-            console.warn(`⚠️ ${warningMessage}`);
-            setAppsError(warningMessage);
-          }
-        } else {
+          setAppsLoading(true);
           setAppsError(null);
+
+          let availableAppsFromWebsite: AppLike[] = [];
+          let fetchError: Error | null = null;
+
+          try {
+            availableAppsFromWebsite = (await fetchAppsFromWebsite()) as AppLike[];
+          } catch (err) {
+            fetchError = err as Error;
+            console.error('❌ Failed to fetch apps from website:', (err as Error).message);
+          }
+
+          const installedResult = await fetchInstalledApps();
+          const installedAppsFromDaemon = (installedResult.apps || []) as AppLike[];
+
+          if (installedResult.error) {
+            console.warn(`⚠️ Error fetching installed apps: ${installedResult.error}`);
+          }
+
+          const hasNetworkIssue =
+            availableAppsFromWebsite.length === 0 && (fetchError || !navigator.onLine);
+
+          if (hasNetworkIssue) {
+            if (installedAppsFromDaemon.length === 0) {
+              const errorMessage =
+                'No internet connection. Please check your network and try again.';
+              console.error(`❌ ${errorMessage}`);
+              setAppsError(errorMessage);
+              setAppsLoading(false);
+              return [];
+            } else {
+              const warningMessage = `No internet connection - showing ${installedAppsFromDaemon.length} installed app${installedAppsFromDaemon.length > 1 ? 's' : ''} only`;
+              console.warn(`⚠️ ${warningMessage}`);
+              setAppsError(warningMessage);
+            }
+          } else {
+            setAppsError(null);
+          }
+
+          const { enrichedApps, installedApps: installed } = mergeAppsData(
+            availableAppsFromWebsite,
+            installedAppsFromDaemon
+          );
+
+          setAvailableApps(enrichedApps as AppLike[]);
+          setInstalledApps(installed as AppLike[]);
+
+          if (hasNetworkIssue) {
+            invalidateAppsCache();
+          }
+
+          setAppsLoading(false);
+
+          return enrichedApps as AppLike[];
+        } catch (err) {
+          console.error('❌ Failed to fetch apps:', err);
+          setAppsError((err as Error).message);
+          setAppsLoading(false);
+          return useAppStore.getState().availableApps as AppLike[];
         }
+      };
 
-        const { enrichedApps, installedApps: installed } = mergeAppsData(
-          availableAppsFromWebsite,
-          installedAppsFromDaemon
-        );
-
-        setAvailableApps(enrichedApps as AppLike[]);
-        setInstalledApps(installed as AppLike[]);
-
-        if (hasNetworkIssue) {
-          invalidateAppsCache();
-        }
-
-        setAppsLoading(false);
-
-        return enrichedApps as AppLike[];
-      } catch (err) {
-        console.error('❌ Failed to fetch apps:', err);
-        setAppsError((err as Error).message);
-        setAppsLoading(false);
-        return useAppStore.getState().availableApps as AppLike[];
-      } finally {
-        isFetchingRef.current = false;
-      }
+      return catalogSingleFlight(runCatalogFetch);
     },
     [
       fetchAppsFromWebsite,
