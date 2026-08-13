@@ -306,12 +306,16 @@ fn dedup_key(robot: &RobotInfo) -> String {
 
 /// Deduplication tracker for discovered robots.
 ///
-/// Keys on the canonical identity returned by `dedup_key()` (hostname >
-/// instance name > IP). This means a robot whose IP changes between two
-/// scans is recognised as the same entity, instead of appearing twice.
+/// A robot is a duplicate if its canonical identity (`dedup_key()`: hostname >
+/// instance name > IP) *or* its resolved IP was already seen. The IP check is
+/// what collapses the same robot reached under different names: the
+/// `reachy-mini.local` / `reachy-mini.home` static peers, or a manually-added
+/// raw IP later re-found via mDNS under its hostname. Skipped duplicates still
+/// register both identities so later aliases dedup too.
 struct DeduplicatedRobots {
     robots: Vec<RobotInfo>,
     seen: HashSet<String>,
+    seen_ips: HashSet<String>,
 }
 
 impl DeduplicatedRobots {
@@ -319,13 +323,17 @@ impl DeduplicatedRobots {
         Self {
             robots: Vec::new(),
             seen: HashSet::new(),
+            seen_ips: HashSet::new(),
         }
     }
 
     /// Try to add a robot. Returns true if added, false if duplicate.
     fn try_add(&mut self, robot: RobotInfo) -> bool {
         let key = dedup_key(&robot);
-        if !self.seen.insert(key) {
+        let duplicate = self.seen.contains(&key) || self.seen_ips.contains(&robot.ip);
+        self.seen.insert(key);
+        self.seen_ips.insert(robot.ip.clone());
+        if duplicate {
             return false;
         }
         self.robots.push(robot);
@@ -336,10 +344,9 @@ impl DeduplicatedRobots {
 /// Main discovery command - probes static peers + mDNS in sequence, merges
 /// and deduplicates results.
 ///
-/// Order matters: static peers first because they finish in <3s when
-/// reachable, giving the UI a robot to display while the 5s mDNS browse runs.
-/// The mDNS pass then catches custom-named robots and (re)confirms the
-/// canonical hostname for already-seen ones.
+/// Static peers go first so that when both methods find the same robot, the
+/// entry that survives dedup is the one carrying the well-known hostname.
+/// The mDNS pass then catches custom-named robots not in the peer list.
 #[tauri::command]
 pub async fn discover_robots(
     state: tauri::State<'_, DiscoveryState>,
@@ -505,4 +512,93 @@ pub async fn get_static_peers(
 ) -> Result<Vec<String>, String> {
     let peers = state.static_peers.read().await;
     Ok(peers.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn robot(name: &str, ip: &str, hostname: Option<&str>) -> RobotInfo {
+        RobotInfo {
+            name: name.to_string(),
+            ip: ip.to_string(),
+            port: 8000,
+            discovery_method: "test".to_string(),
+            hostname: hostname.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn dedups_local_and_home_peers_by_ip() {
+        let mut d = DeduplicatedRobots::new();
+        assert!(d.try_add(robot(
+            "reachy-mini.local",
+            "192.168.1.42",
+            Some("reachy-mini.local")
+        )));
+        assert!(!d.try_add(robot(
+            "reachy-mini.home",
+            "192.168.1.42",
+            Some("reachy-mini.home")
+        )));
+        assert_eq!(d.robots.len(), 1);
+    }
+
+    #[test]
+    fn dedups_manual_ip_against_mdns_hostname() {
+        let mut d = DeduplicatedRobots::new();
+        // Manual/static raw-IP entry: no hostname, name = the IP.
+        assert!(d.try_add(robot("192.168.1.42", "192.168.1.42", None)));
+        // Same robot found via mDNS under its hostname.
+        assert!(!d.try_add(robot(
+            "reachy-mini",
+            "192.168.1.42",
+            Some("reachy-mini.local.")
+        )));
+        assert_eq!(d.robots.len(), 1);
+    }
+
+    #[test]
+    fn dedups_hostname_across_ip_change() {
+        let mut d = DeduplicatedRobots::new();
+        assert!(d.try_add(robot(
+            "reachy-mini",
+            "192.168.1.42",
+            Some("reachy-mini.local")
+        )));
+        // Same hostname re-advertised from a new DHCP lease.
+        assert!(!d.try_add(robot(
+            "reachy-mini",
+            "192.168.1.99",
+            Some("Reachy-Mini.local.")
+        )));
+        assert_eq!(d.robots.len(), 1);
+    }
+
+    #[test]
+    fn keeps_distinct_robots() {
+        let mut d = DeduplicatedRobots::new();
+        assert!(d.try_add(robot("alpha", "192.168.1.42", Some("alpha.local"))));
+        assert!(d.try_add(robot("beta", "192.168.1.43", Some("beta.local"))));
+        assert_eq!(d.robots.len(), 2);
+    }
+
+    #[test]
+    fn skipped_duplicate_still_registers_its_aliases() {
+        let mut d = DeduplicatedRobots::new();
+        assert!(d.try_add(robot(
+            "reachy-mini.home",
+            "192.168.1.42",
+            Some("reachy-mini.home")
+        )));
+        // Dup by IP; its .local hostname must still be learned...
+        assert!(!d.try_add(robot(
+            "reachy-mini.local",
+            "192.168.1.42",
+            Some("reachy-mini.local")
+        )));
+        // ...so an mDNS record with a different advertised IP dedups by name.
+        assert!(!d.try_add(robot("reachy-mini", "fe80::1", Some("reachy-mini.local."))));
+        assert_eq!(d.robots.len(), 1);
+    }
 }
