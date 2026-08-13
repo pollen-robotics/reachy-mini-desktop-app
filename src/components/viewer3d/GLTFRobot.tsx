@@ -43,6 +43,11 @@ const YAW_SIGN = 1;
 const ANT_AXIS = new THREE.Vector3(0, 0, 1); // antenna hinge axis in glb space
 const ANT_SIGN = -1; // URDF path used -antennas[i]
 
+// Exponential smoothing rate (1/s) for the streamed pose: the daemon pushes at
+// a much lower rate than the render loop, so easing toward the latest sample
+// keeps motion fluid at 60 fps. Higher = snappier, lower = smoother.
+const SMOOTH_K = 15;
+
 // Bone node names (verified present in the exported glb).
 const BONE = {
   body: 'Core',
@@ -266,27 +271,57 @@ function GLTFRobot({
     worldP: new THREE.Vector3(),
     mat: new THREE.Matrix4(),
   }).current;
+  // Smoothing state: eased pose + latest stream target (no per-frame allocation).
+  const sm = useRef({
+    headInit: false,
+    yawInit: false,
+    antInit: false,
+    smP: new THREE.Vector3(),
+    smQ: new THREE.Quaternion(),
+    tgtP: new THREE.Vector3(),
+    tgtQ: new THREE.Quaternion(),
+    smYaw: 0,
+    smAnt: [0, 0] as [number, number],
+  }).current;
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     if (!isActive) return;
     const { body, head, antL, antR } = bones.current;
+    // Exponential smoothing factor (clamp dt so a stalled tab can't jump).
+    const a = 1 - Math.exp(-SMOOTH_K * Math.min(delta, 0.05));
 
     // Body yaw
     if (body && rest.current.body) {
+      if (!sm.yawInit) {
+        sm.smYaw = yawBody;
+        sm.yawInit = true;
+      } else {
+        sm.smYaw += (yawBody - sm.smYaw) * a;
+      }
       // Pre-multiply: spin about the vertical (parent-frame) axis, then the rest
       // pose. `rest * Rz(localZ)` (post-multiply) would spin about the bone's
       // local Z, which isn't vertical -> tumbling.
-      tmp.q.setFromAxisAngle(bodyYawAxis.current, YAW_SIGN * yawBody);
+      tmp.q.setFromAxisAngle(bodyYawAxis.current, YAW_SIGN * sm.smYaw);
       body.quaternion.copy(tmp.q).multiply(rest.current.body);
     }
 
     // Head 6-DOF from the cartesian pose matrix (no Stewart IK needed — the
     // whole head is rigidly parented to this one bone). head_pose is in the
-    // robot/model frame; apply it there, then convert to the bone's local frame.
+    // robot/model frame; smooth it there, then convert to the bone's local frame.
     const m = toMatrix(headPose);
     const hr = headRest.current;
     if (head && hr && m) {
-      m.decompose(tmp.p, tmp.q, tmp.s); // tmp.q = R_robot, tmp.p = translation (m)
+      m.decompose(sm.tgtP, sm.tgtQ, tmp.s); // tgtQ = R_robot, tgtP = translation (m)
+      if (!sm.headInit) {
+        sm.smP.copy(sm.tgtP);
+        sm.smQ.copy(sm.tgtQ);
+        sm.headInit = true;
+      } else {
+        sm.smP.lerp(sm.tgtP, a);
+        sm.smQ.slerp(sm.tgtQ, a);
+      }
+      tmp.p.copy(sm.smP);
+      tmp.q.copy(sm.smQ);
       // Change of basis robot -> model frame: R_model = M·R·M⁻¹, t_model = M·t
       // (M = HEAD_FIX). Proper rotation, no reflection.
       tmp.q.premultiply(HEAD_FIX).multiply(HEAD_FIX_INV);
@@ -309,12 +344,20 @@ function GLTFRobot({
 
     // Antennas
     if (antennas) {
+      if (!sm.antInit) {
+        sm.smAnt[0] = antennas[0];
+        sm.smAnt[1] = antennas[1];
+        sm.antInit = true;
+      } else {
+        sm.smAnt[0] += (antennas[0] - sm.smAnt[0]) * a;
+        sm.smAnt[1] += (antennas[1] - sm.smAnt[1]) * a;
+      }
       if (antL && rest.current.antL) {
-        tmp.q.setFromAxisAngle(ANT_AXIS, ANT_SIGN * antennas[1]);
+        tmp.q.setFromAxisAngle(ANT_AXIS, ANT_SIGN * sm.smAnt[1]);
         antL.quaternion.copy(rest.current.antL).multiply(tmp.q);
       }
       if (antR && rest.current.antR) {
-        tmp.q.setFromAxisAngle(ANT_AXIS, ANT_SIGN * antennas[0]);
+        tmp.q.setFromAxisAngle(ANT_AXIS, ANT_SIGN * sm.smAnt[0]);
         antR.quaternion.copy(rest.current.antR).multiply(tmp.q);
       }
     }
