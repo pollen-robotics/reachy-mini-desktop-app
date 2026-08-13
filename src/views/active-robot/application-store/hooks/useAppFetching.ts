@@ -248,7 +248,7 @@ export function useAppFetching(): UseAppFetchingReturn {
       const response = await fetchWithTimeout(
         buildApiUrl(DAEMON_APPS_CATALOG_ENDPOINT),
         {},
-        DAEMON_CONFIG.TIMEOUTS.APPS_LIST,
+        DAEMON_CONFIG.TIMEOUTS.APPS_CATALOG,
         { silent: true }
       );
 
@@ -267,12 +267,15 @@ export function useAppFetching(): UseAppFetchingReturn {
     const daemonCatalogResult = await fetchAppsFromDaemonCatalog();
 
     try {
+      // No `credentials: 'include'`. The catalog is public, and the Space does
+      // not send `Access-Control-Allow-Credentials`, so a credentialed request
+      // is rejected by CORS before we ever see the body — the website source
+      // then silently never contributes and we fall back to the daemon catalog
+      // on every single call.
       const websiteResponse = await fetchExternal(
         WEBSITE_API_URL,
-        {
-          credentials: 'include',
-        },
-        DAEMON_CONFIG.TIMEOUTS.APPS_LIST,
+        {},
+        DAEMON_CONFIG.TIMEOUTS.APPS_CATALOG,
         {
           silent: true,
         }
@@ -342,7 +345,7 @@ export function useAppFetching(): UseAppFetchingReturn {
       const installedResponse = await fetchWithTimeout(
         installedUrl,
         {},
-        DAEMON_CONFIG.TIMEOUTS.APPS_LIST,
+        DAEMON_CONFIG.TIMEOUTS.APPS_CATALOG,
         { silent: true }
       );
 

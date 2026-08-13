@@ -21,6 +21,11 @@ export const DAEMON_CONFIG = {
     VERSION: 3000,
     EMOTIONS_CHECK: 3000,
     APPS_LIST: 5000,
+    // The catalog routes are not local lookups: the daemon queries the
+    // HuggingFace API for every source before answering, which on a Wireless
+    // robot's CM4 measures ~3.5s uncontended. 5s left almost no headroom, and
+    // a timeout here reads to the user as "No internet connection".
+    APPS_CATALOG: 20000,
     APP_INSTALL: 60000,
     APP_REMOVE: 90000,
     APP_START: 120000,
