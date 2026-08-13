@@ -258,9 +258,13 @@ function GLTFRobot({
     }
     onMeshesReady?.(meshes);
     onRobotReady?.(model);
-    onPoseReady?.(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model]);
+
+  // Latch so onPoseReady fires only once, when the first VALID head pose is
+  // actually applied in the frame loop — not at bone-capture time, when the
+  // model still shows its rest pose and the stream hasn't warmed up yet.
+  const firstPoseFired = useRef(false);
 
   // scratch objects (no per-frame allocation)
   const tmp = useRef({
@@ -336,6 +340,10 @@ function GLTFRobot({
       // back to local (relative to the head bone's parent)
       tmp.mat.premultiply(hr.parentInv);
       tmp.mat.decompose(head.position, head.quaternion, head.scale);
+      if (!firstPoseFired.current) {
+        firstPoseFired.current = true;
+        onPoseReady?.(true);
+      }
     }
 
     // Neck leg IK: re-solve each leg so its tip tracks the head-mounted target.
