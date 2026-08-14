@@ -153,19 +153,26 @@ export default function SettingsOverlay({
 
         if (response.ok) {
           const data = await response.json();
-          const info = (data.update?.reachy_mini as UpdateInfo) || null;
+          let info = (data.update?.reachy_mini as UpdateInfo) || null;
 
-          // Daemons up to 1.9.0 mis-sort the PyPI pre-release list and always
+          // Daemons below 1.10.0 mis-sort the PyPI pre-release list and always
           // answer "up to date" on the beta channel, so resolve the available
-          // version here instead. Their current_version is reliable.
-          setUpdateInfo(
-            info && preRelease
-              ? ((await invoke('check_remote_daemon_update', {
-                  currentVersion: info.current_version,
-                  preRelease,
-                })) as UpdateInfo)
-              : info
-          );
+          // version app-side instead (returns null for fixed daemons). Their
+          // current_version is reliable. On failure (GitHub down, rate limit)
+          // fall back to the robot's own answer rather than no answer.
+          if (info && preRelease) {
+            try {
+              const resolved = (await invoke('check_remote_daemon_update', {
+                currentVersion: info.current_version,
+                preRelease,
+              })) as UpdateInfo | null;
+              if (resolved) info = resolved;
+            } catch (err) {
+              console.warn('[Update] App-side version check failed, using the robot answer:', err);
+            }
+          }
+
+          setUpdateInfo(info);
         }
       } else {
         const data = (await invoke('check_daemon_update', { preRelease })) as UpdateInfo;
@@ -300,20 +307,35 @@ export default function SettingsOverlay({
           DAEMON_CONFIG.TIMEOUTS.COMMAND,
           { label: 'Start update' }
         );
+        let errorDetail: string | undefined;
 
-        // Daemons up to 1.9.0 gate /update/start on the same broken
-        // pre-release lookup, so they refuse an RC that does exist. Install
-        // the release tag directly: /update/start-from-ref has no such gate.
-        if (!response.ok && preRelease && updateInfo?.available_version) {
-          console.warn('[Update] Daemon refused the RC, retrying from the release tag');
-          response = await fetchWithTimeout(
-            // Every release is tagged "v<version>" on GitHub; a mismatch
-            // surfaces as a failed install job in the log stream.
-            buildApiUrl(`/update/start-from-ref?git_ref=v${updateInfo.available_version}`),
-            { method: 'POST' },
-            DAEMON_CONFIG.TIMEOUTS.COMMAND,
-            { label: 'Start update from tag' }
-          );
+        if (!response.ok) {
+          errorDetail = ((await response.json().catch(() => null)) as { detail?: string } | null)
+            ?.detail;
+
+          // Daemons below 1.10.0 gate /update/start on the same broken
+          // pre-release lookup, so they refuse an RC that does exist. Install
+          // the release tag directly: /update/start-from-ref has no such
+          // gate. Only on that exact refusal — any other failure (busy, 5xx)
+          // must not trigger a git install, whose pip-check fallback can
+          // silently reinstall stable.
+          const isLegacyRefusal = response.status === 400 && errorDetail === 'No update available';
+          if (isLegacyRefusal && preRelease && updateInfo?.available_version) {
+            console.warn('[Update] Legacy daemon refused the RC, retrying from the release tag');
+            response = await fetchWithTimeout(
+              // Every release is tagged "v<version>" on GitHub; a mismatch
+              // surfaces as a failed install job in the log stream.
+              buildApiUrl(`/update/start-from-ref?git_ref=v${updateInfo.available_version}`),
+              { method: 'POST' },
+              DAEMON_CONFIG.TIMEOUTS.COMMAND,
+              { label: 'Start update from tag' }
+            );
+            if (!response.ok) {
+              errorDetail = (
+                (await response.json().catch(() => null)) as { detail?: string } | null
+              )?.detail;
+            }
+          }
         }
 
         if (response.ok) {
@@ -325,8 +347,7 @@ export default function SettingsOverlay({
 
           connectUpdateWebSocket(data.job_id);
         } else {
-          const error = await response.json();
-          setWifiError(`Update failed: ${error.detail || 'Unknown error'}`);
+          setWifiError(`Update failed: ${errorDetail || 'Unknown error'}`);
           setIsUpdating(false);
         }
       } else {
