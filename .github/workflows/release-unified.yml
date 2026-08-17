@@ -704,7 +704,7 @@ jobs:
           # Prevent linuxdeploy from leaving temp files
           NO_CLEANUP: 0
         run: |
-          # Install dependencies required for .deb, .rpm and AppImage build
+          # Install dependencies required for .deb and AppImage build
           # patchelf is CRITICAL for linuxdeploy to work
           sudo apt-get update
           sudo apt-get install -y \
@@ -728,7 +728,6 @@ jobs:
             file \
             libc-bin \
             dpkg-dev \
-            rpm \
             libfuse2t64 \
             squashfs-tools \
             patchelf
@@ -761,6 +760,13 @@ jobs:
 
           # Build with verbose output
           yarn tauri build --target ${{ matrix.target }} -v
+
+      - name: Build RPM package (Linux, best effort)
+        if: matrix.os == 'ubuntu-24.04'
+        continue-on-error: true
+        shell: bash
+        working-directory: src-tauri
+        run: yarn tauri build --target ${{ matrix.target }} --bundles rpm
 
       - name: Add post-install scripts to .deb (Linux)
         if: matrix.os == 'ubuntu-24.04'
@@ -1446,7 +1452,6 @@ jobs:
             src-tauri/target/*/release/bundle/deb/*.deb
             src-tauri/target/*/release/bundle/deb/*.deb.sig
             src-tauri/target/*/release/bundle/rpm/*.rpm
-            src-tauri/target/*/release/bundle/rpm/*.rpm.sig
             src-tauri/target/*/release/bundle/msi/*.msi
             src-tauri/target/*/release/bundle/msi/*.msi.sig
             src-tauri/target/*/release/bundle/appimage/*.AppImage
@@ -1475,7 +1480,6 @@ jobs:
             ${{ matrix.os == 'ubuntu-24.04' && format('src-tauri/target/{0}/release/bundle/deb/*.deb', matrix.target) || '' }}
             ${{ matrix.os == 'ubuntu-24.04' && format('src-tauri/target/{0}/release/bundle/deb/*.deb.sig', matrix.target) || '' }}
             ${{ matrix.os == 'ubuntu-24.04' && format('src-tauri/target/{0}/release/bundle/rpm/*.rpm', matrix.target) || '' }}
-            ${{ matrix.os == 'ubuntu-24.04' && format('src-tauri/target/{0}/release/bundle/rpm/*.rpm.sig', matrix.target) || '' }}
             ${{ matrix.os == 'ubuntu-24.04' && format('src-tauri/target/{0}/release/bundle/appimage/*.AppImage', matrix.target) || '' }}
             ${{ matrix.os == 'ubuntu-24.04' && format('src-tauri/target/{0}/release/bundle/appimage/*.AppImage.tar.gz', matrix.target) || '' }}
             ${{ matrix.os == 'ubuntu-24.04' && format('src-tauri/target/{0}/release/bundle/appimage/*.AppImage.tar.gz.sig', matrix.target) || '' }}
@@ -1503,7 +1507,6 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
             src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb.sig
             src-tauri/target/${{ matrix.target }}/release/bundle/rpm/*.rpm
-            src-tauri/target/${{ matrix.target }}/release/bundle/rpm/*.rpm.sig
             src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
             src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage.tar.gz
             src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage.tar.gz.sig

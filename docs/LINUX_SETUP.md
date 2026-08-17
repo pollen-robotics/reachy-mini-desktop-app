@@ -63,7 +63,7 @@ Le package `.rpm` cible Fedora. Il déclare les dépendances runtime Fedora, ins
 
 ```bash
 # Installer le package
-sudo dnf install ./reachy-mini-control-*.rpm
+sudo dnf install ./Reachy\ Mini\ Control-*.rpm
 
 # Note: Après l'installation, vous devrez peut-être :
 # 1. Vous déconnecter et vous reconnecter (pour les changements de groupe)
@@ -120,16 +120,17 @@ yarn build:sidecar-linux
 yarn tauri:build
 ```
 
-Les packages Linux seront générés dans :
+Le build Linux par défaut génère :
 - `.deb` : `src-tauri/target/release/bundle/deb/`
-- `.rpm` : `src-tauri/target/release/bundle/rpm/`
 - AppImage : `src-tauri/target/release/bundle/appimage/`
 
-Pour compiler uniquement le RPM Fedora :
+Pour compiler le RPM Fedora séparément :
 
 ```bash
 yarn tauri:build:rpm
 ```
+
+Le package `.rpm` sera généré dans `src-tauri/target/release/bundle/rpm/`.
 
 ## Système de Mises à Jour
 
