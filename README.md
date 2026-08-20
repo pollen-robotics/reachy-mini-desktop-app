@@ -93,6 +93,7 @@ yarn tauri build --target aarch64-apple-darwin
 yarn tauri build --target x86_64-apple-darwin
 yarn tauri build --target x86_64-pc-windows-msvc
 yarn tauri build --target x86_64-unknown-linux-gnu
+yarn tauri build --target x86_64-unknown-linux-gnu --bundles rpm  # Fedora RPM only
 ```
 
 #### Installing the daemon from different sources
@@ -178,6 +179,7 @@ yarn build:sidecar:branch             # Interactive branch selection
 
 # Build application
 yarn tauri:build                      # Build production bundle
+yarn tauri:build:rpm                  # Build Fedora RPM package
 
 # Build web dashboard (for daemon)
 yarn build:web                        # Build web version

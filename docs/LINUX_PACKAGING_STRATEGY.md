@@ -38,9 +38,25 @@ Ce document analyse comment les principaux projets Tauri gèrent le packaging et
 - Installation initiale propre avec dépendances système
 - Distribution via repositories APT
 
-### 3. Autres Formats
+### 3. Packages .rpm Fedora
 
-- **RPM** : Pour Fedora/RHEL (même limitations que .deb)
+**Avantages :**
+- ✅ Intégration native avec Fedora via `dnf`
+- ✅ Gestion automatique des dépendances système Fedora
+- ✅ Scripts post-installation (udev rules, permissions)
+- ✅ Alternative propre pour les utilisateurs hors Debian/Ubuntu
+
+**Inconvénients :**
+- ❌ Non supporté par l'auto-updater Tauri
+- ❌ Les noms de dépendances varient entre Fedora, RHEL et openSUSE
+- ❌ Support initial limité à Fedora
+
+**Cas d'usage :**
+- Installation initiale propre sur Fedora
+- Distribution via releases GitHub ou dépôt RPM Fedora à terme
+
+### 4. Autres Formats
+
 - **Flatpak** : Sandboxing, distribution via Flathub
 - **Snap** : Alternative à Flatpak, mais controversé dans la communauté Linux
 
