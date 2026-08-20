@@ -267,6 +267,48 @@ pub async fn check_daemon_update(
     })
 }
 
+/// Resolve the version available for a robot whose daemon runs remotely.
+///
+/// A Wireless normally answers this itself via `GET /update/available`, but
+/// daemons below 1.10.0 sort the PyPI pre-release list as strings, so
+/// "1.9.0rc1" ranks above "1.10.0rc5" and the beta channel always answers
+/// "up to date" (fixed in reachy_mini 1.10.0). Resolving it here keeps the
+/// beta channel usable on robots that still run the broken check.
+///
+/// Returns `None` for daemons at or above 1.10.0: their own answer is
+/// correct, so the workaround retires itself as the fleet updates.
+#[tauri::command]
+pub async fn check_remote_daemon_update(
+    current_version: String,
+    pre_release: bool,
+) -> Result<Option<DaemonUpdateInfo>, String> {
+    if !daemon_prerelease_check_is_broken(&current_version)? {
+        return Ok(None);
+    }
+
+    let available_version = get_github_version(pre_release).await?;
+    let is_available = is_update_available(&current_version, &available_version)?;
+    log::info!(
+        "[update] Legacy daemon on {}: available {} (update: {})",
+        current_version,
+        available_version,
+        is_available
+    );
+
+    Ok(Some(DaemonUpdateInfo {
+        current_version,
+        available_version,
+        is_available,
+    }))
+}
+
+/// Daemons below 1.10.0 mis-sort PyPI pre-releases (string order), so their
+/// `/update/available` answer cannot be trusted on the beta channel.
+/// 1.10.0 pre-releases are still broken: the fix lands in 1.10.0 final.
+fn daemon_prerelease_check_is_broken(current: &str) -> Result<bool, String> {
+    Ok(parse_version(current)? < semver::Version::new(1, 10, 0))
+}
+
 /// Run an upgrade via the uv-trampoline sidecar.
 /// This ensures macOS code signing happens automatically after pip install.
 /// Emits sidecar-stdout/stderr events so the UI can display progress.
@@ -501,6 +543,14 @@ mod tests {
     #[test]
     fn rc_is_less_than_release() {
         assert!(is_update_available("1.2.5rc1", "1.2.5").unwrap());
+    }
+
+    #[test]
+    fn legacy_daemon_gate_boundary() {
+        assert!(daemon_prerelease_check_is_broken("1.9.0").unwrap());
+        assert!(daemon_prerelease_check_is_broken("1.10.0rc5").unwrap());
+        assert!(!daemon_prerelease_check_is_broken("1.10.0").unwrap());
+        assert!(!daemon_prerelease_check_is_broken("1.11.0").unwrap());
     }
 
     #[test]

@@ -675,6 +675,7 @@ pub fn run() {
             wifi::scan_local_wifi_networks,
             wifi::get_current_wifi_ssid,
             update::check_daemon_update,
+            update::check_remote_daemon_update,
             update::update_daemon,
             reset::reset_apps_venv,
             reset::reset_python_env,
