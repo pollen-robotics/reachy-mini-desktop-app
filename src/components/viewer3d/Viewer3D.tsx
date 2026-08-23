@@ -213,9 +213,6 @@ export default function RobotViewer3D({
             powerPreference: 'high-performance',
             toneMapping: THREE.ACESFilmicToneMapping,
             toneMappingExposure: 1.0,
-            // TODO(ts): `outputEncoding` / `sRGBEncoding` are deprecated in newer
-            // three.js typings but still honored at runtime. Keep 1:1 behavior.
-            outputEncoding: (THREE as unknown as { sRGBEncoding: unknown }).sRGBEncoding,
             stencil: false,
             depth: true,
             logarithmicDepthBuffer: false,
