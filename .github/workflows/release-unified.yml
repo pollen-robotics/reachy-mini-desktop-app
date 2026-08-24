@@ -1020,6 +1020,9 @@ jobs:
           # Run E2E tests (no xvfb needed on Windows)
           Write-Host "🧪 Running E2E tests..."
           yarn test:e2e
+          # pwsh does not stop on native command failure; bail out before the
+          # success banner
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           Write-Host "🧪 ════════════════════════════════════════════════════════════════"
           Write-Host "🧪 ✅ E2E TESTS PASSED (Windows)"
