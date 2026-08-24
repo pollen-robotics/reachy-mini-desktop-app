@@ -49,18 +49,9 @@ import WebApp from './components/WebApp';
 import JournalWindow from './views/bluetooth-support/JournalWindow';
 import LogViewerWindow from './views/log-viewer/LogViewerWindow';
 import ErrorBoundary from './components/ErrorBoundary';
-import robotModelCache from './utils/robotModelCache';
 import useAppStore from './store/useAppStore';
 
-// 🚀 Preload robot 3D model (FORCE complete reload)
-robotModelCache.clear();
-
-// Wait a bit to ensure clear is effective
-setTimeout(() => {
-  robotModelCache.load().catch(err => {
-    console.error('❌ Failed to preload robot model:', err);
-  });
-}, 100);
+// Robot 3D model (glb) is preloaded by GLTFRobot via useGLTF.preload.
 
 // Theme wrapper component that adapts to darkMode
 function ThemeWrapper({ children }: { children: ReactNode }) {

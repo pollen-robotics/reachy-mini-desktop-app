@@ -1,6 +1,5 @@
 import { useCallback } from 'react';
 import useAppStore from '../../../store/useAppStore';
-import { calculatePassiveJointsAsync } from '../../../utils/kinematics-wasm/useKinematicsWasm';
 import { useAppFetching, mergeAppsData } from '../../active-robot/application-store/hooks';
 import type { DaemonStep } from '../components/ScanStepsIndicator';
 
@@ -29,9 +28,8 @@ export interface UsePostReadySequenceParams {
  *
  *   1. Start the robot-state WebSocket stream.
  *   2. Wait for a few stable frames so we know we have fresh data.
- *   3. Pre-compute `passive_joints` via WASM (avoids a flicker on mount).
- *   4. Pre-fetch available + installed apps (avoids a loading flash).
- *   5. Hold the "completed" state briefly and invoke the parent callback.
+ *   3. Pre-fetch available + installed apps (avoids a loading flash).
+ *   4. Hold the "completed" state briefly and invoke the parent callback.
  *
  * The returned callback is idempotent from the caller's perspective (the
  * calling effect guards against re-entry).
@@ -126,14 +124,14 @@ export function usePostReadySequence(params: UsePostReadySequenceParams): () => 
 
 /**
  * Poll the zustand store until we've seen `WS_STABLE_FRAMES` frames with the
- * expected head pose/joints shape, then pre-compute passive joints via WASM.
- * Bails out on `WS_TIMEOUT_MS` either way (Viewer3D will recompute on mount).
+ * expected head pose/joints shape, so ActiveRobotView mounts with fresh data.
+ * Bails out on `WS_TIMEOUT_MS` either way.
  */
 async function waitForStableWebSocketFrames(): Promise<void> {
   const wsStartTime = Date.now();
 
   return new Promise<void>(resolve => {
-    const check = async () => {
+    const check = () => {
       const state = useAppStore.getState() as {
         robotStateFull?: {
           data?: {
@@ -150,37 +148,12 @@ async function waitForStableWebSocketFrames(): Promise<void> {
       const elapsed = Date.now() - wsStartTime;
 
       if (
-        dataVersion !== undefined &&
-        dataVersion >= WS_STABLE_FRAMES &&
-        hasHeadJoints &&
-        hasHeadPose
+        (dataVersion !== undefined &&
+          dataVersion >= WS_STABLE_FRAMES &&
+          hasHeadJoints &&
+          hasHeadPose) ||
+        elapsed > WS_TIMEOUT_MS
       ) {
-        try {
-          if (
-            await computeAndStorePassiveJoints(
-              data!.head_joints as number[],
-              data!.head_pose as number[]
-            )
-          ) {
-            resolve();
-            return;
-          }
-        } catch {
-          // Viewer3D will compute passive_joints itself on mount.
-        }
-      }
-
-      if (elapsed > WS_TIMEOUT_MS) {
-        if (hasHeadJoints && hasHeadPose) {
-          try {
-            await computeAndStorePassiveJoints(
-              data!.head_joints as number[],
-              data!.head_pose as number[]
-            );
-          } catch {
-            // Proceed without passive_joints - Viewer3D will compute them.
-          }
-        }
         resolve();
         return;
       }
@@ -189,26 +162,4 @@ async function waitForStableWebSocketFrames(): Promise<void> {
     };
     check();
   });
-}
-
-/**
- * Calculate passive joints via WASM and store them in the Zustand store.
- * Returns `true` when the computed vector was valid and stored.
- */
-async function computeAndStorePassiveJoints(
-  headJoints: number[],
-  headPose: number[]
-): Promise<boolean> {
-  const joints = (await calculatePassiveJointsAsync(headJoints, headPose)) as number[] | null;
-  if (joints && joints.length === 21) {
-    const { setRobotStateFull } = useAppStore.getState();
-    (setRobotStateFull as (updater: unknown) => void)(
-      (prev: { data?: Record<string, unknown> } & Record<string, unknown>) => ({
-        ...prev,
-        data: { ...(prev.data as Record<string, unknown>), passive_joints: joints },
-      })
-    );
-    return true;
-  }
-  return false;
 }

@@ -1,7 +1,6 @@
 import { useRef, useMemo, useEffect } from 'react';
 import useAppStore from '../../../store/useAppStore';
 import { arraysEqual } from '../../../utils/arraysEqual';
-import { useKinematicsWasm } from '../../../utils/kinematics-wasm/useKinematicsWasm';
 import type {
   Antennas,
   HeadJoints,
@@ -15,9 +14,6 @@ import type {
  *
  * Previously this hook maintained its own WebSocket connection to the daemon.
  * Now it reads from robotStateFull which is populated by useRobotStateWebSocket.
- *
- * 🦀 WASM: Still calculates passive joints locally when daemon doesn't provide them.
- * The daemon with AnalyticalKinematics (USB mode) doesn't have passive joints.
  *
  * Benefits:
  * - Single WebSocket connection (vs 2 before: HTTP + viewer WS)
@@ -39,23 +35,6 @@ export function useRobotWebSocket(isActive: boolean): RobotWebSocketState {
   const robotStateData = useAppStore(
     state => state.robotStateFull?.data as RobotStateData | null | undefined
   );
-
-  // 🦀 WASM kinematics for calculating passive joints locally (fallback)
-  // TODO(ts): useKinematicsWasm is still a plain JS module, widen the shape here.
-  const wasm = useKinematicsWasm() as unknown as {
-    isReady: boolean;
-    calculatePassiveJoints: (
-      headJoints: HeadJoints,
-      headPose: HeadPoseMatrix
-    ) => number[] | null | undefined;
-  };
-  const { isReady: wasmReady, calculatePassiveJoints } = wasm;
-  const wasmReadyRef = useRef(false);
-
-  // Keep ref in sync with wasmReady state
-  useEffect(() => {
-    wasmReadyRef.current = wasmReady;
-  }, [wasmReady]);
 
   // Refs for stable value comparison
   const prevStateRef = useRef<RobotWebSocketState>({
@@ -137,18 +116,9 @@ export function useRobotWebSocket(isActive: boolean): RobotWebSocketState {
       hasChanges = true;
     }
 
-    // 🦀 Passive joints: ALWAYS calculated via WASM (daemon never sends them)
-    let passiveJoints = prev.passiveJoints;
-
-    if (wasmReadyRef.current && headJoints && headPose) {
-      const calculatedPassiveJoints = calculatePassiveJoints(headJoints, headPose);
-      if (calculatedPassiveJoints?.length === 21) {
-        if (!arraysEqual(calculatedPassiveJoints, prev.passiveJoints)) {
-          passiveJoints = calculatedPassiveJoints;
-          hasChanges = true;
-        }
-      }
-    }
+    // passive_joints are no longer used (the glb viewer solves the legs itself);
+    // kept as a null field for backward-compatible plumbing.
+    const passiveJoints = prev.passiveJoints;
 
     // Use dataVersion from store or increment
     const dataVersion = robotStateData.dataVersion ?? prev.dataVersion;
@@ -172,7 +142,7 @@ export function useRobotWebSocket(isActive: boolean): RobotWebSocketState {
 
     prevStateRef.current = newState;
     return newState;
-  }, [isActive, robotStateData, calculatePassiveJoints]);
+  }, [isActive, robotStateData]);
 
   return robotState;
 }
