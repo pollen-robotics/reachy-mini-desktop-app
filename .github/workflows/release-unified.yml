@@ -15,32 +15,58 @@ on:
         required: false
         type: boolean
         default: false
+      platforms:
+        description: 'Platforms to build (use with dry_run to iterate on one platform)'
+        required: false
+        type: choice
+        options:
+          - all
+          - windows
+          - macos
+          - linux
+        default: all
 
 jobs:
+  # Computes the build matrix so workflow_dispatch can restrict it to one
+  # platform. Tag pushes have no inputs and always build everything.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Compute build matrix
+        id: matrix
+        shell: bash
+        run: |
+          # macos-15-intel gives a native Intel build (macos-latest is ARM64
+          # only, cross-compilation to x86_64 is unreliable; image available
+          # until August 2027). Linux/macOS/Windows all use the runtime
+          # bootstrap (uv-trampoline downloads Python + creates venvs on
+          # first launch).
+          ALL='[
+            {"os": "macos-latest",   "target": "aarch64-apple-darwin",      "platform": "darwin-aarch64"},
+            {"os": "macos-15-intel", "target": "x86_64-apple-darwin",       "platform": "darwin-x86_64"},
+            {"os": "windows-latest", "target": "x86_64-pc-windows-msvc",    "platform": "windows-x86_64"},
+            {"os": "ubuntu-24.04",   "target": "x86_64-unknown-linux-gnu",  "platform": "linux-x86_64"}
+          ]'
+          case "${{ github.event.inputs.platforms }}" in
+            windows) FILTER='windows' ;;
+            macos)   FILTER='darwin' ;;
+            linux)   FILTER='linux' ;;
+            *)       FILTER='' ;;
+          esac
+          MATRIX=$(echo "$ALL" | jq -c --arg f "$FILTER" '[.[] | select(.platform | startswith($f))]')
+          echo "Building: $(echo "$MATRIX" | jq -r '[.[].platform] | join(", ")')"
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+
   build-and-release:
+    needs: plan
     permissions:
       contents: write
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            platform: darwin-aarch64
-          # Use macos-15-intel for native Intel build (no cross-compilation needed)
-          # macos-latest is now ARM64 only, cross-compilation to x86_64 is unreliable
-          # macos-15-intel available until August 2027
-          - os: macos-15-intel
-            target: x86_64-apple-darwin
-            platform: darwin-x86_64
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            platform: windows-x86_64
-          # Linux uses runtime bootstrap (same as macOS/Windows)
-          # uv-trampoline downloads Python + creates venvs on first launch
-          - os: ubuntu-24.04
-            target: x86_64-unknown-linux-gnu
-            platform: linux-x86_64
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
 
     runs-on: ${{ matrix.os }}
 
@@ -1533,8 +1559,10 @@ jobs:
   create-update-manifest:
     needs: build-and-release
     runs-on: ubuntu-latest
-    # Skip this job in dry_run mode - don't update latest.json or create release
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.event.inputs.dry_run != 'true'
+    # Skip this job in dry_run mode - don't update latest.json or create release.
+    # Also skip on partial-platform builds: the manifest needs artifacts from
+    # all platforms.
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.event.inputs.dry_run != 'true' && (github.event.inputs.platforms == null || github.event.inputs.platforms == 'all')
     permissions:
       contents: write
       actions: read
