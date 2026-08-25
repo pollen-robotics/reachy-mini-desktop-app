@@ -41,9 +41,13 @@ export function isLinux(): boolean {
   return getPlatform() === 'linux';
 }
 
-/** Extra top padding for macOS transparent titlebar drag region. */
-export const MACOS_TITLEBAR_HEIGHT = 33;
+/** Height of the custom drag strip in AppTopBar (macOS and Windows). */
+export const TITLEBAR_DRAG_HEIGHT = 33;
 
+/**
+ * Top padding so content sits below AppTopBar.
+ * Linux has no custom drag strip (native GTK chrome), so this is 0 there.
+ */
 export function getTitleBarOffset(): number {
-  return isMacOS() ? MACOS_TITLEBAR_HEIGHT : 0;
+  return isLinux() ? 0 : TITLEBAR_DRAG_HEIGHT;
 }
