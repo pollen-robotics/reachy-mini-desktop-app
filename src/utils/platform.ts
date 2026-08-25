@@ -40,3 +40,14 @@ export function isWindows(): boolean {
 export function isLinux(): boolean {
   return getPlatform() === 'linux';
 }
+
+/** Height of the custom drag strip in AppTopBar (macOS and Windows). */
+export const TITLEBAR_DRAG_HEIGHT = 33;
+
+/**
+ * Top padding so content sits below AppTopBar.
+ * Linux has no custom drag strip (native GTK chrome), so this is 0 there.
+ */
+export function getTitleBarOffset(): number {
+  return isLinux() ? 0 : TITLEBAR_DRAG_HEIGHT;
+}

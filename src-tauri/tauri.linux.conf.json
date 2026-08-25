@@ -1,4 +1,22 @@
 {
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Reachy Mini",
+        "width": 450,
+        "height": 670,
+        "resizable": true,
+        "maximizable": true,
+        "center": true,
+        "decorations": true,
+        "transparent": false,
+        "hiddenTitle": false,
+        "titleBarStyle": "Visible",
+        "backgroundThrottling": "disabled"
+      }
+    ]
+  },
   "bundle": {
     "linux": {
       "deb": {
