@@ -27,7 +27,10 @@ fn crash_marker_path() -> Option<std::path::PathBuf> {
 }
 use discovery::DiscoveryState;
 use local_proxy::LocalProxyState;
-use std::sync::Arc;
+use std::io::{Read, Write};
+use std::net::TcpListener;
+use std::sync::{Arc, Mutex};
+use std::thread;
 use tauri::{Manager, State};
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_opener::OpenerExt;
@@ -143,6 +146,62 @@ fn get_logs(state: State<DaemonState>) -> Result<Vec<String>, String> {
     Ok(logs.iter().cloned().collect())
 }
 
+static CAMERA_VIEWER_HTML: Mutex<String> = Mutex::new(String::new());
+static CAMERA_VIEWER_PORT: Mutex<Option<u16>> = Mutex::new(None);
+
+/// Serve the camera viewer over loopback so Snap/Flatpak browsers can load it.
+fn ensure_camera_viewer_server() -> Result<u16, String> {
+    let mut port_guard = CAMERA_VIEWER_PORT
+        .lock()
+        .map_err(|e| format!("Camera viewer port mutex poisoned: {e}"))?;
+    if let Some(port) = *port_guard {
+        return Ok(port);
+    }
+
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .map_err(|e| format!("Failed to bind camera viewer: {e}"))?;
+    let port = listener
+        .local_addr()
+        .map_err(|e| format!("Failed to read camera viewer address: {e}"))?
+        .port();
+
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else {
+                continue;
+            };
+            let mut req = Vec::new();
+            let mut tmp = [0u8; 512];
+            loop {
+                match stream.read(&mut tmp) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        req.extend_from_slice(&tmp[..n]);
+                        if req.windows(4).any(|w| w == b"\r\n\r\n") || req.len() > 8192 {
+                            break;
+                        }
+                    }
+                }
+            }
+            let html = CAMERA_VIEWER_HTML
+                .lock()
+                .ok()
+                .map(|guard| guard.clone())
+                .unwrap_or_default();
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                html.len(),
+                html
+            );
+            let _ = stream.write_all(response.as_bytes());
+        }
+    });
+
+    *port_guard = Some(port);
+    log::info!("[camera] Viewer listening on http://127.0.0.1:{port}/");
+    Ok(port)
+}
+
 #[tauri::command]
 fn open_external_camera_viewer(
     app_handle: tauri::AppHandle,
@@ -157,14 +216,13 @@ fn open_external_camera_viewer(
     let html = external_camera_viewer_html()
         .replace("__SIGNALING_URL__", &signaling_url_json)
         .replace("__GST_WEBRTC_API__", gstwebrtc_api_js());
-    let path = paths::external_camera_viewer_path()?;
 
-    std::fs::write(&path, html)
-        .map_err(|e| format!("Failed to write external camera viewer: {}", e))?;
+    *CAMERA_VIEWER_HTML
+        .lock()
+        .map_err(|e| format!("Camera viewer html mutex poisoned: {e}"))? = html;
 
-    let url = tauri::Url::from_file_path(&path)
-        .map_err(|_| format!("Failed to convert path to file URL: {}", path.display()))?
-        .to_string();
+    let port = ensure_camera_viewer_server()?;
+    let url = format!("http://127.0.0.1:{port}/");
 
     app_handle
         .opener()

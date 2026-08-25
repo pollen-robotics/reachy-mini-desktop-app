@@ -36,22 +36,3 @@ pub fn get_data_dir() -> Result<PathBuf, String> {
             .map_err(|_| "HOME not set".to_string())
     }
 }
-
-/// Path for the external browser camera viewer HTML page.
-///
-/// On Linux, Snap/Flatpak browsers often cannot read `/tmp` or hidden app-data
-/// directories. Use a visible location under the user's home directory instead.
-pub fn external_camera_viewer_path() -> Result<PathBuf, String> {
-    #[cfg(target_os = "linux")]
-    {
-        if let Some(downloads) = dirs::download_dir() {
-            return Ok(downloads.join("reachy-mini-camera-viewer.html"));
-        }
-
-        if let Some(home) = dirs::home_dir() {
-            return Ok(home.join("reachy-mini-camera-viewer.html"));
-        }
-    }
-
-    Ok(std::env::temp_dir().join("reachy-mini-camera-viewer.html"))
-}
