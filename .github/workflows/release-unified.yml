@@ -15,32 +15,58 @@ on:
         required: false
         type: boolean
         default: false
+      platforms:
+        description: 'Platforms to build (use with dry_run to iterate on one platform)'
+        required: false
+        type: choice
+        options:
+          - all
+          - windows
+          - macos
+          - linux
+        default: all
 
 jobs:
+  # Computes the build matrix so workflow_dispatch can restrict it to one
+  # platform. Tag pushes have no inputs and always build everything.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Compute build matrix
+        id: matrix
+        shell: bash
+        run: |
+          # macos-15-intel gives a native Intel build (macos-latest is ARM64
+          # only, cross-compilation to x86_64 is unreliable; image available
+          # until August 2027). Linux/macOS/Windows all use the runtime
+          # bootstrap (uv-trampoline downloads Python + creates venvs on
+          # first launch).
+          ALL='[
+            {"os": "macos-latest",   "target": "aarch64-apple-darwin",      "platform": "darwin-aarch64"},
+            {"os": "macos-15-intel", "target": "x86_64-apple-darwin",       "platform": "darwin-x86_64"},
+            {"os": "windows-latest", "target": "x86_64-pc-windows-msvc",    "platform": "windows-x86_64"},
+            {"os": "ubuntu-24.04",   "target": "x86_64-unknown-linux-gnu",  "platform": "linux-x86_64"}
+          ]'
+          case "${{ github.event.inputs.platforms }}" in
+            windows) FILTER='windows' ;;
+            macos)   FILTER='darwin' ;;
+            linux)   FILTER='linux' ;;
+            *)       FILTER='' ;;
+          esac
+          MATRIX=$(echo "$ALL" | jq -c --arg f "$FILTER" '[.[] | select(.platform | startswith($f))]')
+          echo "Building: $(echo "$MATRIX" | jq -r '[.[].platform] | join(", ")')"
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+
   build-and-release:
+    needs: plan
     permissions:
       contents: write
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            platform: darwin-aarch64
-          # Use macos-15-intel for native Intel build (no cross-compilation needed)
-          # macos-latest is now ARM64 only, cross-compilation to x86_64 is unreliable
-          # macos-15-intel available until August 2027
-          - os: macos-15-intel
-            target: x86_64-apple-darwin
-            platform: darwin-x86_64
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            platform: windows-x86_64
-          # Linux uses runtime bootstrap (same as macOS/Windows)
-          # uv-trampoline downloads Python + creates venvs on first launch
-          - os: ubuntu-24.04
-            target: x86_64-unknown-linux-gnu
-            platform: linux-x86_64
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
 
     runs-on: ${{ matrix.os }}
 
@@ -979,6 +1005,25 @@ jobs:
 
           Write-Host "✅ Application installed at: $APP_PATH"
 
+          # WebView2 150+ ignores WEBVIEW2_* env vars from elevated processes
+          # (security hardening, MicrosoftEdge/WebView2Feedback#5645). CI
+          # runners are elevated, so msedgedriver's env-var injection of
+          # --remote-debugging-port is dropped and session creation fails
+          # with "DevToolsActivePort file doesn't exist". The supported
+          # channel that survives elevation is the HKLM WebView2 loader
+          # policy: force the debug port and the user data folder on the app
+          # there. The UDF must match what msedgedriver watches, so the same
+          # path is handed to wdio.conf.js via E2E_WV2_UDF.
+          $UDF = "C:\wv2-e2e-udf"
+          New-Item -ItemType Directory -Path $UDF -Force | Out-Null
+          $POL = "HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2"
+          New-Item -Path "$POL\AdditionalBrowserArguments" -Force | Out-Null
+          New-ItemProperty -Path "$POL\AdditionalBrowserArguments" -Name "reachy-mini-control.exe" -Value "--remote-debugging-port=0" -PropertyType String -Force | Out-Null
+          New-Item -Path "$POL\UserDataFolder" -Force | Out-Null
+          New-ItemProperty -Path "$POL\UserDataFolder" -Name "reachy-mini-control.exe" -Value $UDF -PropertyType String -Force | Out-Null
+          $env:E2E_WV2_UDF = $UDF
+          Write-Host "🔓 WebView2 HKLM automation policy set (UDF: $UDF)"
+
           # Update wdio.conf.js to use Windows path
           # We need to set the APP_BINARY environment variable
           $env:E2E_APP_BINARY = $APP_PATH
@@ -994,6 +1039,9 @@ jobs:
           # Run E2E tests (no xvfb needed on Windows)
           Write-Host "🧪 Running E2E tests..."
           yarn test:e2e
+          # pwsh does not stop on native command failure; bail out before the
+          # success banner
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           Write-Host "🧪 ════════════════════════════════════════════════════════════════"
           Write-Host "🧪 ✅ E2E TESTS PASSED (Windows)"
@@ -1533,8 +1581,10 @@ jobs:
   create-update-manifest:
     needs: build-and-release
     runs-on: ubuntu-latest
-    # Skip this job in dry_run mode - don't update latest.json or create release
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.event.inputs.dry_run != 'true'
+    # Skip this job in dry_run mode - don't update latest.json or create release.
+    # Also skip on partial-platform builds: the manifest needs artifacts from
+    # all platforms.
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.event.inputs.dry_run != 'true' && (github.event.inputs.platforms == null || github.event.inputs.platforms == 'all')
     permissions:
       contents: write
       actions: read

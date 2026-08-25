@@ -34,9 +34,10 @@ async function handleUpdateViewIfPresent() {
     
     // Try to find and click "Skip for now" button using execute
     const clicked = await browser.execute(() => {
-      // Find all elements containing "Skip" text
-      const allElements = document.querySelectorAll('button, [role="button"], span, div');
-      for (const el of allElements) {
+      // Only real interactive elements: generic containers (div/span) also
+      // match by descendant text, and clicking a wrapper does nothing.
+      const candidates = document.querySelectorAll('button, [role="button"], a');
+      for (const el of candidates) {
         if (el.textContent && el.textContent.includes('Skip')) {
           el.click();
           return true;
@@ -128,40 +129,45 @@ describe('Reachy Mini Control - Application Launch', () => {
    * Test: Connection selection screen is visible (or handle intermediate views)
    */
   it('should show the connection selection screen', async () => {
-    // Wait for the UI to render
-    await browser.pause(2000);
-    
-    // Handle UpdateView if it appears
-    const wasUpdateView = await handleUpdateViewIfPresent();
-    if (wasUpdateView) {
-      await browser.pause(2000); // Wait for transition
-    }
+    // The updater check completes asynchronously and can replace the UI at
+    // any moment during the first seconds (race seen on Windows CI once a
+    // newer release existed), so poll: dismiss the update view whenever it
+    // shows up and wait for the connection UI instead of sampling once.
+    let pageContent = '';
+    let isPermissionsView = false;
 
-    // Look for the "Connect to Reachy" title or the connection cards
-    // The page should have text indicating connection options
-    const pageContent = await browser.execute(() => {
-      return document.body.innerText;
-    });
+    await browser.waitUntil(
+      async () => {
+        await handleUpdateViewIfPresent();
 
-    console.log(`📄 Page content preview: "${pageContent.substring(0, 200)}..."`);
-    
-    // Check for permissions view (macOS)
-    const isPermissionsView = await checkPermissionsView();
+        // Check for permissions view (macOS) - blocks automation, counts as done
+        isPermissionsView = await checkPermissionsView();
+        if (isPermissionsView) return true;
+
+        // Look for the "Connect to Reachy" title or the connection cards
+        pageContent = await browser.execute(() => {
+          return document.body.innerText;
+        });
+        return (
+          pageContent.includes('Connect') ||
+          pageContent.includes('Simulation') ||
+          pageContent.includes('USB') ||
+          pageContent.includes('WiFi')
+        );
+      },
+      {
+        timeout: 30000,
+        interval: 1000,
+        timeoutMsg: 'Connection selection screen did not appear within 30s',
+      }
+    );
+
     if (isPermissionsView) {
       console.log('⚠️ Permissions view is blocking - test will continue but may need manual setup');
-      // The test still passes - this is expected on fresh macOS installs
-      expect(true).toBe(true);
       return;
     }
 
-    // Should contain connection-related text
-    const hasConnectionUI =
-      pageContent.includes('Connect') ||
-      pageContent.includes('Simulation') ||
-      pageContent.includes('USB') ||
-      pageContent.includes('WiFi');
-
-    expect(hasConnectionUI).toBe(true);
+    console.log(`📄 Page content preview: "${pageContent.substring(0, 200)}..."`);
   });
 
   /**
