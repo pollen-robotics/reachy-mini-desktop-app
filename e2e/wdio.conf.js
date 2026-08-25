@@ -15,6 +15,7 @@
 
 import os from 'os';
 import path from 'path';
+import fs from 'fs';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 
@@ -70,6 +71,20 @@ function getTauriDriverPath() {
 
 const APP_BINARY = getAppBinary();
 
+/**
+ * Windows: give msedgedriver an explicit, writable WebView2 user data folder.
+ * WebView2 150+ ignores WEBVIEW2_* env vars from elevated processes (see
+ * MicrosoftEdge/WebView2Feedback#5645), so in elevated CI the folder must
+ * ALSO be forced on the app via the HKLM WebView2 loader policy, using the
+ * same path. E2E_WV2_UDF carries that shared path; the CI step sets both.
+ */
+function getWindowsWebviewOptions() {
+  const userDataFolder = process.env.E2E_WV2_UDF || path.join(os.tmpdir(), 'reachy-e2e-webview2');
+  fs.mkdirSync(userDataFolder, { recursive: true });
+  console.log(`📁 WebView2 user data folder: ${userDataFolder}`);
+  return { userDataFolder };
+}
+
 // Keep track of child processes
 let tauriDriver;
 let testRunnerBackend;
@@ -101,6 +116,7 @@ export const config = {
       maxInstances: 1,
       'tauri:options': {
         application: APP_BINARY,
+        ...(isWindows && { webviewOptions: getWindowsWebviewOptions() }),
       },
     },
   ],

@@ -1005,6 +1005,25 @@ jobs:
 
           Write-Host "✅ Application installed at: $APP_PATH"
 
+          # WebView2 150+ ignores WEBVIEW2_* env vars from elevated processes
+          # (security hardening, MicrosoftEdge/WebView2Feedback#5645). CI
+          # runners are elevated, so msedgedriver's env-var injection of
+          # --remote-debugging-port is dropped and session creation fails
+          # with "DevToolsActivePort file doesn't exist". The supported
+          # channel that survives elevation is the HKLM WebView2 loader
+          # policy: force the debug port and the user data folder on the app
+          # there. The UDF must match what msedgedriver watches, so the same
+          # path is handed to wdio.conf.js via E2E_WV2_UDF.
+          $UDF = "C:\wv2-e2e-udf"
+          New-Item -ItemType Directory -Path $UDF -Force | Out-Null
+          $POL = "HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2"
+          New-Item -Path "$POL\AdditionalBrowserArguments" -Force | Out-Null
+          New-ItemProperty -Path "$POL\AdditionalBrowserArguments" -Name "reachy-mini-control.exe" -Value "--remote-debugging-port=0" -PropertyType String -Force | Out-Null
+          New-Item -Path "$POL\UserDataFolder" -Force | Out-Null
+          New-ItemProperty -Path "$POL\UserDataFolder" -Name "reachy-mini-control.exe" -Value $UDF -PropertyType String -Force | Out-Null
+          $env:E2E_WV2_UDF = $UDF
+          Write-Host "🔓 WebView2 HKLM automation policy set (UDF: $UDF)"
+
           # Update wdio.conf.js to use Windows path
           # We need to set the APP_BINARY environment variable
           $env:E2E_APP_BINARY = $APP_PATH
