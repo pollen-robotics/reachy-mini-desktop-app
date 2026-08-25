@@ -61,7 +61,7 @@ export default function AppTopBar(): React.ReactPortal {
         position: 'fixed',
         top: 0,
         left: 65,
-        right: rightPanelView === 'embedded-app' ? '450px' : 0,
+        right: rightPanelView === 'embedded-app' ? 'calc(100vw - 450px)' : 0,
         height: 33,
         cursor: 'move',
         userSelect: 'none',

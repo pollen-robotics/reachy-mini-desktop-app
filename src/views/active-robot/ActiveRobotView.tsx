@@ -618,11 +618,11 @@ function ActiveRobotView({
             </Box>
           </Box>
 
-          {/* Right column (450px) - Application Store */}
+          {/* Right column - Application Store / Embedded app */}
           <Box
             sx={{
-              width: '450px',
-              flexShrink: 0,
+              flex: '1 1 450px',
+              minWidth: 0,
               display: 'flex',
               flexDirection: 'column',
               position: 'relative',
