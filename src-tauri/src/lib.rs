@@ -659,7 +659,6 @@ pub fn run() {
             usb::check_usb_robot,
             window::apply_transparent_titlebar,
             window::close_window,
-            window::resize_main_window,
             permissions::open_camera_settings,
             permissions::open_microphone_settings,
             permissions::open_wifi_settings,
