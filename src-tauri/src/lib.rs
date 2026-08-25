@@ -31,6 +31,7 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 use tauri::{Manager, State};
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_opener::OpenerExt;
@@ -170,6 +171,9 @@ fn ensure_camera_viewer_server() -> Result<u16, String> {
             let Ok(mut stream) = stream else {
                 continue;
             };
+            let timeout = Some(Duration::from_secs(2));
+            let _ = stream.set_read_timeout(timeout);
+            let _ = stream.set_write_timeout(timeout);
             let mut req = Vec::new();
             let mut tmp = [0u8; 512];
             loop {
@@ -189,7 +193,7 @@ fn ensure_camera_viewer_server() -> Result<u16, String> {
                 .map(|guard| guard.clone())
                 .unwrap_or_default();
             let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                 html.len(),
                 html
             );
