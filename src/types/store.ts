@@ -192,6 +192,9 @@ export interface ToastState {
 
 export interface UiSliceState {
   darkMode: boolean;
+  isFullscreen: boolean;
+  /** Live width (px) of the active view's right panel; drives the top-bar drag offset. */
+  rightPanelWidth: number;
   openWindows: string[];
   rightPanelView: RightPanelView;
   embeddedAppUrl: string | null;
@@ -235,6 +238,11 @@ export interface UiSliceActions {
   setDarkMode: (value: boolean) => void;
   toggleDarkMode: () => void;
   resetDarkMode: () => void;
+
+  setFullscreen: (value: boolean) => void;
+  toggleFullscreen: () => void;
+
+  setRightPanelWidth: (value: number) => void;
 
   showToast: (message: string, severity?: ToastSeverity) => void;
   hideToast: () => void;

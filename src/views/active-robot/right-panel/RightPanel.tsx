@@ -9,8 +9,8 @@ import EmbeddedAppView from './EmbeddedAppView';
 import { useActiveRobotContext } from '../context';
 import { useHfAuth } from '../../../hooks/auth';
 import type { ToastSeverity } from '../../../types/store';
-import { DURATION, EASING, whiteAlpha, blackAlpha } from '@styles/tokens';
-import { scrollbarSx, transition, useAppPalette } from '@styles';
+import { DURATION, EASING } from '@styles/tokens';
+import { transition, useAppPalette } from '@styles';
 
 export type RightPanelQuickAction = Record<string, unknown>;
 
@@ -106,8 +106,6 @@ export default function RightPanel({
     return () => clearTimeout(timer);
   }, [rightPanelView, updateGradients]);
 
-  const scrollbarThumb = palette.isDark ? whiteAlpha(0.1) : blackAlpha(0.1);
-  const scrollbarThumbHover = palette.isDark ? whiteAlpha(0.15) : blackAlpha(0.15);
   // TODO(style-migration): scroll fade gradients rely on the app's background color stops;
   // these exact tints don't have dedicated palette tokens yet.
   const fadeGradientTop = palette.isDark
@@ -126,16 +124,18 @@ export default function RightPanel({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        overflowY: isEmbeddedApp || !isAuthenticated ? 'hidden' : 'scroll',
+        // `auto` + hidden scrollbar: same treatment as the left column. On macOS
+        // "always show scroll bars", `scroll` rendered the scrollbar as a bright
+        // vertical line down the window's right edge. The panel stays scrollable
+        // via wheel/trackpad; the top/bottom fade gradients already signal overflow.
+        overflowY: isEmbeddedApp || !isAuthenticated ? 'hidden' : 'auto',
         overflowX: 'hidden',
+        scrollbarWidth: 'none',
+        '&::-webkit-scrollbar': { display: 'none' },
         pt: 0,
         bgcolor: 'transparent !important',
         backgroundColor: 'transparent !important',
         position: 'relative',
-        ...scrollbarSx(palette, {
-          thumb: scrollbarThumb,
-          thumbHover: scrollbarThumbHover,
-        }),
       }}
     >
       {/* Top gradient for depth effect on scroll - hidden for embedded apps */}

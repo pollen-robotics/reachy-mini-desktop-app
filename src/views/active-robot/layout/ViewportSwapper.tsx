@@ -141,7 +141,11 @@ export default function ViewportSwapper({
         width: '100%',
         // Fixed height based on camera aspect ratio to keep consistent height
         aspectRatio: `${cameraAspectRatio}`,
-        minHeight: 250, // Minimum height fallback
+        // Pre-layout collapse guard only. Must stay BELOW the 4:3 height at the
+        // narrowest pane (~174px) so it never overrides `aspectRatio` — a taller
+        // floor squashes the box off 4:3 and makes the canvas stretch/crop Reachy
+        // while the split divider is dragged.
+        minHeight: 120,
       }}
     >
       {/* Main viewport (large) */}

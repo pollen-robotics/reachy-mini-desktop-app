@@ -31,6 +31,10 @@ const getInitialDarkMode = (): boolean => {
  */
 export const uiInitialState: UiSliceState = {
   darkMode: getInitialDarkMode(),
+  // In-memory only (not persisted): a saved value would fight useWindowResize on
+  // startup and launch the user into fullscreen unexpectedly.
+  isFullscreen: false,
+  rightPanelWidth: 450,
   openWindows: [],
   rightPanelView: null,
   embeddedAppUrl: null,
@@ -142,6 +146,14 @@ export const createUISlice: StateCreator<AppState, [], [], UiSlice> = (set, get)
     const systemPreference = getSystemPreference();
     set({ darkMode: systemPreference });
   },
+
+  // Fullscreen management. The actual OS window fullscreen call and the
+  // reverse (OS → store) sync live in useFullscreenSync.
+  setFullscreen: (value: boolean) => set({ isFullscreen: value }),
+
+  toggleFullscreen: () => set(state => ({ isFullscreen: !state.isFullscreen })),
+
+  setRightPanelWidth: (value: number) => set({ rightPanelWidth: value }),
 
   // 🍞 Global toast actions
   showToast: (message: string, severity = 'info') =>

@@ -95,3 +95,6 @@ docs/latest.json
 
 # Blender source files (too large for git)
 src/assets/robot-3d/blender/
+
+# Claude Code UI launcher runtime state (logs / pid)
+.claude/.run/

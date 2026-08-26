@@ -14,6 +14,15 @@ pub fn setup_transparent_titlebar(window: &tauri::WebviewWindow) {
             let style_mask: u64 = msg_send![ns_window, styleMask];
             let new_style = style_mask | (1 << 15); // NSWindowStyleMaskFullSizeContentView
             let _: () = msg_send![ns_window, setStyleMask: new_style];
+
+            // Enable the native fullscreen (green traffic-light) button. The window is
+            // `resizable: false`, which makes macOS grey out the green button, so we
+            // opt the window into native fullscreen explicitly. Clicking the green
+            // button (or Window ▸ Enter Full Screen) then triggers OS fullscreen; the
+            // frontend picks that up via `useFullscreenSync` and scales the UI to fit.
+            let behavior: u64 = msg_send![ns_window, collectionBehavior];
+            let new_behavior = behavior | (1 << 7); // NSWindowCollectionBehaviorFullScreenPrimary
+            let _: () = msg_send![ns_window, setCollectionBehavior: new_behavior];
         }
     }
 }

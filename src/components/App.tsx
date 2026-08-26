@@ -24,6 +24,7 @@ import {
   useUsbCheckTiming,
   useDeepLink,
   useWindowVisible,
+  useFullscreenSync,
 } from '../hooks/system';
 import { useViewRouter, ViewRouterWrapper } from '../hooks/system/useViewRouter';
 import { useRobotCommands, useRobotStateWebSocket, useActiveMoves } from '../hooks/robot';
@@ -327,6 +328,10 @@ function App(): React.ReactElement {
   }, [isActive, hardwareError, isStopping]);
 
   useWindowResize(currentView);
+
+  // 🖥️ Fullscreen: sync store <-> OS window, F11/Esc shortcuts, and whole-UI
+  // magnification (fluid layout fills the width; zoom scales size to window height).
+  useFullscreenSync();
 
   useEffect(() => {
     if (!isWindowVisible) return;

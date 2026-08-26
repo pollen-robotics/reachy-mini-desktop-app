@@ -1,6 +1,7 @@
-import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { Box, Typography, Button, CircularProgress } from '@mui/material';
 import useDaemonLogStream from '../../hooks/useDaemonLogStream';
+import { useResizeObserver } from '../../hooks/useResizeObserver';
 import { logInfo } from '../../utils/logging';
 import FullscreenOverlayUntyped from '../../components/FullscreenOverlay';
 import Viewer3DUntyped from '../../components/viewer3d';
@@ -68,8 +69,8 @@ import useAppStore from '../../store/useAppStore';
 import type { FullAppState } from '../../store/useStore';
 import type { DaemonLogSource } from '../../hooks/useDaemonLogStream';
 import { useShallow } from 'zustand/react/shallow';
-import { whiteAlpha, blackAlpha } from '@styles/tokens';
-import { BLUR, FONT_WEIGHT, RADIUS, TYPO, scrollbarSx, useAppPalette } from '@styles';
+import { blackAlpha } from '@styles/tokens';
+import { BLUR, FONT_WEIGHT, RADIUS, TYPO, useAppPalette } from '@styles';
 
 export interface ActiveRobotViewProps {
   isActive: boolean;
@@ -90,6 +91,49 @@ interface AvailableAppLike {
   [key: string]: unknown;
 }
 
+/**
+ * Reports the right column's live width to the store (used by AppTopBar's
+ * embedded-app drag offset) WITHOUT re-rendering the parent ActiveRobotView.
+ * Isolated into its own null-rendering component so its per-frame ResizeObserver
+ * updates stay local. `paused` skips the store write during a split drag so it
+ * doesn't churn every store subscriber 60×/s; the width is committed on release
+ * when `paused` flips back to false.
+ */
+function RightPanelWidthReporter({
+  targetRef,
+  paused,
+}: {
+  targetRef: React.RefObject<HTMLDivElement | null>;
+  paused: boolean;
+}): null {
+  const size = useResizeObserver(targetRef);
+  useEffect(() => {
+    if (paused) return;
+    if (size.width > 0) {
+      useAppStore.getState().setRightPanelWidth(size.width);
+    }
+  }, [size.width, paused]);
+  return null;
+}
+
+// Camera-bottom collision guard geometry (see cameraBottomCapPx). The viewer is
+// 4:3, so a wider left pane makes a TALLER viewer — drag far enough right and the
+// small camera preview (pinned CAMERA_OVERHANG_PX below the viewer) would run off
+// the bottom of the screen. VIEWER_ASPECT turns an available height back into a
+// viewer width; SCREEN_EDGE_MARGIN_PX keeps the preview's shadow clear of the edge.
+const VIEWER_ASPECT = 4 / 3;
+const CAMERA_OVERHANG_PX = 60;
+const SCREEN_EDGE_MARGIN_PX = 10;
+
+// Left-column log console scale reference. On develop the console was a fixed
+// 120px inside the fixed 900×670 "expanded" window (see useWindowResize.ts). We
+// keep that 120/670 ratio so the console — and therefore the gap below it — grow
+// proportionally as the window is resized or fullscreened, instead of the console
+// ballooning to eat all remaining height. 120px is also the floor: shorter windows
+// look like develop and the column scrolls rather than the console shrinking.
+const LOGS_BASELINE_HEIGHT_PX = 120;
+const LOGS_BASELINE_WINDOW_PX = 670;
+
 function ActiveRobotView({
   isActive,
   isStarting: _isStarting,
@@ -103,6 +147,215 @@ function ActiveRobotView({
   usbPortName: _usbPortName,
 }: ActiveRobotViewProps): React.ReactElement {
   const palette = useAppPalette();
+
+  // Report the (now fluid) right-panel width so AppTopBar can offset its drag
+  // strip correctly in the embedded-app case (it used to assume a fixed 450px).
+  // The observer lives in an isolated child (see RightPanelWidthReporter) so it
+  // doesn't re-render this large view every frame while the split is dragged.
+  const rightColumnRef = useRef<HTMLDivElement | null>(null);
+
+  // --- Resizable split between the two columns ---
+  // The left column width is derived from `leftFraction` but clamped in PX to a
+  // fixed travel range so the divider can only slide between LEFT_MIN_PX and
+  // LEFT_MAX_PX — enforced on BOTH drag and window resize. RIGHT_MIN_PX keeps
+  // the right pane from collapsing on a narrow window (the left range yields to
+  // it there, so nothing overflows). The chosen ratio persists across sessions.
+  const LEFT_MIN_PX = 500;
+  const LEFT_MAX_PX = 1900;
+  // Hard minimum right-pane width, matching the main branch's fixed 450px right
+  // column (both the app store and the controller shipped at that width). The
+  // divider can never make the right pane narrower than this on any view, so the
+  // controller's HEAD row can't squish (Pitch/Yaw dropping below X/Y) and the apps
+  // tab stays consistent with main at the default 900×670 window. In CSS px, so it
+  // holds under the fullscreen webview zoom (which shrinks the CSS-px viewport while
+  // the controls keep a fixed CSS-px size).
+  const RIGHT_MIN_PX = 450;
+  // Gap left when the divider meets the tagged HF username badge (see collisionCapPx).
+  const COLLISION_MARGIN_PX = 8;
+  const DIVIDER_PX = 12;
+  // Floor for the left-column log console so it can't be shrunk to a sliver by
+  // the fixed content stacked above it (viewer + header + audio controls).
+  const LOGS_MIN_HEIGHT_PX = 200;
+  const contentRowRef = useRef<HTMLDivElement | null>(null);
+  const contentRowSize = useResizeObserver(contentRowRef);
+  const [leftFraction, setLeftFraction] = useState<number>(() => {
+    const stored =
+      typeof window !== 'undefined' ? localStorage.getItem('activeSplitFraction') : null;
+    const n = stored ? parseFloat(stored) : NaN;
+    return Number.isFinite(n) && n > 0.1 && n < 0.9 ? n : 0.5;
+  });
+  const [isDraggingSplit, setIsDraggingSplit] = useState<boolean>(false);
+
+  // Structural offsets the camera-bottom cap needs, measured after layout and
+  // constant across pane widths: `chrome` = column padding + border + reserved
+  // scrollbar gutter; `viewerTop` = the viewer's inset below the top of the row.
+  // Seeded with sane defaults, corrected on the first committed layout.
+  const chromeRef = useRef<number>(54);
+  const viewerTopRef = useRef<number>(33);
+
+  // Left column element — resized imperatively during a drag (see below).
+  const leftColRef = useRef<HTMLDivElement | null>(null);
+
+  // Widest the left pane may get before the 4:3 viewer grows tall enough that the
+  // camera preview's bottom collides with the bottom of the screen. +Infinity
+  // when unmeasured or the window is too short to constrain (we then fall back to
+  // the width-based limits only).
+  const cameraBottomCapPx = useCallback((): number => {
+    const rowH = contentRowSize.height;
+    if (rowH <= 0) return Number.POSITIVE_INFINITY;
+    const availViewerHeight =
+      rowH - viewerTopRef.current - CAMERA_OVERHANG_PX - SCREEN_EDGE_MARGIN_PX;
+    if (availViewerHeight <= 0) return Number.POSITIVE_INFINITY;
+    return availViewerHeight * VIEWER_ASPECT + chromeRef.current;
+  }, [contentRowSize.height]);
+
+  // Max left-pane width at which the divider's right edge just meets the tagged
+  // collision element (the HF username badge in the right panel). +Infinity when
+  // that element isn't on screen (e.g. logged out) so it imposes no limit.
+  const collisionCapPx = useCallback((): number => {
+    const rowEl = contentRowRef.current;
+    if (!rowEl) return Number.POSITIVE_INFINITY;
+    const target = rowEl.querySelector<HTMLElement>('[data-divider-collision]');
+    if (!target) return Number.POSITIVE_INFINITY;
+    const rowLeft = rowEl.getBoundingClientRect().left;
+    const targetLeft = target.getBoundingClientRect().left;
+    return targetLeft - rowLeft - DIVIDER_PX - COLLISION_MARGIN_PX;
+  }, []);
+
+  // Single source of truth for the divider clamp, shared by the drag path and the
+  // committed/relayout memo. RIGHT_MIN_PX is a HARD floor (main's 450px column): the
+  // right pane can never be narrower than it on any view — so the controller's HEAD
+  // row can't squish and the apps tab stays consistent with main. On a narrow window
+  // the left pane yields below LEFT_MIN_PX to honor that floor. Also bounded by
+  // LEFT_MAX_PX, the username-badge collision cap (only ever keeps the right pane
+  // wider), and the camera-bottom cap.
+  const clampPaneWidthPx = useCallback(
+    (desiredPx: number, rowWidth: number): number => {
+      const usable = Math.max(0, rowWidth - DIVIDER_PX);
+      const maxByRight = usable - RIGHT_MIN_PX;
+      // On a narrow window that can't honor LEFT_MIN_PX, yield to the right pane.
+      const minPx = Math.min(LEFT_MIN_PX, Math.max(0, maxByRight));
+      const maxPx = Math.max(
+        minPx,
+        Math.min(LEFT_MAX_PX, maxByRight, collisionCapPx(), cameraBottomCapPx())
+      );
+      return Math.max(minPx, Math.min(maxPx, desiredPx));
+    },
+    [collisionCapPx, cameraBottomCapPx]
+  );
+
+  // Left pane width in px, recomputed whenever the row or ratio changes so the
+  // limits hold even as the window shrinks.
+  const leftPaneWidth = useMemo<number>(() => {
+    const container = contentRowSize.width || 900;
+    return Math.round(clampPaneWidthPx(leftFraction * container, container));
+  }, [contentRowSize.width, leftFraction, clampPaneWidthPx]);
+
+  // The viewer block inside the column — measured to derive the camera-bottom cap.
+  const viewerBlockRef = useRef<HTMLDivElement | null>(null);
+  const dragFracRef = useRef<number>(leftFraction);
+
+  // Apply the committed pane width to the DOM. During a drag we bypass React and
+  // write the width straight to this element; on release the committed fraction
+  // recomputes `leftPaneWidth` and this re-applies the same value seamlessly.
+  // useLayoutEffect so the width is set before the browser paints.
+  useLayoutEffect(() => {
+    const el = leftColRef.current;
+    if (el) el.style.width = `${leftPaneWidth}px`;
+    // Re-measure the (pane-width-independent) offsets the camera-bottom cap needs.
+    // Cheap, and only on committed width changes — never mid-drag.
+    const rowEl = contentRowRef.current;
+    const vbEl = viewerBlockRef.current;
+    if (el && rowEl && vbEl) {
+      const vbRect = vbEl.getBoundingClientRect();
+      chromeRef.current = Math.max(0, el.getBoundingClientRect().width - vbRect.width);
+      viewerTopRef.current = vbRect.top - rowEl.getBoundingClientRect().top;
+    }
+  }, [leftPaneWidth]);
+
+  // Re-clamp the divider whenever the UI's effective resolution changes — a window
+  // resize, fullscreen enter/exit, or a display/DPR change all shift the fullscreen
+  // webview zoom, which changes the CSS-px viewport and therefore where the
+  // RIGHT_MIN_PX floor falls. The ResizeObserver-driven `leftPaneWidth` memo also
+  // reacts to the row-width change, but `setZoom()` is async, so we re-run the clamp
+  // from the committed fraction here on those events too — the right pane can't be
+  // left under its minimum after the resolution jumps. Skipped mid-drag, where the
+  // pointer handler owns the width.
+  useEffect(() => {
+    const reclamp = (): void => {
+      if (isDraggingSplit) return;
+      const rowEl = contentRowRef.current;
+      const el = leftColRef.current;
+      if (!rowEl || !el) return;
+      const rowWidth = rowEl.getBoundingClientRect().width;
+      if (rowWidth <= 0) return;
+      el.style.width = `${Math.round(clampPaneWidthPx(leftFraction * rowWidth, rowWidth))}px`;
+    };
+    const dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+    window.addEventListener('resize', reclamp);
+    dprQuery.addEventListener('change', reclamp);
+    return () => {
+      window.removeEventListener('resize', reclamp);
+      dprQuery.removeEventListener('change', reclamp);
+    };
+  }, [clampPaneWidthPx, leftFraction, isDraggingSplit]);
+
+  // Clamp a pointer X to the pane travel range, returning both the pixel width
+  // (to apply imperatively) and the fraction (to persist on release).
+  const computeSplitFromClientX = useCallback(
+    (clientX: number): { widthPx: number; frac: number } | null => {
+      const el = contentRowRef.current;
+      if (!el) return null;
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0) return null;
+      const clampedPx = clampPaneWidthPx(clientX - rect.left, rect.width);
+      const frac = clampedPx / rect.width;
+      if (!Number.isFinite(frac)) return null;
+      return { widthPx: Math.round(clampedPx), frac };
+    },
+    [clampPaneWidthPx]
+  );
+
+  useEffect(() => {
+    if (!isDraggingSplit) return;
+    // Drive the resize imperatively: coalesce pointermove to one write per frame
+    // and set the left column's width DIRECTLY, without setState — so the heavy
+    // ActiveRobotView subtree doesn't re-render (and re-run its effects) 60×/s
+    // mid-drag. The fraction is committed to state + localStorage once, on
+    // release; the WebGL buffer resize is debounced in Viewer3D so the canvas
+    // just CSS-scales smoothly while dragging.
+    let rafId: number | null = null;
+    let pendingClientX = 0;
+    const flush = (): void => {
+      rafId = null;
+      const next = computeSplitFromClientX(pendingClientX);
+      if (!next) return;
+      dragFracRef.current = next.frac;
+      const el = leftColRef.current;
+      if (el) el.style.width = `${next.widthPx}px`;
+    };
+    const onMove = (e: PointerEvent): void => {
+      pendingClientX = e.clientX;
+      if (rafId === null) rafId = requestAnimationFrame(flush);
+    };
+    const onUp = (): void => {
+      setIsDraggingSplit(false);
+      setLeftFraction(dragFracRef.current);
+      try {
+        localStorage.setItem('activeSplitFraction', String(dragFracRef.current));
+      } catch {
+        /* ignore */
+      }
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [isDraggingSplit, computeSplitFromClientX]);
+
   // Get dependencies from context
   const { robotState, actions } = useActiveRobotContext();
 
@@ -504,6 +757,7 @@ function ActiveRobotView({
 
         {/* Content - 2 columns */}
         <Box
+          ref={contentRowRef}
           sx={{
             display: 'flex',
             flexDirection: 'row',
@@ -513,35 +767,51 @@ function ActiveRobotView({
             bgcolor: 'transparent',
           }}
         >
-          {/* Left column (450px) - Current content */}
+          {/* Reports right-pane width to the store without re-rendering this view
+              (paused mid-drag so it doesn't churn store subscribers). */}
+          <RightPanelWidthReporter targetRef={rightColumnRef} paused={isDraggingSplit} />
+
+          {/* Left column - width driven by the draggable split (applied to the
+              DOM imperatively via leftColRef so a drag doesn't re-render React). */}
           <Box
+            ref={leftColRef}
             sx={{
-              width: '450px',
               flexShrink: 0,
+              minWidth: 0,
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               px: 3,
               pt: '33px',
+              pb: '10px',
+              // Hide the scrollbar entirely — the column stays scrollable via
+              // wheel/trackpad. It's only a fallback scroll region for short
+              // windows, and a visible bar here rendered as a bright vertical
+              // line on macOS "always show scroll bars" (doubled up next to the
+              // split divider). Hiding it also keeps the content width CONSTANT:
+              // a classic scrollbar that appears/disappears as content overflows
+              // would resize the 4:3 viewer and make the sim oscillate — which is
+              // exactly why we can't just fall back to `overflowY: 'auto'` alone.
               overflowY: 'auto',
+              scrollbarWidth: 'none',
+              '&::-webkit-scrollbar': { display: 'none' },
               overflowX: 'hidden',
               position: 'relative',
               zIndex: 1,
               height: '100%',
               // TODO(style-migration): left-column scrim uses 0.6/0.7 alpha; no direct palette surface token match.
               bgcolor: palette.isDark ? 'rgba(20, 20, 20, 0.6)' : 'rgba(245, 245, 247, 0.7)',
-              borderRight: `1px solid ${palette.border}`,
+              // No borderRight here: the draggable divider's grip line is the single
+              // separator. A border would sit ~5px from the grip and read as a second
+              // parallel line. The soft boxShadow below still gives the column depth.
               boxShadow: palette.isDark
                 ? `2px 0 8px -2px ${blackAlpha(0.3)}`
                 : `2px 0 8px -2px ${blackAlpha(0.1)}`,
-              ...scrollbarSx(palette, {
-                thumb: palette.isDark ? whiteAlpha(0.1) : blackAlpha(0.1),
-                thumbHover: palette.isDark ? whiteAlpha(0.15) : blackAlpha(0.15),
-              }),
             }}
           >
             {/* Main viewer block - Both components are always mounted */}
             <Box
+              ref={viewerBlockRef}
               sx={{
                 width: '100%',
                 position: 'relative',
@@ -593,13 +863,16 @@ function ActiveRobotView({
               />
             </Box>
 
-            {/* Logs Console - Use flex to take remaining space and prevent height issues */}
+            {/* Logs Console - grows to fill remaining space, but keeps a usable
+                floor (minHeight) so a tall stack above it can't squish the logs to
+                a sliver. When the column is short, the outer overflowY scroll
+                reveals the full console at the bottom instead of collapsing it. */}
             <Box
               sx={{
                 mt: 1,
                 width: '100%',
                 flex: '1 1 auto',
-                minHeight: 0,
+                minHeight: LOGS_MIN_HEIGHT_PX,
                 display: 'flex',
                 flexDirection: 'column',
               }}
@@ -610,7 +883,7 @@ function ActiveRobotView({
                 <LogConsole
                   logs={logs}
                   darkMode={palette.isDark}
-                  maxHeight={120}
+                  height="100%"
                   compact={true}
                   onExpand={() => setLogsFullscreenOpen(true)}
                 />
@@ -618,11 +891,47 @@ function ActiveRobotView({
             </Box>
           </Box>
 
-          {/* Right column (450px) - Application Store */}
+          {/* Draggable divider - drag to rebalance the two panes */}
           <Box
+            onPointerDown={(e: React.PointerEvent) => {
+              e.preventDefault();
+              setIsDraggingSplit(true);
+            }}
             sx={{
-              width: '450px',
               flexShrink: 0,
+              width: '12px',
+              cursor: 'col-resize',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              position: 'relative',
+              zIndex: 3,
+              '& .split-line': {
+                transition: 'background-color 0.15s ease, width 0.15s ease',
+              },
+              '&:hover .split-line': {
+                backgroundColor: palette.textMuted,
+                width: '3px',
+              },
+            }}
+          >
+            <Box
+              className="split-line"
+              sx={{
+                width: isDraggingSplit ? '3px' : '2px',
+                height: '100%',
+                borderRadius: '2px',
+                backgroundColor: isDraggingSplit ? palette.textMuted : palette.border,
+              }}
+            />
+          </Box>
+
+          {/* Right column - fluid, absorbs remaining width so the row fills 100% */}
+          <Box
+            ref={rightColumnRef}
+            sx={{
+              flex: '1 1 0',
+              minWidth: 0,
               display: 'flex',
               flexDirection: 'column',
               position: 'relative',
@@ -646,6 +955,12 @@ function ActiveRobotView({
             />
           </Box>
         </Box>
+
+        {/* While dragging the split, this overlay captures the pointer so it keeps
+            tracking over the 3D canvas / embedded app iframe. */}
+        {isDraggingSplit && (
+          <Box sx={{ position: 'fixed', inset: 0, zIndex: 10000001, cursor: 'col-resize' }} />
+        )}
 
         {/* Logs Fullscreen Modal - only mount LogConsole when open */}
         <FullscreenOverlay

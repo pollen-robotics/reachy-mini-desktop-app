@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react';
 import { LogicalSize } from '@tauri-apps/api/dpi';
 import { moveWindow, Position } from '@tauri-apps/plugin-positioner';
 import { getAppWindow } from '../../utils/windowUtils';
+import useAppStore from '../../store/useAppStore';
+import type { FullAppState } from '../../store/useStore';
 
 type ViewName = 'compact' | 'expanded';
 
@@ -29,6 +31,14 @@ async function resizeWindowInstantly(targetWidth: number, targetHeight: number):
 
   try {
     const appWindow = getAppWindow();
+
+    // Pin the minimum size to this view's dimensions so the window can't be
+    // shrunk below the view's natural layout (e.g. the 900px-wide expanded/sim
+    // view). Applied before the early-return so the minimum tracks the view even
+    // when the size already matches, and before setSize so an expanded→compact
+    // shrink isn't clamped by a stale, larger minimum.
+    await appWindow.setMinSize(new LogicalSize(targetWidth, targetHeight));
+
     // Get the current size AND the scale factor for consistent comparison.
     const currentSize = await appWindow.innerSize();
     const scaleFactor = await appWindow.scaleFactor();
@@ -63,6 +73,11 @@ async function resizeWindowInstantly(targetWidth: number, targetHeight: number):
 export function useWindowResize(view: ViewName | string | undefined): void {
   const previousView = useRef<string | null>(null);
   const isInitialized = useRef<boolean>(false);
+  const wasFullscreen = useRef<boolean>(false);
+
+  // Resizing the window while fullscreen would force it back out of fullscreen, so
+  // this hook must react to the fullscreen flag too (not just the view).
+  const isFullscreen = useAppStore((state: FullAppState) => state.isFullscreen);
 
   useEffect(() => {
     // Sizes per view (fixed height 670px, only width changes).
@@ -77,6 +92,19 @@ export function useWindowResize(view: ViewName | string | undefined): void {
       return;
     }
 
+    // While fullscreen, NEVER call setSize — the fixed 670px height would yank the
+    // window out of fullscreen (this is what caused the "downscale after a health
+    // check": the robot going active flips compact→expanded mid-fullscreen). Just
+    // remember the desired view so we can size correctly once the user exits.
+    if (isFullscreen) {
+      previousView.current = view ?? null;
+      wasFullscreen.current = true;
+      return;
+    }
+
+    const justExitedFullscreen = wasFullscreen.current;
+    wasFullscreen.current = false;
+
     // First render: initialize without animating.
     if (!isInitialized.current) {
       isInitialized.current = true;
@@ -84,6 +112,9 @@ export function useWindowResize(view: ViewName | string | undefined): void {
 
       if (window.__TAURI__) {
         const appWindow = getAppWindow();
+        // Match the initial minimum to the initial view (e.g. expanded when a
+        // launch lands straight on an active robot) so it can't shrink below it.
+        appWindow.setMinSize(new LogicalSize(targetSize.width, targetSize.height)).catch(() => {});
         appWindow.setSize(new LogicalSize(targetSize.width, targetSize.height)).catch(() => {
           // Ignore - window may have just closed.
         });
@@ -91,13 +122,15 @@ export function useWindowResize(view: ViewName | string | undefined): void {
       return;
     }
 
-    // Only resize when the view actually changes.
-    if (previousView.current === view) {
+    // Resize when the view changed, OR when we just exited fullscreen — on exit
+    // Tauri restores the pre-fullscreen size, which is stale if the view changed
+    // while we were fullscreen, so re-apply the current view's size.
+    if (!justExitedFullscreen && previousView.current === view) {
       return;
     }
 
     previousView.current = view ?? null;
 
     resizeWindowInstantly(targetSize.width, targetSize.height);
-  }, [view]);
+  }, [view, isFullscreen]);
 }

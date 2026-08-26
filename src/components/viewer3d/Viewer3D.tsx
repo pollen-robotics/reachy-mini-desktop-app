@@ -199,12 +199,32 @@ export default function RobotViewer3D({
         // viewer's bounds when it's used as a PIP small view on top of
         // another viewer.
         isolation: 'isolate',
+        // Force the R3F <canvas> to always fill this box via CSS. R3F sets the
+        // canvas to an explicit px size from its (debounced) measurement, so
+        // while the split divider is dragged the canvas would otherwise trail the
+        // container and "lag behind" until R3F re-measures. Pinning it to 100%
+        // lets the canvas track the container instantly — the fixed-resolution
+        // buffer just GPU-scales (the box stays 4:3, so no distortion) — while the
+        // resize debounce still avoids the per-frame buffer realloc/flash. The
+        // buffer sharpens once, ~120ms after the drag settles.
+        '& canvas': {
+          width: '100% !important',
+          height: '100% !important',
+        },
       }}
     >
       <Canvas
         camera={{ position: cameraConfig.position, fov: cameraConfig.fov }}
         dpr={[1, 2]}
         frameloop={hideEffects ? 'demand' : 'always'}
+        // Debounce the WebGL resize. R3F's default (resize debounce 0) calls
+        // gl.setSize() on every resize step; reallocating the drawing buffer
+        // clears it for a frame, so dragging the split divider flashes the sim
+        // on every frame. With the viewer box pinned to 4:3, the existing buffer
+        // just CSS-scales uniformly while dragging (no stretch), then re-renders
+        // crisply ~120ms after the drag settles. Scroll re-measure stays enabled
+        // so pointer/raycast offsets remain correct in the scrollable column.
+        resize={{ debounce: { scroll: 50, resize: 120 } }}
         gl={
           {
             antialias: true,

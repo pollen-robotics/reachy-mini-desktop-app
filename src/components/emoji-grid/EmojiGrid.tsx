@@ -1,14 +1,27 @@
-import React, { useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Collapse, CircularProgress } from '@mui/material';
 import type { EmojiGridAction } from '@constants/choreographies';
 import { ACCENT, accentAlpha } from '@styles/tokens';
 import { useAppPalette } from '@styles';
+import { useResizeObserver } from '@hooks/useResizeObserver';
 
 const ROWS_VISIBLE = 3;
-const COLUMNS = 6;
 const GAP = 12;
 const SPINNER_SIZE = 20;
 const EMOJI_FONT_SIZE = 24;
+
+/**
+ * Tile sizing is driven by the container width, not a fixed column count.
+ * The right panel is fluid (`flex: 1 1 0`) and further scaled by the fullscreen
+ * webview zoom, so a hard-coded column count made each square grow/shrink
+ * without bound as the panel resized. Instead we keep tiles near a target edge
+ * and adapt the column count (clamped) so boxes stay a consistent size.
+ */
+const PREFERRED_TILE_PX = 48;
+const MIN_COLUMNS = 5;
+const MAX_COLUMNS = 10;
+/** Column count used before the container has been measured. */
+const FALLBACK_COLUMNS = 6;
 
 export interface EmojiGridItem {
   name?: string;
@@ -48,6 +61,17 @@ export function EmojiGrid({
   const [expanded, setExpanded] = useState<boolean>(false);
   const palette = useAppPalette();
 
+  // Measure the actual container width so the tile size stays consistent while
+  // the fluid right panel (and fullscreen zoom) resizes it.
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const { width: containerWidth } = useResizeObserver(containerRef);
+
+  const columns = useMemo(() => {
+    if (containerWidth <= 0) return FALLBACK_COLUMNS;
+    const raw = Math.round((containerWidth + GAP) / (PREFERRED_TILE_PX + GAP));
+    return Math.max(MIN_COLUMNS, Math.min(MAX_COLUMNS, raw));
+  }, [containerWidth]);
+
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const matchesSearch = (item: EmojiGridItem): boolean => {
     if (!normalizedQuery) return true;
@@ -57,11 +81,10 @@ export function EmojiGrid({
     );
   };
 
-  const itemsVisible = COLUMNS * ROWS_VISIBLE;
+  const itemsVisible = columns * ROWS_VISIBLE;
   const hasMore = items.length > itemsVisible;
   const visibleItems = items.slice(0, itemsVisible);
   const hiddenItems = items.slice(itemsVisible);
-  const itemWidth = `calc((100% - ${GAP * (COLUMNS - 1)}px) / ${COLUMNS})`;
 
   const renderItem = (item: EmojiGridItem, index: number) => {
     const isGhosted = Boolean(normalizedQuery) && !matchesSearch(item);
@@ -89,7 +112,6 @@ export function EmojiGrid({
         disabled={disabled || isGhosted}
         title={item.label}
         style={{
-          width: itemWidth,
           border: `1px solid ${borderColor}`,
           background: itemBgColor,
           opacity: itemOpacity,
@@ -106,16 +128,21 @@ export function EmojiGrid({
     );
   };
 
+  // CSS Grid (not flex-wrap): `1fr` columns fill the row exactly with no
+  // sub-pixel wrapping, and `alignItems: start` keeps items from being
+  // vertically stretched — so the tiles' `aspect-ratio: 1 / 1` is honored and
+  // they stay square instead of turning into rectangles as the panel resizes.
   const gridStyle: React.CSSProperties = {
-    display: 'flex',
-    flexWrap: 'wrap',
+    display: 'grid',
+    gridTemplateColumns: `repeat(${columns}, 1fr)`,
+    alignItems: 'start',
     gap: GAP,
     width: '100%',
     boxSizing: 'border-box',
   };
 
   return (
-    <div style={{ width: '100%', marginBottom: 10 }}>
+    <div ref={containerRef} style={{ width: '100%', marginBottom: 10 }}>
       <style>{`
         .emoji-grid-item {
           display: flex;
