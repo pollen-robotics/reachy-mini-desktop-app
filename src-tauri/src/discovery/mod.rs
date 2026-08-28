@@ -1,13 +1,36 @@
 //! Robot Discovery Module
 //!
-//! Provides robust multi-method robot discovery:
-//! 1. Cache (last known IP) - Ultra fast (~2s)
-//! 2. mDNS via mdns-sd - Automatic discovery (~3s)
-//! 3. Static peers - User-configured IPs
-//! 4. Manual IP - Direct connection fallback
+//! Discovers Reachy Mini robots on the local network using two methods,
+//! merged and deduplicated:
 //!
-//! This replaces the old system command-based WiFi scanning with a native
-//! Rust implementation that's faster, more reliable, and cross-platform.
+//! 1. **Static peers** - well-known hostnames probed in parallel via HTTP
+//!    (`reachy-mini.local`, `reachy-mini.home`). Always resolved fresh by the
+//!    OS resolver, so they pick up DHCP / network changes automatically.
+//! 2. **mDNS** via `mdns-sd` - browses `_reachy-mini._tcp.local.` and
+//!    `_http._tcp.local.` so custom-named robots and Pi-imager defaults both
+//!    appear. The library handles its own RFC 6762 cache (TTLs, Goodbye
+//!    Packets, Cache Flush bit), we don't double-cache.
+//!
+//! ### Design notes
+//!
+//! - **No app-level IP cache.** A previous version cached the last-known IP
+//!   in `last_known_ip` for a "fast path" on the next scan. This caused a
+//!   nasty failure mode where the cached IP became stale (DHCP renew, robot
+//!   reboot on a different subnet, network switch) and the user got silent
+//!   timeouts on `Connect` until the app was restarted. The cache only saved
+//!   ~2s on the very first scan, so the trade-off was bad. We now rely on
+//!   the static peers + mDNS lib for deduplication and freshness, in line
+//!   with how Avahi / dns-sd / Bonjour are normally consumed.
+//!
+//! - **Dedup by canonical instance name.** mDNS service instances have a
+//!   stable identity (`<instance>._reachy-mini._tcp.local.`) that survives
+//!   IP changes. We dedup on that (lowercased) so a robot whose IP changes
+//!   between two scans doesn't appear twice in the UI.
+//!
+//! - **Frontend prefers hostname.** The `RobotInfo.hostname` field carries
+//!   the `*.local` name when available; the JS layer uses it for `displayHost`
+//!   so all subsequent connections go through Bonjour resolution rather than
+//!   carrying an IP forward in app state.
 
 use crate::daemon::DAEMON_PORT;
 use futures_util::future::join_all;
@@ -24,26 +47,27 @@ pub struct RobotInfo {
     pub name: String,
     pub ip: String,
     pub port: u16,
-    pub discovery_method: String, // "cache", "mdns", "static", "manual"
+    pub discovery_method: String, // "mdns", "static", "manual"
     pub hostname: Option<String>,
 }
 
-/// Discovery configuration and cache
+/// Shared discovery state.
+///
+/// Holds the long-lived resources (HTTP client, mDNS daemon) and the
+/// user-configurable static peer list. There is intentionally no app-level
+/// IP cache here - see the module-level docs for the rationale.
 pub struct DiscoveryState {
-    /// Last successfully connected IP (cache for fast reconnection)
-    pub last_known_ip: Arc<RwLock<Option<String>>>,
-    /// User-configured static peers (IPs that always get checked)
+    /// User-configured static peers (hostnames or IPs) probed every scan.
     pub static_peers: Arc<RwLock<Vec<String>>>,
-    /// Shared HTTP client (reuses TCP connections across discovery cycles)
+    /// Shared HTTP client (reuses TCP connections across discovery cycles).
     pub http_client: reqwest::Client,
-    /// Persistent mDNS daemon (lives for the entire app lifetime)
+    /// Persistent mDNS daemon (lives for the entire app lifetime).
     pub mdns_daemon: ServiceDaemon,
 }
 
 impl DiscoveryState {
     pub fn new() -> Self {
         Self {
-            last_known_ip: Arc::new(RwLock::new(None)),
             static_peers: Arc::new(RwLock::new(vec![
                 // mDNS/DNS hostnames (resolved by router or Bonjour)
                 "reachy-mini.home".to_string(), // Router DNS (.home TLD)
@@ -253,59 +277,76 @@ async fn discover_via_mdns(
     Ok(robots)
 }
 
-/// Deduplication tracker for discovered robots (by IP and hostname).
+/// Canonical identity for a discovered robot, used as the dedup key.
+///
+/// Priority order matches industry conventions for mDNS service browsers:
+/// 1. **Hostname** (`reachy-mini.local`) - the most stable identity, survives
+///    IP changes and is what the frontend uses to address the robot anyway.
+/// 2. **Instance name** (`my-cool-robot` from
+///    `my-cool-robot._reachy-mini._tcp.local.`) - the canonical mDNS service
+///    instance identifier per RFC 6763.
+/// 3. **IP address** - last-resort fallback for static peers / manual entries
+///    that have neither a hostname nor an instance name.
+///
+/// Returned lowercased + trimmed so `Reachy-Mini.local.` and
+/// `reachy-mini.local` collapse to the same key.
+fn dedup_key(robot: &RobotInfo) -> String {
+    if let Some(h) = &robot.hostname {
+        let trimmed = h.trim_end_matches('.').to_lowercase();
+        if !trimmed.is_empty() {
+            return trimmed;
+        }
+    }
+    let trimmed_name = robot.name.trim().to_lowercase();
+    if !trimmed_name.is_empty() {
+        return trimmed_name;
+    }
+    robot.ip.clone()
+}
+
+/// Deduplication tracker for discovered robots.
+///
+/// A robot is a duplicate if its canonical identity (`dedup_key()`: hostname >
+/// instance name > IP) *or* its resolved IP was already seen. The IP check is
+/// what collapses the same robot reached under different names: the
+/// `reachy-mini.local` / `reachy-mini.home` static peers, or a manually-added
+/// raw IP later re-found via mDNS under its hostname. Skipped duplicates still
+/// register both identities so later aliases dedup too.
 struct DeduplicatedRobots {
     robots: Vec<RobotInfo>,
+    seen: HashSet<String>,
     seen_ips: HashSet<String>,
-    seen_hostnames: HashSet<String>,
 }
 
 impl DeduplicatedRobots {
     fn new() -> Self {
         Self {
             robots: Vec::new(),
+            seen: HashSet::new(),
             seen_ips: HashSet::new(),
-            seen_hostnames: HashSet::new(),
         }
-    }
-
-    /// Register a robot's identity for dedup without adding it to the list.
-    /// Used when a duplicate is skipped but we still want to track its hostname.
-    fn register(&mut self, robot: &RobotInfo) {
-        self.seen_ips.insert(robot.ip.clone());
-        if let Some(h) = &robot.hostname {
-            self.seen_hostnames
-                .insert(h.trim_end_matches('.').to_lowercase());
-        }
-    }
-
-    /// Returns true if this robot (by IP or hostname) was already seen.
-    fn is_known(&self, robot: &RobotInfo) -> bool {
-        if self.seen_ips.contains(&robot.ip) {
-            return true;
-        }
-        if let Some(h) = &robot.hostname {
-            let key = h.trim_end_matches('.').to_lowercase();
-            if self.seen_hostnames.contains(&key) {
-                return true;
-            }
-        }
-        false
     }
 
     /// Try to add a robot. Returns true if added, false if duplicate.
     fn try_add(&mut self, robot: RobotInfo) -> bool {
-        if self.is_known(&robot) {
-            self.register(&robot); // still learn its hostname
+        let key = dedup_key(&robot);
+        let duplicate = self.seen.contains(&key) || self.seen_ips.contains(&robot.ip);
+        self.seen.insert(key);
+        self.seen_ips.insert(robot.ip.clone());
+        if duplicate {
             return false;
         }
-        self.register(&robot);
         self.robots.push(robot);
         true
     }
 }
 
-/// Main discovery command - tries multiple methods, merges and deduplicates results
+/// Main discovery command - probes static peers + mDNS in sequence, merges
+/// and deduplicates results.
+///
+/// Static peers go first so that when both methods find the same robot, the
+/// entry that survives dedup is the one carrying the well-known hostname.
+/// The mDNS pass then catches custom-named robots not in the peer list.
 #[tauri::command]
 pub async fn discover_robots(
     state: tauri::State<'_, DiscoveryState>,
@@ -315,25 +356,10 @@ pub async fn discover_robots(
 
     log::info!("[discovery] Starting robot discovery");
 
-    // STEP 1: Check cache (last known IP) - Ultra fast path
-    {
-        let last_ip = state.last_known_ip.read().await;
-        if let Some(ip) = last_ip.as_ref() {
-            log::info!("[discovery] Checking cached IP: {}", ip);
-            match check_robot_at_ip(&state.http_client, ip, port, 2).await {
-                Ok(mut robot) => {
-                    robot.discovery_method = "cache".to_string();
-                    log::info!("[discovery] Cache hit at {} (resolved: {})", ip, robot.ip);
-                    discovered.try_add(robot);
-                }
-                Err(e) => {
-                    log::info!("[discovery] Cache miss: {}", e);
-                }
-            }
-        }
-    }
-
-    // STEP 2: Check static peers concurrently
+    // STEP 1: Check static peers concurrently.
+    // These are well-known hostnames (`reachy-mini.local`, `reachy-mini.home`)
+    // that the OS resolver re-resolves on every request, so DHCP renews and
+    // network switches are picked up automatically. No staleness risk.
     {
         let peers = state.static_peers.read().await;
         let peers_to_check: Vec<_> = peers.clone();
@@ -368,7 +394,10 @@ pub async fn discover_robots(
         }
     }
 
-    // STEP 3: mDNS discovery (automatic, works on LAN without VPN)
+    // STEP 2: mDNS discovery (automatic, works on LAN without VPN).
+    // Catches custom-named robots that aren't in the static peer list.
+    // The `mdns-sd` library handles its own RFC-6762 cache (TTLs, Goodbye
+    // Packets, Cache Flush bit) - we don't double-cache results app-side.
     log::info!("[discovery] Starting mDNS discovery");
     match discover_via_mdns(&state.mdns_daemon, Duration::from_secs(5)).await {
         Ok(mdns_robots) => {
@@ -382,11 +411,6 @@ pub async fn discover_robots(
         Err(e) => {
             log::warn!("[discovery] mDNS discovery failed: {}", e);
         }
-    }
-
-    // Update cache with first robot found
-    if let Some(robot) = discovered.robots.first() {
-        *state.last_known_ip.write().await = Some(robot.ip.clone());
     }
 
     let robots = discovered.robots;
@@ -409,7 +433,10 @@ pub async fn discover_robots(
     Ok(robots)
 }
 
-/// Connect to a robot at a specific IP (manual connection)
+/// Connect to a robot at a specific IP or hostname (manual connection).
+///
+/// On success, also adds the host to the static peer list so subsequent
+/// discovery scans pick it up automatically.
 #[tauri::command]
 pub async fn connect_to_ip(
     ip: String,
@@ -424,15 +451,14 @@ pub async fn connect_to_ip(
             robot.discovery_method = "manual".to_string();
             log::info!("[discovery] Manual connection successful: {}", ip);
 
-            // Save to cache and static peers
-            *state.last_known_ip.write().await = Some(ip.clone());
-
-            // Add to static peers if not already there
+            // Promote this host in the static peer list so the next scan
+            // picks it up. Capped at 5 to prevent unbounded growth on power
+            // users who manually try many addresses.
             let mut peers = state.static_peers.write().await;
             if !peers.contains(&ip) {
-                peers.insert(0, ip); // Insert at beginning for priority
+                peers.insert(0, ip);
                 if peers.len() > 5 {
-                    peers.truncate(5); // Keep only last 5 IPs
+                    peers.truncate(5);
                 }
             }
 
@@ -488,10 +514,91 @@ pub async fn get_static_peers(
     Ok(peers.clone())
 }
 
-/// Clear all cached data (useful for testing or troubleshooting)
-#[tauri::command]
-pub async fn clear_discovery_cache(state: tauri::State<'_, DiscoveryState>) -> Result<(), String> {
-    *state.last_known_ip.write().await = None;
-    log::info!("[discovery] Discovery cache cleared");
-    Ok(())
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn robot(name: &str, ip: &str, hostname: Option<&str>) -> RobotInfo {
+        RobotInfo {
+            name: name.to_string(),
+            ip: ip.to_string(),
+            port: 8000,
+            discovery_method: "test".to_string(),
+            hostname: hostname.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn dedups_local_and_home_peers_by_ip() {
+        let mut d = DeduplicatedRobots::new();
+        assert!(d.try_add(robot(
+            "reachy-mini.local",
+            "192.168.1.42",
+            Some("reachy-mini.local")
+        )));
+        assert!(!d.try_add(robot(
+            "reachy-mini.home",
+            "192.168.1.42",
+            Some("reachy-mini.home")
+        )));
+        assert_eq!(d.robots.len(), 1);
+    }
+
+    #[test]
+    fn dedups_manual_ip_against_mdns_hostname() {
+        let mut d = DeduplicatedRobots::new();
+        // Manual/static raw-IP entry: no hostname, name = the IP.
+        assert!(d.try_add(robot("192.168.1.42", "192.168.1.42", None)));
+        // Same robot found via mDNS under its hostname.
+        assert!(!d.try_add(robot(
+            "reachy-mini",
+            "192.168.1.42",
+            Some("reachy-mini.local.")
+        )));
+        assert_eq!(d.robots.len(), 1);
+    }
+
+    #[test]
+    fn dedups_hostname_across_ip_change() {
+        let mut d = DeduplicatedRobots::new();
+        assert!(d.try_add(robot(
+            "reachy-mini",
+            "192.168.1.42",
+            Some("reachy-mini.local")
+        )));
+        // Same hostname re-advertised from a new DHCP lease.
+        assert!(!d.try_add(robot(
+            "reachy-mini",
+            "192.168.1.99",
+            Some("Reachy-Mini.local.")
+        )));
+        assert_eq!(d.robots.len(), 1);
+    }
+
+    #[test]
+    fn keeps_distinct_robots() {
+        let mut d = DeduplicatedRobots::new();
+        assert!(d.try_add(robot("alpha", "192.168.1.42", Some("alpha.local"))));
+        assert!(d.try_add(robot("beta", "192.168.1.43", Some("beta.local"))));
+        assert_eq!(d.robots.len(), 2);
+    }
+
+    #[test]
+    fn skipped_duplicate_still_registers_its_aliases() {
+        let mut d = DeduplicatedRobots::new();
+        assert!(d.try_add(robot(
+            "reachy-mini.home",
+            "192.168.1.42",
+            Some("reachy-mini.home")
+        )));
+        // Dup by IP; its .local hostname must still be learned...
+        assert!(!d.try_add(robot(
+            "reachy-mini.local",
+            "192.168.1.42",
+            Some("reachy-mini.local")
+        )));
+        // ...so an mDNS record with a different advertised IP dedups by name.
+        assert!(!d.try_add(robot("reachy-mini", "fe80::1", Some("reachy-mini.local."))));
+        assert_eq!(d.robots.len(), 1);
+    }
 }

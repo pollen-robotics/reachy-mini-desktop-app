@@ -4,7 +4,7 @@
  * Scans for available robots via USB and WiFi in parallel.
  * Used by `FindingRobotView` to detect and list connection options.
  *
- * V2: Uses native Rust discovery (mDNS, cache, static peers) for reliability.
+ * V2: Uses native Rust discovery (static peers + mDNS) for reliability.
  * Supports multiple WiFi robots with selection.
  */
 
@@ -75,16 +75,16 @@ async function checkUsbRobot(): Promise<UsbRobotState> {
 }
 
 /**
- * Hard upper-bound for a single `discover_robots` call. The Rust command has
- * its own internal deadlines (~3s for mDNS, plus cache + static peer checks),
- * so anything past this cap means Rust is hung. We bail and let the next scan
- * cycle retry on a fresh command instance.
+ * Hard upper-bound for a single `discover_robots` call. The Rust command runs
+ * static peer probes (3s timeout) then a fixed 5s mDNS browse, so a legit call
+ * can take ~8s; anything past this cap means Rust is hung. We bail and let the
+ * next scan cycle retry on a fresh command instance.
  */
-const DISCOVER_TIMEOUT_MS = 8000;
+const DISCOVER_TIMEOUT_MS = 10000;
 
 /**
  * Discover WiFi robots using the native Rust discovery system.
- * Uses cache → static peers → mDNS in order for speed.
+ * Probes static peers, then mDNS.
  */
 async function checkWifiRobotV2(): Promise<{ available: boolean; robots: DiscoveredRobot[] }> {
   const timeoutPromise = new Promise<never>((_, reject) => {
@@ -97,9 +97,20 @@ async function checkWifiRobotV2(): Promise<{ available: boolean; robots: Discove
       | null;
 
     if (rawRobots && rawRobots.length > 0) {
+      // Prefer the mDNS hostname (e.g. `reachy-mini.local`) over the resolved
+      // IP. The IP exposed by `discover_robots` is whatever address the mDNS
+      // record advertised, which can be stale (DHCP renew, network switch,
+      // robot reboot on a different subnet). Hostnames go through Bonjour /
+      // the OS resolver, which uses live mDNS queries with proper TTLs - much
+      // more robust than carrying an IP forward in app state.
+      //
+      // We trim the trailing dot that mDNS hostnames carry by spec
+      // (`reachy-mini.local.` -> `reachy-mini.local`); local proxy + reqwest
+      // both accept either form, but the trimmed version reads better in the
+      // UI subtitle and in logs.
       const robots: DiscoveredRobot[] = rawRobots.map(robot => ({
         ...robot,
-        displayHost: robot.ip,
+        displayHost: robot.hostname?.replace(/\.$/, '') || robot.ip,
       }));
 
       return { available: true, robots };
