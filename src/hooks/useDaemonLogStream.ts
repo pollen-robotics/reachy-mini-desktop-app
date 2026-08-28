@@ -25,6 +25,11 @@ import type { LogEntry } from '../types/store';
 
 export type DaemonLogSource = 'api' | 'app' | 'daemon';
 
+// A busy robot emits tens of lines per second. Appending per line rebuilds the
+// capped `state.logs` array and re-runs every store subscriber for each line,
+// so lines are buffered and flushed in one `appendLogs` per interval.
+const APPEND_FLUSH_INTERVAL_MS = 250;
+
 export default function useDaemonLogStream(enabledCategories: DaemonLogSource[]): void {
   const connectionMode = useAppStore(s => s.connectionMode);
   const remoteHost = useAppStore(s => s.remoteHost);
@@ -42,24 +47,42 @@ export default function useDaemonLogStream(enabledCategories: DaemonLogSource[])
       return undefined;
     }
 
+    let buffer: LogEntry[] = [];
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const flush = (): void => {
+      flushTimer = null;
+      if (buffer.length > 0) {
+        const entries = buffer;
+        buffer = [];
+        appendLogs(entries);
+      }
+    };
+
     const handle = connectDaemonLogWebSocket({
       host: remoteHost as string,
       onMessage: line => {
         const now = Date.now();
-        const entry: LogEntry = {
+        buffer.push({
           message: line,
           source: 'daemon',
           category: categorizeDaemonLine(line) === 'app' ? 'app' : 'daemon',
           level: parseDaemonLogLevel(line),
           timestamp: formatClockTime(now),
           timestampNumeric: now,
-        };
-        appendLogs([entry]);
+        });
+        if (!flushTimer) {
+          flushTimer = setTimeout(flush, APPEND_FLUSH_INTERVAL_MS);
+        }
       },
     });
     socketRef.current = handle;
 
     return () => {
+      if (flushTimer) {
+        clearTimeout(flushTimer);
+      }
+      flush();
       handle.dispose();
       socketRef.current = null;
     };
