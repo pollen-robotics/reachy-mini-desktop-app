@@ -13,6 +13,10 @@ import { Box, CircularProgress, Typography } from '@mui/material';
 import ActiveRobotModule from '../views/active-robot/ActiveRobotModule';
 import type { ActiveRobotContextConfig } from '../hooks/adapters/activeRobotContextTypes';
 import { useWebActiveRobotAdapter } from '../hooks/useWebActiveRobotAdapter';
+import { useRobotStateWebSocket } from '../hooks/robot/useRobotStateWebSocket';
+import { useRobotCommands } from '../hooks/robot/useRobotCommands';
+import { useActiveMoves } from '../hooks/robot/useActiveMoves';
+import { useWindowVisible } from '../hooks/system/useWindowVisible';
 import useAppStore from '../store/useAppStore';
 import { ROBOT_STATUS } from '../constants/robotStatus';
 import type { FullAppState } from '../store/useStore';
@@ -35,24 +39,20 @@ export default function WebApp(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [daemonVersion, setDaemonVersion] = useState<string>('web');
   const isActive = useAppStore((state: FullAppState) => state.isActive);
-  const isCommandRunning = useAppStore((state: FullAppState) => state.isCommandRunning);
   const logs = useAppStore((state: FullAppState) => state.logs);
+  const { sendCommand, playRecordedMove, isCommandRunning } = useRobotCommands();
+  const isWindowVisible = useWindowVisible();
 
   // The web adapter intentionally omits Tauri-only window methods
   // (addOpenWindow, removeOpenWindow, isWindowOpen) since they are no-ops in
   // the browser. ActiveRobotModule's Tauri-typed config is widened here.
   const contextConfig = useWebActiveRobotAdapter() as unknown as ActiveRobotContextConfig;
 
+  useRobotStateWebSocket(isConnected && !error && isWindowVisible);
+  useActiveMoves(isConnected && !error && isWindowVisible);
+
   const stopDaemon = useCallback((): void => {
     console.log('[WebMode] stopDaemon - not available');
-  }, []);
-
-  const sendCommand = useCallback(async (command: unknown): Promise<void> => {
-    console.log('[WebMode] sendCommand:', command);
-  }, []);
-
-  const playRecordedMove = useCallback(async (moveName: unknown): Promise<void> => {
-    console.log('[WebMode] playRecordedMove:', moveName);
   }, []);
 
   useEffect(() => {
