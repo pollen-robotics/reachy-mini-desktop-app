@@ -29,6 +29,8 @@
           "gstreamer1.0-nice",
           "libnice10",
           "libgirepository1.0-dev",
+          "libcairo2-dev",
+          "cmake",
           "python3-gi",
           "python3-gi-cairo"
         ],
@@ -52,6 +54,8 @@
           "libnice",
           "libnice-gstreamer1",
           "gobject-introspection",
+          "cairo-devel",
+          "cmake",
           "python3-gobject",
           "python3-cairo"
         ],
