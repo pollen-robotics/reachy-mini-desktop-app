@@ -18,6 +18,7 @@ import useAppStore from '../store/useAppStore';
 import { fetchWithTimeout, buildApiUrl } from '../config/daemon';
 import { ROBOT_STATUS } from '../constants/robotStatus';
 import { invoke } from '../utils/tauriCompat';
+import { closeStalledSession, scheduleReconnect } from './webrtcRecovery';
 
 // Import the GStreamer WebRTC API for its side effect (registers `window.GstWebRTCAPI`).
 import '../lib/gstwebrtc-api';
@@ -32,8 +33,6 @@ import type {
 } from '../types/gstwebrtc';
 
 const SIGNALING_PORT = 8443;
-const RECONNECT_DELAY = 2000;
-const INITIAL_RECONNECT_DELAY = 500;
 const STREAM_CONNECT_TIMEOUT = 10000;
 export const WEBRTC_UNSUPPORTED_MESSAGE = 'WebRTC is not supported by this desktop WebView';
 
@@ -231,10 +230,27 @@ export function WebRTCStreamProvider({ children }: WebRTCStreamProviderProps): R
       connectTimeoutRef.current = setTimeout(() => {
         if (!mountedRef.current) return;
 
+        connectTimeoutRef.current = null;
+
         const message = `Timed out waiting for WebRTC stream from ${signalingUrl}`;
         console.error('[WebRTC]', message);
         setError(message);
-        setState(StreamState.ERROR);
+
+        // The daemon keeps a half-negotiated consumer alive until its own ICE
+        // watchdog fires; drop ours so the next `producerAdded` is not
+        // short-circuited by the stale ref.
+        closeStalledSession(sessionRef);
+
+        // Retry, like the signaling-drop and session-error paths do. A stream
+        // that never arrives is usually transient (the robot was still
+        // bringing its pipeline up), so giving up permanently here left the
+        // camera dead until the user restarted the app.
+        const retrying = scheduleReconnect(reconnectTimeoutRef, {
+          hasConnectedBefore: hasConnectedRef.current,
+          isMounted: () => mountedRef.current,
+          reconnect: connect,
+        });
+        setState(retrying ? StreamState.CONNECTING : StreamState.ERROR);
       }, STREAM_CONNECT_TIMEOUT);
 
       const api = new GstWebRTCAPI({
@@ -264,20 +280,12 @@ export function WebRTCStreamProvider({ children }: WebRTCStreamProviderProps): R
           setStream(null);
           setAudioTrack(null);
 
-          if (mountedRef.current && !reconnectTimeoutRef.current) {
-            reconnectTimeoutRef.current = setTimeout(
-              () => {
-                reconnectTimeoutRef.current = null;
-                if (mountedRef.current) {
-                  connect();
-                }
-              },
-              hasConnectedRef.current ? RECONNECT_DELAY : INITIAL_RECONNECT_DELAY
-            );
-            setState(StreamState.CONNECTING);
-          } else {
-            setState(StreamState.DISCONNECTED);
-          }
+          const retrying = scheduleReconnect(reconnectTimeoutRef, {
+            hasConnectedBefore: hasConnectedRef.current,
+            isMounted: () => mountedRef.current,
+            reconnect: connect,
+          });
+          setState(retrying ? StreamState.CONNECTING : StreamState.DISCONNECTED);
         },
       };
 
@@ -317,20 +325,12 @@ export function WebRTCStreamProvider({ children }: WebRTCStreamProviderProps): R
             console.error('[WebRTC] Session error:', message, errorEvent.error);
             setError(message);
 
-            if (mountedRef.current && !reconnectTimeoutRef.current) {
-              reconnectTimeoutRef.current = setTimeout(
-                () => {
-                  reconnectTimeoutRef.current = null;
-                  if (mountedRef.current) {
-                    connect();
-                  }
-                },
-                hasConnectedRef.current ? RECONNECT_DELAY : INITIAL_RECONNECT_DELAY
-              );
-              setState(StreamState.CONNECTING);
-            } else {
-              setState(StreamState.ERROR);
-            }
+            const retrying = scheduleReconnect(reconnectTimeoutRef, {
+              hasConnectedBefore: hasConnectedRef.current,
+              isMounted: () => mountedRef.current,
+              reconnect: connect,
+            });
+            setState(retrying ? StreamState.CONNECTING : StreamState.ERROR);
           });
 
           session.addEventListener('closed', () => {
