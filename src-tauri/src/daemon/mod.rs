@@ -483,8 +483,7 @@ pub fn spawn_and_monitor_sidecar(
     state: &State<DaemonState>,
     sim_mode: bool,
 ) -> Result<(), String> {
-    use crate::python::build_daemon_args;
-    use tauri_plugin_shell::ShellExt;
+    use crate::python::{build_daemon_args, sidecar_command};
 
     let process_lock = state
         .process
@@ -505,21 +504,10 @@ pub fn spawn_and_monitor_sidecar(
 
     let daemon_args_refs: Vec<&str> = daemon_args.iter().map(|s| s.as_str()).collect();
 
-    let mut sidecar_command = app_handle
-        .shell()
-        .sidecar("uv-trampoline")
-        .map_err(|e| e.to_string())?
+    let (mut rx, child) = sidecar_command(&app_handle)?
         .args(daemon_args_refs)
-        .env("PYTHONIOENCODING", "utf-8");
-
-    if cfg!(target_os = "linux") {
-        sidecar_command = sidecar_command.env(
-            "GST_PLUGIN_PATH",
-            "/usr/share/reachy-mini-control/gstreamer-plugins",
-        );
-    }
-
-    let (mut rx, child) = sidecar_command.spawn().map_err(|e| e.to_string())?;
+        .spawn()
+        .map_err(|e| e.to_string())?;
 
     // Bump generation so old Terminated handlers become stale
     let generation = {
@@ -616,8 +604,7 @@ pub fn spawn_and_monitor_sidecar(
 
                         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-                        use crate::python::build_daemon_args;
-                        use tauri_plugin_shell::ShellExt;
+                        use crate::python::{build_daemon_args, sidecar_command};
 
                         let daemon_args =
                             match build_daemon_args(&app_handle_clone, sim_mode, false) {
@@ -636,7 +623,7 @@ pub fn spawn_and_monitor_sidecar(
                         let daemon_args_refs: Vec<&str> =
                             daemon_args.iter().map(|s| s.as_str()).collect();
 
-                        let sidecar_cmd = match app_handle_clone.shell().sidecar("uv-trampoline") {
+                        let sidecar_cmd = match sidecar_command(&app_handle_clone) {
                             Ok(cmd) => cmd,
                             Err(e) => {
                                 log::error!("[tauri] Failed to get sidecar: {}", e);
@@ -649,18 +636,7 @@ pub fn spawn_and_monitor_sidecar(
                             }
                         };
 
-                        let mut sidecar_cmd = sidecar_cmd
-                            .args(daemon_args_refs)
-                            .env("PYTHONIOENCODING", "utf-8");
-
-                        if cfg!(target_os = "linux") {
-                            sidecar_cmd = sidecar_cmd.env(
-                                "GST_PLUGIN_PATH",
-                                "/usr/share/reachy-mini-control/gstreamer-plugins",
-                            );
-                        }
-
-                        match sidecar_cmd.spawn() {
+                        match sidecar_cmd.args(daemon_args_refs).spawn() {
                             Ok((mut new_rx, new_child)) => {
                                 let new_gen = match daemon_state.generation.lock() {
                                     Ok(mut gen) => {

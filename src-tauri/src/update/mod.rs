@@ -317,15 +317,13 @@ async fn run_sidecar_upgrade(
     args: &[&str],
     context: &str,
 ) -> Result<(), String> {
+    use crate::python::sidecar_command;
     use tauri::Emitter;
     use tauri_plugin_shell::process::CommandEvent;
-    use tauri_plugin_shell::ShellExt;
 
     log::info!("[update] Running sidecar upgrade ({}): {:?}", context, args);
 
-    let sidecar_command = app_handle
-        .shell()
-        .sidecar("uv-trampoline")
+    let sidecar_command = sidecar_command(app_handle)
         .map_err(|e| format!("Failed to create sidecar command: {}", e))?
         .args(args);
 
