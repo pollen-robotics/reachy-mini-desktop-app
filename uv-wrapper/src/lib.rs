@@ -3,6 +3,10 @@ use std::{env, fs, path::PathBuf, process::Command};
 /// The Python version used for all venvs created by the bootstrap process.
 pub const PYTHON_VERSION: &str = "3.12";
 
+/// The uv release installed in the data directory. 0.13.5 distrusts the
+/// compromised eMudhra certificates (CVE-2026-111943).
+pub const UV_VERSION: &str = "0.13.5";
+
 /// Returns the platform-specific writable data directory for the app.
 ///
 /// - macOS: ~/Library/Application Support/com.pollen-robotics.reachy-mini/
@@ -191,19 +195,33 @@ pub fn fix_externally_managed_venvs(data_dir: &PathBuf) -> bool {
     true
 }
 
-/// Download and install uv into the data directory.
+/// Extracts the version from `uv --version` output (`uv 0.13.5 (abc123 2026-10-21)`).
+fn parse_uv_version(output: &str) -> Option<&str> {
+    let mut words = output.split_whitespace();
+    (words.next() == Some("uv")).then(|| words.next()).flatten()
+}
+
+/// Version of the uv binary in the data directory, if it runs.
+fn installed_uv_version(uv_path: &PathBuf) -> Option<String> {
+    let output = Command::new(uv_path).arg("--version").output().ok()?;
+    parse_uv_version(&String::from_utf8_lossy(&output.stdout)).map(str::to_string)
+}
+
+/// Download and install uv [`UV_VERSION`] into the data directory, replacing
+/// any other version already there.
 pub fn download_uv(data_dir: &PathBuf) -> Result<(), String> {
     let uv_path = uv_exe_path(data_dir);
-    if uv_path.exists() {
-        return Ok(());
+    match installed_uv_version(&uv_path) {
+        Some(v) if v == UV_VERSION => return Ok(()),
+        Some(v) => println!("[bootstrap] Updating uv {} -> {}...", v, UV_VERSION),
+        None => println!("[bootstrap] Downloading uv {}...", UV_VERSION),
     }
-
-    println!("[bootstrap] Downloading uv...");
 
     #[cfg(not(target_os = "windows"))]
     {
         let script = format!(
-            "curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR='{}' UV_NO_MODIFY_PATH=1 sh",
+            "curl -LsSf https://astral.sh/uv/{}/install.sh | env UV_INSTALL_DIR='{}' UV_NO_MODIFY_PATH=1 sh",
+            UV_VERSION,
             data_dir.display()
         );
         run_command(&script).map_err(|e| format!("Failed to download uv: {}", e))?;
@@ -214,8 +232,9 @@ pub fn download_uv(data_dir: &PathBuf) -> Result<(), String> {
         // Download uv zip directly using curl.exe (the real curl, not PowerShell alias)
         let zip_path = data_dir.join("uv.zip");
         let download_cmd = format!(
-            "curl.exe -L -o \"{}\" https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip",
-            zip_path.display()
+            "curl.exe -L -o \"{}\" https://github.com/astral-sh/uv/releases/download/{}/uv-x86_64-pc-windows-msvc.zip",
+            zip_path.display(),
+            UV_VERSION
         );
         run_command(&download_cmd).map_err(|e| format!("Failed to download uv: {}", e))?;
 
@@ -230,8 +249,16 @@ pub fn download_uv(data_dir: &PathBuf) -> Result<(), String> {
         let _ = fs::remove_file(&zip_path);
     }
 
-    if !uv_path.exists() {
-        return Err(format!("uv not found at {:?} after download", uv_path));
+    // `curl | sh` exits 0 even when curl fails, so check what actually landed.
+    match installed_uv_version(&uv_path) {
+        Some(v) if v == UV_VERSION => {}
+        Some(v) => {
+            return Err(format!(
+                "uv is still {} after download, expected {}",
+                v, UV_VERSION
+            ))
+        }
+        None => return Err(format!("uv not found at {:?} after download", uv_path)),
     }
 
     println!("[bootstrap] uv downloaded successfully");
@@ -430,4 +457,20 @@ pub fn run_command(cmd: &str) -> Result<std::process::ExitStatus, std::io::Error
     }
 
     Ok(status)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_uv_version;
+
+    #[test]
+    fn parses_uv_version_output() {
+        assert_eq!(
+            parse_uv_version("uv 0.13.5 (abc123 2026-10-21)\n"),
+            Some("0.13.5")
+        );
+        assert_eq!(parse_uv_version("uv 0.8.0\n"), Some("0.8.0"));
+        assert_eq!(parse_uv_version(""), None);
+        assert_eq!(parse_uv_version("error: something\n"), None);
+    }
 }
