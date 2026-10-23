@@ -112,23 +112,23 @@ jobs:
           echo "🧪 ════════════════════════════════════════════════════════════════"
 
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
         with:
           lfs: true
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
           node-version: '24.11.1' # LTS - Required for camera-controls (>=24.4.0)
           cache: 'yarn'
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec  # stable
         with:
           targets: ${{ matrix.target }}
 
       - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
         with:
           workspaces: |
             src-tauri -> target
@@ -1462,7 +1462,7 @@ jobs:
           cat "$UPDATE_JSON" | jq '.' || echo "   (could not parse JSON)"
 
       - name: Upload update artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: update-${{ matrix.platform }}
           path: |
@@ -1471,7 +1471,7 @@ jobs:
 
       - name: Upload .deb package (Linux)
         if: matrix.os == 'ubuntu-24.04'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: deb-${{ matrix.platform }}
           path: |
@@ -1480,7 +1480,7 @@ jobs:
 
       - name: Upload .rpm package (Linux)
         if: matrix.os == 'ubuntu-24.04'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: rpm-${{ matrix.platform }}
           path: |
@@ -1489,7 +1489,7 @@ jobs:
 
       - name: Create GitHub Release
         if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin' && github.event.inputs.dry_run != 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2.6.2
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: 'Reachy Mini Control v${{ steps.version.outputs.version }}'
@@ -1519,7 +1519,7 @@ jobs:
 
       - name: Upload artifacts to existing release
         if: (matrix.os != 'macos-latest' || matrix.target != 'aarch64-apple-darwin') && github.event.inputs.dry_run != 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2.6.2
         with:
           tag_name: v${{ steps.version.outputs.version }}
           files: |
@@ -1544,7 +1544,7 @@ jobs:
       # GitHub Release is created in this mode.
       - name: Upload installers (dry run)
         if: github.event.inputs.dry_run == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: dry-run-installer-${{ matrix.platform }}
           path: |
@@ -1593,7 +1593,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
         with:
           lfs: true
 
@@ -1611,7 +1611,7 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Download all update artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
         with:
           pattern: update-*
           merge-multiple: true
@@ -1720,7 +1720,7 @@ jobs:
           echo "✅ Verified JSON files are valid"
 
       - name: Upload latest.json to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2.6.2
         with:
           tag_name: v${{ steps.version.outputs.version }}
           files: latest.json
@@ -1741,11 +1741,11 @@ jobs:
 
       - name: Setup Pages
         # ✅ Standard: Official GitHub action to configure Pages
-        uses: actions/configure-pages@v4
+        uses: actions/configure-pages@1f0c5cde4bc74cd7e1254d0cb4de8d49e9068c7d  # v4.0.0
 
       - name: Upload artifact for GitHub Pages
         # ✅ Standard: Official GitHub action to upload Pages artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b  # v4.0.0
         with:
           path: docs
 
@@ -1753,7 +1753,7 @@ jobs:
         # ✅ Standard: Official GitHub action to deploy Pages
         # ✅ Robust: Fail if deployment fails
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e  # v4.0.5
         continue-on-error: false
 
       - name: Verify deployment
