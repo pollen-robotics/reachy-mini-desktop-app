@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Collapse, CircularProgress } from '@mui/material';
 import type { EmojiGridAction } from '@constants/choreographies';
 import { ACCENT, accentAlpha } from '@styles/tokens';
 import { useAppPalette } from '@styles';
+import { useResizeObserver } from '../../hooks/useResizeObserver';
 
 const ROWS_VISIBLE = 3;
-const COLUMNS = 6;
+const MIN_COLUMNS = 6;
+const MAX_TILE_SIZE = 72; // add columns rather than grow tiles past this on wide windows
 const GAP = 12;
 const SPINNER_SIZE = 20;
 const EMOJI_FONT_SIZE = 24;
@@ -47,6 +49,9 @@ export function EmojiGrid({
 }: EmojiGridProps) {
   const [expanded, setExpanded] = useState<boolean>(false);
   const palette = useAppPalette();
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const { width } = useResizeObserver(containerRef);
+  const columns = Math.max(MIN_COLUMNS, Math.ceil((width + GAP) / (MAX_TILE_SIZE + GAP)));
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const matchesSearch = (item: EmojiGridItem): boolean => {
@@ -57,11 +62,11 @@ export function EmojiGrid({
     );
   };
 
-  const itemsVisible = COLUMNS * ROWS_VISIBLE;
+  const itemsVisible = columns * ROWS_VISIBLE;
   const hasMore = items.length > itemsVisible;
   const visibleItems = items.slice(0, itemsVisible);
   const hiddenItems = items.slice(itemsVisible);
-  const itemWidth = `calc((100% - ${GAP * (COLUMNS - 1)}px) / ${COLUMNS})`;
+  const itemWidth = `calc((100% - ${GAP * (columns - 1)}px) / ${columns})`;
 
   const renderItem = (item: EmojiGridItem, index: number) => {
     const isGhosted = Boolean(normalizedQuery) && !matchesSearch(item);
@@ -115,7 +120,7 @@ export function EmojiGrid({
   };
 
   return (
-    <div style={{ width: '100%', marginBottom: 10 }}>
+    <div ref={containerRef} style={{ width: '100%', marginBottom: 10 }}>
       <style>{`
         .emoji-grid-item {
           display: flex;

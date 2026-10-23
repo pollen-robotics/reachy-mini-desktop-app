@@ -1,4 +1,4 @@
-import React, { useRef, useState, useLayoutEffect } from 'react';
+import React, { useCallback, useRef, useState, useLayoutEffect } from 'react';
 import { Box, CircularProgress, Typography, Button } from '@mui/material';
 import WifiOffIcon from '@mui/icons-material/WifiOff';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -27,7 +27,8 @@ import {
 } from '@styles/tokens';
 import { useAppPalette } from '@styles';
 
-const COLUMNS = 2;
+const MIN_COLUMNS = 2;
+const MIN_CARD_WIDTH = 320;
 const ESTIMATED_ROW_HEIGHT = 240;
 const ROW_GAP = 20;
 
@@ -121,7 +122,19 @@ export default function DiscoverModal({
     setScrollMargin(gridTop - scrollTop + overlayScrollRef.current.scrollTop);
   }, [isOpen, isLoading, filteredApps.length, selectedCategory, searchQuery]);
 
-  const rowCount = Math.ceil(filteredApps.length / COLUMNS);
+  // Callback ref: the overlay mounts its content only while open.
+  const [gridWidth, setGridWidth] = useState<number>(0);
+  const measureContent = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => setGridWidth(entry.contentRect.width));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  const columns = Math.max(
+    MIN_COLUMNS,
+    Math.floor((gridWidth + ROW_GAP) / (MIN_CARD_WIDTH + ROW_GAP))
+  );
+  const rowCount = Math.ceil(filteredApps.length / columns);
 
   const virtualizer = useVirtualizer({
     count: rowCount,
@@ -146,9 +159,10 @@ export default function DiscoverModal({
       scrollRef={overlayScrollRef}
     >
       <Box
+        ref={measureContent}
         sx={{
           width: '90%',
-          maxWidth: '700px',
+          maxWidth: '1100px',
           display: 'flex',
           flexDirection: 'column',
           mt: 8,
@@ -299,14 +313,12 @@ export default function DiscoverModal({
               }}
             >
               {virtualizer.getVirtualItems().map(virtualRow => {
-                const startIdx = virtualRow.index * COLUMNS;
-                const app1 = filteredApps[startIdx];
-                const app2 = filteredApps[startIdx + 1];
+                const startIdx = virtualRow.index * columns;
+                const rowApps = filteredApps.slice(startIdx, startIdx + columns);
 
                 const getCardProps = (app: AppLike, idx: number) => {
                   const installJob = getJobInfo(app.name, 'install');
                   return {
-                    key: app.name,
                     app,
                     isBusy,
                     isInstalling: isJobRunning(app.name, 'install'),
@@ -330,9 +342,17 @@ export default function DiscoverModal({
                       transform: `translateY(${virtualRow.start - scrollMargin}px)`,
                     }}
                   >
-                    <Box sx={{ display: 'flex', gap: 2.5, pb: `${ROW_GAP}px` }}>
-                      <AppCard {...getCardProps(app1, startIdx)} />
-                      {app2 && <AppCard {...getCardProps(app2, startIdx + 1)} />}
+                    <Box
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                        gap: `${ROW_GAP}px`,
+                        pb: `${ROW_GAP}px`,
+                      }}
+                    >
+                      {rowApps.map((app, i) => (
+                        <AppCard {...getCardProps(app, startIdx + i)} key={app.name} />
+                      ))}
                     </Box>
                   </div>
                 );
