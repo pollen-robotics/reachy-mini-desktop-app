@@ -447,12 +447,13 @@ export default function NfcReaderCard({
               Erase
             </Button>
           </Box>
-        ) : (
+        ) : state === 'tag' || busy ? (
+          // No tag, or the reader off: nothing to modify or erase.
           <Box sx={{ display: 'flex', gap: 1.5 }}>
             <Button
               size="small"
               variant="outlined"
-              disabled={!tag?.present || busy}
+              disabled={busy}
               onClick={startEditing}
               startIcon={isWriting ? <CircularProgress size={14} color="inherit" /> : undefined}
               sx={{ textTransform: 'none', minWidth: 140 }}
@@ -463,7 +464,7 @@ export default function NfcReaderCard({
               size="small"
               variant="outlined"
               color="error"
-              disabled={!tag?.present || busy}
+              disabled={busy}
               onClick={() => {
                 onClearResults();
                 setConfirming(true);
@@ -474,7 +475,7 @@ export default function NfcReaderCard({
               {isErasing ? 'Erasing…' : fullErase ? 'Wipe tag' : 'Erase tag'}
             </Button>
           </Box>
-        )}
+        ) : null}
 
         {fullErase && !result && !editing && (
           <Typography sx={{ fontSize: TYPO.tiny, color: textMuted, textAlign: 'center' }}>
