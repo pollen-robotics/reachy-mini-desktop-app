@@ -22,6 +22,16 @@ const isJournalWindow = window.location.hash === '#journal';
 const isLogViewer = window.location.hash === '#log-viewer';
 const DEV_MODE = isDevPath && !isWebMode;
 
+// React 19 dev builds emit a performance.measure() per component per commit,
+// and the measure timeline is unbounded native memory. This app commits at
+// 20Hz, so clear it periodically. Production builds emit no such measures.
+if (import.meta.env.DEV) {
+  setInterval(() => {
+    performance.clearMeasures();
+    performance.clearMarks();
+  }, 10_000);
+}
+
 // Mock Tauri APIs if not in Tauri (browser/web mode)
 if (typeof window !== 'undefined' && !window.__TAURI__) {
   window.__TAURI__ = {

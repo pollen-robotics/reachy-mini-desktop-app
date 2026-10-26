@@ -18,6 +18,8 @@ const APP_WINDOW_PREFIX = 'app-';
 const CASCADE_STEP = 20; // logical px offset per window
 
 const windowRefs: Map<string, WebviewWindow> = new Map();
+// Labels we are closing ourselves: their destroyed event must not re-embed the app.
+const managerClosing: Set<string> = new Set();
 let cascadeIndex = 0;
 
 export interface OpenAppWindowOptions {
@@ -29,7 +31,7 @@ export interface OpenAppWindowOptions {
  * Convert an app name to a valid Tauri window label. Tauri labels must be
  * alphanumeric / dashes / underscores only.
  */
-function appNameToLabel(appName: string): string {
+export function appNameToLabel(appName: string): string {
   return APP_WINDOW_PREFIX + appName.replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase();
 }
 
@@ -80,9 +82,11 @@ function purge(label: string): void {
 
 /** Close a window with retry and dual-strategy fallback (JS -> Rust). */
 async function closeByLabel(label: string, maxAttempts = 2): Promise<void> {
+  managerClosing.add(label);
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const win = await resolveWindow(label);
     if (!win) {
+      managerClosing.delete(label);
       purge(label);
       return;
     }
@@ -108,6 +112,7 @@ async function closeByLabel(label: string, maxAttempts = 2): Promise<void> {
     }
   }
 
+  managerClosing.delete(label);
   purge(label);
 }
 
@@ -150,6 +155,14 @@ export async function openAppWindow(
     windowRefs.set(label, win);
     cascadeIndex++;
 
+    // Register eagerly (not in tauri://created) so UI state doesn't depend on
+    // event delivery; purge() removes it on error/destroyed.
+    try {
+      useAppStore.getState().addOpenWindow?.(label);
+    } catch {
+      // Store unavailable
+    }
+
     void win.once('tauri://created', async () => {
       if (offset > 0) {
         try {
@@ -161,15 +174,23 @@ export async function openAppWindow(
           // Positioning is best-effort
         }
       }
-      try {
-        useAppStore.getState().addOpenWindow?.(label);
-      } catch {
-        // Store unavailable
-      }
     });
 
     void win.once('tauri://error', () => purge(label));
-    void win.once('tauri://destroyed', () => purge(label));
+    void win.once('tauri://destroyed', () => {
+      const closedByUser = !managerClosing.delete(label);
+      try {
+        // Re-embed only if the user closed the window of the app that is still running.
+        const store = useAppStore.getState();
+        const current = store.currentApp as { info?: { name?: string } } | null;
+        if (closedByUser && current?.info?.name === appName) {
+          store.openEmbeddedApp?.(url);
+        }
+      } catch {
+        // Store may be unavailable
+      }
+      purge(label);
+    });
 
     return win;
   } catch {

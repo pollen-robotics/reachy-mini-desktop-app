@@ -14,6 +14,7 @@ import {
   setupGlobalErrorHandlers,
   checkPreviousCrash,
 } from '../utils/telemetry';
+import { syncOptOutToDaemon } from '../utils/telemetry/daemonTelemetry';
 import {
   useUsbDetection,
   useLogs,
@@ -142,6 +143,7 @@ function App(): React.ReactElement {
     if (daemonVersion && daemonVersion !== 'unknown') {
       updateTelemetryContext({ daemon_version: daemonVersion });
     }
+    if (daemonVersion) void syncOptOutToDaemon();
   }, [daemonVersion]);
 
   // 🔗 Deep link handler - at root level for global access

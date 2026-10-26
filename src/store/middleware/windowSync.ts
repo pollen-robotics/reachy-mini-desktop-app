@@ -2,6 +2,10 @@ import type { StateCreator, StoreApi } from 'zustand';
 import { extractChangedUpdates } from '../../utils/stateComparison';
 
 const ROBOT_STATE_THROTTLE_MS = 250; // 4Hz max for robot state IPC sync
+// The log arrays are capped at 10k entries and serialize to megabytes;
+// per-change emits flood the IPC channel faster than a busy renderer drains it.
+const LOGS_THROTTLE_MS = 1000;
+const THROTTLED_LOG_KEYS = ['logs', 'frontendLogs', 'appLogs'] as const;
 
 type Updates = Record<string, unknown>;
 type EmitStoreUpdate = (updates: Updates) => Promise<void>;
@@ -26,6 +30,10 @@ export const windowSyncMiddleware =
     // Throttle state for robotStateFull
     let pendingRobotState: unknown = null;
     let robotStateThrottleTimer: ReturnType<typeof setTimeout> | null = null;
+
+    // Throttle state for the log arrays (latest-wins, one timer for all three)
+    let pendingLogUpdates: Updates | null = null;
+    let logsThrottleTimer: ReturnType<typeof setTimeout> | null = null;
 
     const relevantKeys = [
       'darkMode',
@@ -102,6 +110,17 @@ export const windowSyncMiddleware =
     };
 
     /**
+     * Flush any pending throttled log arrays to secondary windows.
+     */
+    const flushLogUpdates = (): void => {
+      logsThrottleTimer = null;
+      if (pendingLogUpdates && emitStoreUpdate) {
+        emitStoreUpdate(pendingLogUpdates);
+        pendingLogUpdates = null;
+      }
+    };
+
+    /**
      * Process a Zustand state change and emit relevant diffs to secondary windows.
      * robotStateFull is throttled to avoid serializing a large object 20x/s.
      */
@@ -122,6 +141,18 @@ export const windowSyncMiddleware =
 
         if (!robotStateThrottleTimer) {
           robotStateThrottleTimer = setTimeout(flushRobotState, ROBOT_STATE_THROTTLE_MS);
+        }
+      }
+
+      // Same for the log arrays - latest reference wins within the window
+      for (const key of THROTTLED_LOG_KEYS) {
+        if (key in changedUpdates) {
+          pendingLogUpdates = { ...pendingLogUpdates, [key]: changedUpdates[key] };
+          delete changedUpdates[key];
+
+          if (!logsThrottleTimer) {
+            logsThrottleTimer = setTimeout(flushLogUpdates, LOGS_THROTTLE_MS);
+          }
         }
       }
 

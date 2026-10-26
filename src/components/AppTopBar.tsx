@@ -67,7 +67,8 @@ export default function AppTopBar(): React.ReactPortal | null {
         position: 'fixed',
         top: 0,
         left: 65,
-        right: rightPanelView === 'embedded-app' ? '450px' : 0,
+        // Stop at the column split so the embedded app's own top bar stays clickable.
+        right: rightPanelView === 'embedded-app' ? '50%' : 0,
         height: 33,
         cursor: 'move',
         userSelect: 'none',
