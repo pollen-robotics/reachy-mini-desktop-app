@@ -535,7 +535,7 @@ export default function SettingsOverlay({
   }, [showToast, onClose, resetAll]);
 
   const handleWifiConnect = useCallback((): void => {
-    if (!selectedSSID || !wifiPassword) return;
+    if (!selectedSSID) return;
 
     const ssid = selectedSSID;
     const password = wifiPassword;
