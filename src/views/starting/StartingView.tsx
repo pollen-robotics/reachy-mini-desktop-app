@@ -2,7 +2,12 @@ import { useCallback } from 'react';
 import { Box } from '@mui/material';
 import StartupView from './StartupView';
 import useAppStore from '../../store/useAppStore';
-import { DAEMON_CONFIG, fetchWithTimeout, buildApiUrl, getWsBaseUrl } from '../../config/daemon';
+import {
+  DAEMON_CONFIG,
+  fetchWithTimeout,
+  buildApiUrl,
+  getMoveUpdatesWsUrl,
+} from '../../config/daemon';
 import { BLUR, useAppPalette } from '@styles';
 
 export interface StartingViewProps {
@@ -66,7 +71,7 @@ function StartingView({ startupError, startDaemon }: StartingViewProps) {
           const timeout = setTimeout(finish, 10000);
 
           try {
-            const ws = new WebSocket(`${getWsBaseUrl()}/api/move/ws/updates`);
+            const ws = new WebSocket(getMoveUpdatesWsUrl());
             ws.onmessage = event => {
               try {
                 const data = JSON.parse(event.data as string) as {

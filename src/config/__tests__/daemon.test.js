@@ -1,3 +1,4 @@
+/* global __APP_VERSION__ */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock the two external deps used by config/daemon.js so the function under
@@ -20,7 +21,7 @@ vi.mock('../../store', () => ({
 }));
 
 // Import AFTER mocks are registered.
-import { getDaemonHostname } from '../daemon';
+import { getDaemonHostname, getMoveUpdatesWsUrl } from '../daemon';
 
 // These test cases encode the documented contract from the JSDoc of
 // `getDaemonHostname`:
@@ -120,5 +121,19 @@ describe('getDaemonHostname - documented contract', () => {
       mockState.remoteHost = 'http://external.example.com:8000';
       expect(getDaemonHostname()).toBe('localhost');
     });
+  });
+});
+
+describe('getMoveUpdatesWsUrl - telemetry client name', () => {
+  // Same format the daemon accepts (reachy_mini telemetry._CLIENT_RE).
+  const DAEMON_CLIENT_RE = /^([a-z_]{1,16})\/([0-9A-Za-z.+-]{1,32})(?: \(([a-z]{1,16})\))?$/;
+
+  it('names the desktop app in a form the daemon parses', () => {
+    const url = new URL(getMoveUpdatesWsUrl());
+    expect(url.pathname).toBe('/api/move/ws/updates');
+    const match = DAEMON_CLIENT_RE.exec(url.searchParams.get('client'));
+    expect(match).not.toBeNull();
+    expect(match[1]).toBe('desktop');
+    expect(match[2]).toBe(__APP_VERSION__);
   });
 });
