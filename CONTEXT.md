@@ -162,6 +162,60 @@ Auto-detection logic:
 
 ---
 
+## Robot Discovery
+
+The desktop app discovers Reachy Mini robots on the LAN via two parallel
+methods, merged and deduplicated in `src-tauri/src/discovery/mod.rs`:
+
+| Method | What it does | Latency |
+|--------|--------------|---------|
+| Static peers | HTTP probe of `reachy-mini.local` and `reachy-mini.home` | ~1-3s |
+| mDNS | Browse `_reachy-mini._tcp.local.` and `_http._tcp.local.` | ~5s |
+
+### Hostname > IP
+
+`RobotInfo` carries both `ip` and `hostname`. The frontend uses the
+**hostname** (`reachy-mini.local`) as the connection target whenever it's
+available, and only falls back to the resolved IP when no hostname was
+advertised. Two reasons:
+
+1. **Freshness.** Hostnames are re-resolved by the OS resolver / Bonjour on
+   every request, so DHCP renews and network switches are picked up
+   automatically. An IP carried in app state goes stale silently.
+2. **Observed macOS behaviour.** User reports on macOS had `Connect` silently
+   failing against the resolved IP while typing `reachy-mini.local` in the
+   manual field worked, with the Local Network permission confirmed ON. The
+   exact mechanism is unconfirmed (ATS / WebKit local-network edge case);
+   hostname-first sidesteps it either way.
+
+### No app-level cache
+
+A previous version cached `last_known_ip` for a "fast path" on the next
+scan. This caused silent connection failures whenever the robot moved to a
+new IP (DHCP renew, reboot on a different subnet) until the app was
+restarted. The cache only saved ~2s on the very first scan, so it was
+removed - see the module-level docs in `discovery/mod.rs` for the full
+rationale. We rely on the static peer list + the `mdns-sd` library's own
+RFC-6762-compliant cache (TTLs, Goodbye Packets, Cache Flush bit) instead.
+
+### Dedup by canonical identity
+
+Discovered robots are deduplicated by their canonical identity in this
+priority order:
+
+1. **Hostname** (`reachy-mini.local`) - survives IP changes
+2. **Instance name** (the `<instance>` part of `<instance>._reachy-mini._tcp.local.`) - the RFC-6763 canonical service identifier
+3. **IP** - last-resort fallback for static peers / manual entries
+
+This means a robot whose IP changes between two scans is recognised as the
+same entity instead of appearing twice in the UI.
+
+Entries are *also* cross-matched by resolved IP, so one robot reached under
+several names (`reachy-mini.local` and `reachy-mini.home`, or a manually
+entered IP later re-found via mDNS) still collapses to a single entry.
+
+---
+
 ## Safety Limits
 
 | Axis                     | Range         |
