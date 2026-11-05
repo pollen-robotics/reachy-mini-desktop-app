@@ -1247,10 +1247,16 @@ jobs:
 
             # Staple the notarization ticket to the app bundle
             echo "📎 Stapling notarization ticket to app bundle..."
-            if ! xcrun stapler staple "$APP_BUNDLE_NAME"; then
-              echo "❌ Failed to staple notarization ticket to app bundle"
-              exit 1
-            fi
+            # Retry: the ticket fetch from Apple's CloudKit drops connections at times
+            for attempt in 1 2 3 4 5; do
+              if xcrun stapler staple "$APP_BUNDLE_NAME"; then break; fi
+              if [ "$attempt" -eq 5 ]; then
+                echo "❌ Failed to staple notarization ticket to app bundle"
+                exit 1
+              fi
+              echo "⚠️ Staple attempt $attempt failed, retrying in 30s..."
+              sleep 30
+            done
 
             # Validate that the ticket was stapled correctly
             echo "🔍 Validating stapled ticket on app..."
@@ -1392,10 +1398,16 @@ jobs:
 
             # Staple the notarization ticket to the DMG
             echo "📎 Stapling notarization ticket to DMG..."
-            if ! xcrun stapler staple "$DMG_NAME"; then
-              echo "❌ Failed to staple notarization ticket to DMG"
-              exit 1
-            fi
+            # Retry: the ticket fetch from Apple's CloudKit drops connections at times
+            for attempt in 1 2 3 4 5; do
+              if xcrun stapler staple "$DMG_NAME"; then break; fi
+              if [ "$attempt" -eq 5 ]; then
+                echo "❌ Failed to staple notarization ticket to DMG"
+                exit 1
+              fi
+              echo "⚠️ Staple attempt $attempt failed, retrying in 30s..."
+              sleep 30
+            done
 
             # Validate that the ticket was stapled correctly
             echo "🔍 Validating stapled ticket..."
