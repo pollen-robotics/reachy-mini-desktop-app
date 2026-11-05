@@ -7,6 +7,8 @@ import type { NfcState } from './nfcState';
 
 const SIZE = 36;
 
+const LABEL_OPEN = { maxWidth: 140, opacity: 1, ml: '6px', mr: '4px' } as const;
+
 /** Short on purpose: the label only shows while the button is hovered. */
 export const NFC_STATE_LABEL: Record<NfcState, string> = {
   disabled: 'NFC off',
@@ -53,7 +55,7 @@ export default function NfcStatusButton({
 
   return (
     <Tooltip title="NFC Reader" placement="top" arrow>
-      <span style={{ display: 'inline-flex' }}>
+      <Box component="span" sx={{ display: 'inline-flex', '&:hover .nfc-label': LABEL_OPEN }}>
         <ButtonBase
           onClick={onClick}
           disabled={disabled}
@@ -83,12 +85,7 @@ export default function NfcStatusButton({
             '&:hover, &:focus-visible': {
               bgcolor: palette.isDark ? accentAlpha(0.15) : accentAlpha(0.1),
               borderColor: ACCENT.main,
-              '& .nfc-label': {
-                maxWidth: 140,
-                opacity: 1,
-                ml: '6px',
-                mr: '4px',
-              },
+              '& .nfc-label': LABEL_OPEN,
             },
           }}
         >
@@ -140,7 +137,7 @@ export default function NfcStatusButton({
             {label}
           </Typography>
         </ButtonBase>
-      </span>
+      </Box>
     </Tooltip>
   );
 }
