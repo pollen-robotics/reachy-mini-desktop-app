@@ -14,6 +14,7 @@ const NFC_STATE_LABEL: Record<NfcState, string> = {
   disabled: 'NFC off',
   unavailable: 'NFC unavailable',
   connecting: 'Connecting…',
+  not_responding: 'Not responding',
   idle: 'No tag',
   tag: 'Tag detected',
 };
@@ -32,7 +33,8 @@ export default function NfcStatusButton({
   const palette = useAppPalette();
   const unavailable = state === 'unavailable';
   const connecting = state === 'connecting';
-  const muted = unavailable || connecting || state === 'disabled';
+  const notResponding = state === 'not_responding';
+  const muted = unavailable || connecting || notResponding || state === 'disabled';
   const dotColor = NFC_STATE_COLOR[state];
   const label = NFC_STATE_LABEL[state];
 
@@ -97,7 +99,7 @@ export default function NfcStatusButton({
                 }}
               />
             )}
-            {!muted && (
+            {(!muted || notResponding) && (
               <Box
                 sx={{
                   position: 'absolute',

@@ -62,6 +62,7 @@ export interface NfcReaderCardProps {
 function readerTitle(status: NfcStatus | null): string {
   if (!status) return 'Unknown';
   if (status.enabled === false) return 'Reader switched off';
+  if (status.error_code === 'LINK_ERROR') return 'Reader not responding';
   if (!status.connected) return 'Connecting…';
   return 'Reader connected';
 }
@@ -69,6 +70,9 @@ function readerTitle(status: NfcStatus | null): string {
 function readerDetail(status: NfcStatus | null, fetchError: string | null): string | null {
   if (!status) return fetchError ?? 'Waiting for the daemon…';
   if (status.enabled === false) return 'Turn it on to read tags';
+  if (status.error_code === 'LINK_ERROR') {
+    return status.error ? `${status.error} · Retrying…` : 'Retrying…';
+  }
   if (status.connected && status.board_version) return `Board version ${status.board_version}`;
   return null;
 }
@@ -282,7 +286,7 @@ export default function NfcReaderCard({
             <Typography sx={{ fontSize: TYPO.sm, color: textMuted, textAlign: 'center' }}>
               {state === 'disabled'
                 ? 'Reader is off'
-                : state === 'connecting'
+                : state === 'connecting' || state === 'not_responding'
                   ? 'Waiting for the reader…'
                   : state === 'unavailable'
                     ? 'No reader to read from'

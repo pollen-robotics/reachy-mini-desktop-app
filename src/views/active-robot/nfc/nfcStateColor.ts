@@ -6,6 +6,7 @@ export const NFC_STATE_COLOR: Record<NfcState, string> = {
   disabled: STATUS.neutral,
   unavailable: STATUS.neutral,
   connecting: STATUS.neutral,
+  not_responding: STATUS.warning,
   idle: STATUS.neutral,
   tag: STATUS.success,
 };

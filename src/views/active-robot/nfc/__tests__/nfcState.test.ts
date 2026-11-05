@@ -26,10 +26,14 @@ describe('deriveNfcState', () => {
     );
   });
 
-  it('is connecting while the reader starts or retries its link', () => {
+  it('is connecting while the reader starts', () => {
     const off = { connected: false, chip_detected: false, driver_available: true };
     expect(deriveNfcState({ ...off, error_code: null }, null)).toBe('connecting');
-    expect(deriveNfcState({ ...off, error_code: 'LINK_ERROR' }, null)).toBe('connecting');
+  });
+
+  it('is not responding while the daemon retries a failed link', () => {
+    const off = { connected: false, chip_detected: false, driver_available: true };
+    expect(deriveNfcState({ ...off, error_code: 'LINK_ERROR' }, null)).toBe('not_responding');
   });
 
   it('ignores a stale tag once the reader is gone', () => {
