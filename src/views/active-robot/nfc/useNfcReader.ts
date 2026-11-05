@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { buildApiUrl, fetchWithTimeout } from '../../../config/daemon';
 import { useWindowVisible } from '../../../hooks/system/useWindowVisible';
-import { deriveNfcState } from './nfcState';
+import { deriveNfcState, isReaderAbsentForGood } from './nfcState';
 import type { NfcState, NfcStatus, NfcTag, NfcTagResult, NfcWriteContent } from './nfcState';
 
 const POLL_INTERVAL_MS = 1000;
@@ -61,6 +61,7 @@ async function postTagOperation(
 }
 
 // `enabled: false` pauses the poll, so the button and the Settings card do not both poll.
+// It also stops once the answer cannot change.
 export function useNfcReader({ enabled = true }: { enabled?: boolean } = {}): UseNfcReaderResult {
   const [status, setStatus] = useState<NfcStatus | null>(null);
   const [tag, setTag] = useState<NfcTag | null>(null);
@@ -87,6 +88,7 @@ export function useNfcReader({ enabled = true }: { enabled?: boolean } = {}): Us
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const poll = async (): Promise<void> => {
+      let final = false;
       try {
         const statusRes = await fetchWithTimeout(
           buildApiUrl('/api/nfc/status'),
@@ -95,6 +97,7 @@ export function useNfcReader({ enabled = true }: { enabled?: boolean } = {}): Us
           { silent: true }
         );
         if (!statusRes.ok) {
+          final = statusRes.status === 404;
           throw new Error(
             statusRes.status === 404
               ? 'This daemon version has no NFC support'
@@ -102,6 +105,7 @@ export function useNfcReader({ enabled = true }: { enabled?: boolean } = {}): Us
           );
         }
         const nextStatus = (await statusRes.json()) as NfcStatus;
+        final = isReaderAbsentForGood(nextStatus);
         let nextTag: NfcTag | null = null;
         if (nextStatus.connected) {
           const tagRes = await fetchWithTimeout(buildApiUrl('/api/nfc/tag'), {}, READ_TIMEOUT_MS, {
@@ -119,7 +123,7 @@ export function useNfcReader({ enabled = true }: { enabled?: boolean } = {}): Us
         setTag(null);
         setFetchError(err instanceof Error ? err.message : String(err));
       } finally {
-        if (!cancelled) timer = setTimeout(poll, POLL_INTERVAL_MS);
+        if (!cancelled && !final) timer = setTimeout(poll, POLL_INTERVAL_MS);
       }
     };
 

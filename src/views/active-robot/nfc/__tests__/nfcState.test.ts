@@ -3,6 +3,7 @@ import {
   deriveNfcState,
   describeTagError,
   isRawPreviewTruncated,
+  isReaderAbsentForGood,
   ndefMessageBytes,
   needsFullErase,
 } from '../nfcState';
@@ -108,5 +109,26 @@ describe('isRawPreviewTruncated', () => {
   it('is true only for a full 32-byte preview', () => {
     expect(isRawPreviewTruncated('42'.repeat(32))).toBe(true);
     expect(isRawPreviewTruncated('42414447')).toBe(false);
+  });
+});
+
+describe('isReaderAbsentForGood', () => {
+  const off: NfcStatus = { connected: false, chip_detected: false, driver_available: true };
+
+  it('is true when no board, no driver, or the wrong port', () => {
+    expect(isReaderAbsentForGood({ ...off, error_code: 'NO_BOARD' })).toBe(true);
+    expect(isReaderAbsentForGood({ ...off, error_code: 'DRIVER_MISSING' })).toBe(true);
+    expect(isReaderAbsentForGood({ ...off, error_code: 'PORT_CONFLICT' })).toBe(true);
+  });
+
+  it('is false while the daemon starts, on a link error, or switched off', () => {
+    expect(isReaderAbsentForGood(off)).toBe(false);
+    expect(isReaderAbsentForGood({ ...off, error_code: null })).toBe(false);
+    expect(isReaderAbsentForGood({ ...off, error_code: 'LINK_ERROR' })).toBe(false);
+    expect(isReaderAbsentForGood({ ...off, enabled: false, error_code: 'DISABLED' })).toBe(false);
+  });
+
+  it('is false on a connected reader', () => {
+    expect(isReaderAbsentForGood(connected)).toBe(false);
   });
 });

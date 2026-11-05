@@ -75,6 +75,17 @@ export function describeTagError(code: string | null | undefined): string {
   return TAG_ERROR_MESSAGES[code] ?? code;
 }
 
+// None of these change while the app runs.
+const ABSENT_FOR_GOOD: ReadonlyArray<NfcStatusError> = [
+  'NO_BOARD',
+  'DRIVER_MISSING',
+  'PORT_CONFLICT',
+];
+
+export function isReaderAbsentForGood(status: NfcStatus): boolean {
+  return status.error_code != null && ABSENT_FOR_GOOD.includes(status.error_code);
+}
+
 export function deriveNfcState(status: NfcStatus | null, tag: NfcTag | null): NfcState {
   if (status?.enabled === false) return 'disabled';
   if (!status?.connected) return 'unavailable';
