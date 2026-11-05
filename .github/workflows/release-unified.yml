@@ -117,7 +117,7 @@ jobs:
           lfs: true
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with:
           node-version: '24.11.1' # LTS - Required for camera-controls (>=24.4.0)
           cache: 'yarn'
@@ -1474,7 +1474,7 @@ jobs:
           cat "$UPDATE_JSON" | jq '.' || echo "   (could not parse JSON)"
 
       - name: Upload update artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: update-${{ matrix.platform }}
           path: |
@@ -1483,7 +1483,7 @@ jobs:
 
       - name: Upload .deb package (Linux)
         if: matrix.os == 'ubuntu-24.04'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: deb-${{ matrix.platform }}
           path: |
@@ -1492,7 +1492,7 @@ jobs:
 
       - name: Upload .rpm package (Linux)
         if: matrix.os == 'ubuntu-24.04'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: rpm-${{ matrix.platform }}
           path: |
@@ -1501,7 +1501,7 @@ jobs:
 
       - name: Create GitHub Release
         if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin' && github.event.inputs.dry_run != 'true'
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2.6.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: 'Reachy Mini Control v${{ steps.version.outputs.version }}'
@@ -1531,7 +1531,7 @@ jobs:
 
       - name: Upload artifacts to existing release
         if: (matrix.os != 'macos-latest' || matrix.target != 'aarch64-apple-darwin') && github.event.inputs.dry_run != 'true'
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2.6.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
         with:
           tag_name: v${{ steps.version.outputs.version }}
           files: |
@@ -1556,7 +1556,7 @@ jobs:
       # GitHub Release is created in this mode.
       - name: Upload installers (dry run)
         if: github.event.inputs.dry_run == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: dry-run-installer-${{ matrix.platform }}
           path: |
@@ -1623,7 +1623,7 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Download all update artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
           pattern: update-*
           merge-multiple: true
@@ -1732,7 +1732,7 @@ jobs:
           echo "✅ Verified JSON files are valid"
 
       - name: Upload latest.json to release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2.6.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
         with:
           tag_name: v${{ steps.version.outputs.version }}
           files: latest.json
