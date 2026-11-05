@@ -56,10 +56,8 @@ async function postTagOperation(
       timeoutMs,
       { label }
     );
-    if (res.status === 503) {
-      const detail = (await res.json().catch(() => ({}))) as { detail?: string };
-      return { success: false, error: detail.detail ?? 'NOT_CONNECTED' };
-    }
+    // The daemon's only 503 on these routes: the reader is switched off.
+    if (res.status === 503) return { success: false, error: 'DISABLED' };
     if (!res.ok) return { success: false, error: `${label} request failed (${res.status})` };
     return (await res.json()) as NfcTagResult;
   } catch {

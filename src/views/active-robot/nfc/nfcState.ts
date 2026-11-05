@@ -3,6 +3,14 @@
  * tests can load it without the app (and its browser-only modules).
  */
 
+/** Why the reader is not serving: the daemon's `NfcStatus.error_code`. */
+export type NfcStatusError =
+  | 'DISABLED'
+  | 'NO_BOARD'
+  | 'DRIVER_MISSING'
+  | 'PORT_CONFLICT'
+  | 'LINK_ERROR';
+
 /** Mirrors the daemon's `NfcStatus` (`GET /api/nfc/status`). */
 export interface NfcStatus {
   connected: boolean;
@@ -14,7 +22,9 @@ export interface NfcStatus {
   /** From the board's USB product string ("Winnie NFC 1.2"). Absent on older daemons. */
   board_version?: string | null;
   chip_version?: string | null;
+  /** For people; branch on `error_code`, the wording may change. */
   error?: string | null;
+  error_code?: NfcStatusError | null;
   last_seen_at?: string | null;
 }
 
@@ -66,8 +76,11 @@ const TAG_ERROR_MESSAGES: Record<string, string> = {
   NOT_CONNECTED: 'NFC reader not connected',
   LINK_LOST: 'Lost the link to the NFC reader',
   TIMEOUT: 'Tag was not presented in time',
+  UNCERTAIN: 'The write may not have finished: check the tag',
+  BUSY: 'The NFC reader is busy, try again',
   DRIVER_MISSING: 'NFC driver not installed on the robot',
-  'NFC reader disabled': 'NFC reader is switched off',
+  // Not from a write result: the daemon answers 503 while the reader is off.
+  DISABLED: 'NFC reader is switched off',
 };
 
 /**

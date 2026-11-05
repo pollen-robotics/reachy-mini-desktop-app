@@ -68,4 +68,10 @@ describe('describeTagError', () => {
     expect(describeTagError('SOMETHING_NEW')).toBe('SOMETHING_NEW');
     expect(describeTagError(null)).toBe('Unknown error');
   });
+
+  it('explains the codes the daemon added: refusal while off, uncertain write, busy', () => {
+    expect(describeTagError('DISABLED')).toMatch(/switched off/i);
+    expect(describeTagError('UNCERTAIN')).toMatch(/check the tag/i);
+    expect(describeTagError('BUSY')).toMatch(/busy/i);
+  });
 });
