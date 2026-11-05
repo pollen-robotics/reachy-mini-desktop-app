@@ -8,6 +8,7 @@ mod discovery;
 mod local_proxy;
 mod paths;
 mod permissions;
+mod process;
 mod python;
 mod reset;
 mod update;

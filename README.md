@@ -262,7 +262,6 @@ reachy-mini-desktop-app/
 │   │   │                            #   - effects/ (Scan, PremiumScan, ErrorHighlight, Particles)
 │   │   │                            #   - settings/ (cards for the settings panel)
 │   │   ├── emoji-grid/              # Emotion wheel and emoji display
-│   │   ├── camera/                  # Camera components (standalone CameraStream)
 │   │   ├── LogConsole/              # Log console (Simple/Dev toggle, virtualized list)
 │   │   ├── Toast/                   # Toast notifications
 │   │   ├── wifi/                    # WiFi configuration components
@@ -289,8 +288,7 @@ reachy-mini-desktop-app/
 │   │   │   ├── useStartupStages.ts        # Startup stage tracking
 │   │   │   └── useDaemonStartupLogs.ts    # Daemon startup log streaming
 │   │   ├── media/                   # Media hooks
-│   │   │   ├── useAudioAnalyser.ts  # Audio analysis
-│   │   │   └── useWebRTCStream.ts   # WebRTC streaming
+│   │   │   └── useAudioAnalyser.ts  # Audio analysis
 │   │   ├── robot/                   # Robot state hooks
 │   │   │   ├── useRobotStateWebSocket.ts  # Centralized WebSocket streaming (20Hz)
 │   │   │   ├── useRobotCommands.ts        # Robot command execution
@@ -340,7 +338,8 @@ reachy-mini-desktop-app/
 │   │       ├── context/                 # ActiveRobotContext
 │   │       └── hooks/                   # View-specific hooks (wake/sleep, power state)
 │   ├── contexts/                     # React contexts
-│   │   └── WebRTCStreamContext.tsx  # Shared WebRTC stream (avoids duplicate connections)
+│   │   ├── WebRTCStreamContext.tsx  # Shared WebRTC stream (avoids duplicate connections)
+│   │   └── webrtcStreamConnection.ts # Connection, retries and failure recovery (no React)
 │   ├── store/                        # State management (Zustand)
 │   │   ├── slices/                  # Store slices (apps, logs, robot, ui, ...)
 │   │   ├── middleware/              # Store middleware (windowSync across Tauri windows)

@@ -397,6 +397,9 @@ if [[ "$PRIVATE_KEY" == ~* ]]; then
     PRIVATE_KEY="${PRIVATE_KEY/#\~/$HOME}"
 fi
 
+# tauri CLI >= 2.12 rejects -f when this env var also provides the key
+unset TAURI_SIGNING_PRIVATE_KEY
+
 # Use password if provided via environment variable
 if [ -n "$TAURI_SIGNING_KEY_PASSWORD" ]; then
     yarn tauri signer sign -f "$PRIVATE_KEY" -p "$TAURI_SIGNING_KEY_PASSWORD" "$BUNDLE_FILE" || {

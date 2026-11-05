@@ -10,6 +10,12 @@ import reachyUpdateBoxSvg from '../../assets/reachy-update-box.svg';
 import { invoke } from '@tauri-apps/api/core';
 import { logSuccess } from '../../utils/logging';
 import { useToast } from '../../hooks/useToast';
+import { selectIsBusy } from '../../store/slices';
+import {
+  SKIPPED_UPDATE_KEY,
+  claimUpdateCheck,
+  shouldPromptDaemonUpdate,
+} from '../../utils/daemonUpdatePrompt';
 import {
   ACCENT,
   STATUS,
@@ -47,6 +53,8 @@ type TrackedWebSocket = WebSocket & { _lastStatus?: UpdateJobStatus };
 
 export interface SettingsOverlayProps {
   open: boolean;
+  /** Lets the overlay open itself to propose a daemon update on connect. */
+  onOpen?: () => void;
   onClose: () => void;
   /** @deprecated Theme mode is now read from `useAppPalette()`. Prop kept for back-compat but ignored. */
   darkMode?: boolean;
@@ -54,6 +62,7 @@ export interface SettingsOverlayProps {
 
 export default function SettingsOverlay({
   open,
+  onOpen,
   onClose,
 }: SettingsOverlayProps): React.ReactElement {
   const palette = useAppPalette();
@@ -144,6 +153,13 @@ export default function SettingsOverlay({
   const [wifiError, setWifiError] = useState<string | null>(null);
 
   const [showUpdateConfirm, setShowUpdateConfirm] = useState<boolean>(false);
+  // Confirm opened by the on-connect check (vs. the Settings card button).
+  const [isAutoPrompt, setIsAutoPrompt] = useState<boolean>(false);
+  // Update found on connect, waiting for the robot to stop being busy.
+  const [pendingAutoPrompt, setPendingAutoPrompt] = useState<boolean>(false);
+  // Whether the prompt opened Settings (so dismissing it closes Settings again).
+  const promptOpenedSettingsRef = useRef<boolean>(false);
+  const isBusy = useAppStore(selectIsBusy);
   const [showChangeWifiOverlay, setShowChangeWifiOverlay] = useState<boolean>(false);
   // While the robot reconfigures WiFi, the app link drops for ~20s. During
   // that window we show ``WifiConnectingOverlay`` and, on timeout, fall back
@@ -160,70 +176,91 @@ export default function SettingsOverlay({
 
   const { showToast } = useToast();
 
-  const checkForUpdate = useCallback(async (): Promise<void> => {
-    if (!navigator.onLine) {
-      console.warn('⚠️ No internet connection, cannot check for updates');
-      showToast('No internet connection. Please check your network and try again.', 'warning');
-      return;
-    }
-
-    setIsCheckingUpdate(true);
-    setUpdateInfo(null);
-
-    try {
-      if (isWifiMode) {
-        const response = await fetchWithTimeout(
-          buildApiUrl(`/update/available?pre_release=${preRelease}`),
-          {},
-          DAEMON_CONFIG.TIMEOUTS.COMMAND,
-          { label: 'Check update', silent: true }
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-          let info = (data.update?.reachy_mini as UpdateInfo) || null;
-
-          // Daemons below 1.10.0 mis-sort the PyPI pre-release list and always
-          // answer "up to date" on the beta channel, so resolve the available
-          // version app-side instead (returns null for fixed daemons). Their
-          // current_version is reliable. On failure (GitHub down, rate limit)
-          // fall back to the robot's own answer rather than no answer.
-          if (info && preRelease) {
-            try {
-              const resolved = (await invoke('check_remote_daemon_update', {
-                currentVersion: info.current_version,
-                preRelease,
-              })) as UpdateInfo | null;
-              if (resolved) info = resolved;
-            } catch (err) {
-              console.warn('[Update] App-side version check failed, using the robot answer:', err);
-            }
-          }
-
-          setUpdateInfo(info);
+  // silent: background check on connect, no toasts on failure.
+  const runUpdateCheck = useCallback(
+    async (silent: boolean): Promise<UpdateInfo | null> => {
+      if (!navigator.onLine) {
+        console.warn('⚠️ No internet connection, cannot check for updates');
+        if (!silent) {
+          showToast('No internet connection. Please check your network and try again.', 'warning');
         }
-      } else {
-        const data = (await invoke('check_daemon_update', { preRelease })) as UpdateInfo;
-        setUpdateInfo(data);
+        return null;
       }
-    } catch (err) {
-      console.error('Failed to check for updates:', err);
-      const message = (err as { message?: string })?.message ?? '';
-      const isNetworkError =
-        message.toLowerCase().includes('network') ||
-        message.toLowerCase().includes('timeout') ||
-        message.toLowerCase().includes('connection') ||
-        message.toLowerCase().includes('fetch');
 
-      if (isNetworkError) {
-        showToast('No internet connection. Please check your network and try again.', 'warning');
-      } else {
-        showToast('Failed to check for updates', 'error');
+      // updateInfo is kept during the check (the card shows a spinner) so an
+      // open confirm dialog never blanks; it is cleared on failure only.
+      setIsCheckingUpdate(true);
+
+      try {
+        if (isWifiMode) {
+          const response = await fetchWithTimeout(
+            buildApiUrl(`/update/available?pre_release=${preRelease}`),
+            {},
+            DAEMON_CONFIG.TIMEOUTS.COMMAND,
+            { label: 'Check update', silent: true }
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            let info = (data.update?.reachy_mini as UpdateInfo) || null;
+
+            // Daemons below 1.10.0 mis-sort the PyPI pre-release list and always
+            // answer "up to date" on the beta channel, so resolve the available
+            // version app-side instead (returns null for fixed daemons). Their
+            // current_version is reliable. On failure (GitHub down, rate limit)
+            // fall back to the robot's own answer rather than no answer.
+            if (info && preRelease) {
+              try {
+                const resolved = (await invoke('check_remote_daemon_update', {
+                  currentVersion: info.current_version,
+                  preRelease,
+                })) as UpdateInfo | null;
+                if (resolved) info = resolved;
+              } catch (err) {
+                console.warn(
+                  '[Update] App-side version check failed, using the robot answer:',
+                  err
+                );
+              }
+            }
+
+            setUpdateInfo(info);
+            return info;
+          }
+          setUpdateInfo(null);
+          return null;
+        } else {
+          const data = (await invoke('check_daemon_update', { preRelease })) as UpdateInfo;
+          setUpdateInfo(data);
+          return data;
+        }
+      } catch (err) {
+        console.error('Failed to check for updates:', err);
+        setUpdateInfo(null);
+        if (silent) return null;
+        const message = (err as { message?: string })?.message ?? '';
+        const isNetworkError =
+          message.toLowerCase().includes('network') ||
+          message.toLowerCase().includes('timeout') ||
+          message.toLowerCase().includes('connection') ||
+          message.toLowerCase().includes('fetch');
+
+        if (isNetworkError) {
+          showToast('No internet connection. Please check your network and try again.', 'warning');
+        } else {
+          showToast('Failed to check for updates', 'error');
+        }
+        return null;
+      } finally {
+        setIsCheckingUpdate(false);
       }
-    } finally {
-      setIsCheckingUpdate(false);
-    }
-  }, [isWifiMode, preRelease, showToast]);
+    },
+    [isWifiMode, preRelease, showToast]
+  );
+
+  const checkForUpdate = useCallback((): void => {
+    runUpdateCheck(false);
+  }, [runUpdateCheck]);
 
   const connectUpdateWebSocket = useCallback(
     (jobId: string): void => {
@@ -320,6 +357,7 @@ export default function SettingsOverlay({
     }
 
     setShowUpdateConfirm(false);
+    setIsAutoPrompt(false);
     setIsUpdating(true);
 
     try {
@@ -612,6 +650,43 @@ export default function SettingsOverlay({
     }
   }, [open, isWifiMode, checkForUpdate, fetchWifiStatus]);
 
+  // Propose a skippable daemon update once per connection, right after Start.
+  // shortcut: the connection is claimed before the check resolves, so a view
+  // swap during the check loses the prompt until the app restarts; the
+  // Settings card still shows the update. Upgrade if users miss prompts.
+  useEffect(() => {
+    if (!onOpen || !claimUpdateCheck(connectionMode, remoteHost)) return;
+    runUpdateCheck(true).then(info => {
+      if (shouldPromptDaemonUpdate(info, localStorage.getItem(SKIPPED_UPDATE_KEY))) {
+        setPendingAutoPrompt(true);
+      }
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Same lock as the Settings button: never prompt while an app, a command
+  // or a wake/sleep animation is running.
+  useEffect(() => {
+    if (!pendingAutoPrompt || isBusy || !onOpen) return;
+    setPendingAutoPrompt(false);
+    promptOpenedSettingsRef.current = !open;
+    setIsAutoPrompt(true);
+    setShowUpdateConfirm(true);
+    onOpen();
+  }, [pendingAutoPrompt, isBusy, open, onOpen]);
+
+  const dismissUpdateConfirm = useCallback(
+    (skipVersion: boolean): void => {
+      setShowUpdateConfirm(false);
+      if (!isAutoPrompt) return;
+      setIsAutoPrompt(false);
+      if (skipVersion && updateInfo?.available_version) {
+        localStorage.setItem(SKIPPED_UPDATE_KEY, updateInfo.available_version);
+      }
+      if (promptOpenedSettingsRef.current) onClose();
+    },
+    [isAutoPrompt, updateInfo?.available_version, onClose]
+  );
+
   useEffect(() => {
     if (!open || !isWifiMode) return;
 
@@ -860,7 +935,7 @@ export default function SettingsOverlay({
 
       <FullscreenOverlay
         open={showUpdateConfirm}
-        onClose={() => setShowUpdateConfirm(false)}
+        onClose={() => dismissUpdateConfirm(false)}
         darkMode={palette.isDark}
         zIndex={10003}
         backdropOpacity={0.85}
@@ -895,7 +970,7 @@ export default function SettingsOverlay({
               mb: 2,
             }}
           >
-            Start Update?
+            {isAutoPrompt ? 'Update available' : 'Start Update?'}
           </Typography>
 
           <Typography
@@ -906,6 +981,9 @@ export default function SettingsOverlay({
               mb: 4,
             }}
           >
+            {isAutoPrompt && updateInfo?.current_version && (
+              <>The daemon runs {updateInfo.current_version}. </>
+            )}
             Update to{' '}
             <strong style={{ color: palette.textPrimary }}>{updateInfo?.available_version}</strong>
             <br />
@@ -966,7 +1044,7 @@ export default function SettingsOverlay({
 
           <Box sx={{ display: 'flex', gap: 3, justifyContent: 'center', alignItems: 'center' }}>
             <Button
-              onClick={() => setShowUpdateConfirm(false)}
+              onClick={() => dismissUpdateConfirm(true)}
               variant="text"
               sx={{
                 color: 'text.secondary',
@@ -979,7 +1057,7 @@ export default function SettingsOverlay({
                 },
               }}
             >
-              Cancel
+              {isAutoPrompt ? 'Skip this version' : 'Cancel'}
             </Button>
             <PulseButton onClick={confirmUpdate} darkMode={palette.isDark} sx={{ minWidth: 160 }}>
               Update now

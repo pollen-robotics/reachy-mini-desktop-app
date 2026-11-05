@@ -2,8 +2,8 @@
 // Scans available WiFi networks using system commands
 // Uses async + spawn_blocking to avoid blocking the UI
 
+use crate::process::without_console;
 use serde::Serialize;
-use std::process::Command;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct WifiNetwork {
@@ -47,7 +47,7 @@ fn get_current_ssid_sync() -> Result<Option<String>, String> {
 #[cfg(target_os = "macos")]
 fn get_current_ssid_macos() -> Result<Option<String>, String> {
     // Use networksetup to get current WiFi network
-    let output = Command::new("networksetup")
+    let output = without_console("networksetup")
         .args(["-getairportnetwork", "en0"])
         .output()
         .map_err(|e| format!("Failed to run networksetup: {}", e))?;
@@ -67,7 +67,7 @@ fn get_current_ssid_macos() -> Result<Option<String>, String> {
 
 #[cfg(target_os = "windows")]
 fn get_current_ssid_windows() -> Result<Option<String>, String> {
-    let output = Command::new("netsh")
+    let output = without_console("netsh")
         .args(["wlan", "show", "interfaces"])
         .output()
         .map_err(|e| format!("Failed to run netsh: {}", e))?;
@@ -92,7 +92,7 @@ fn get_current_ssid_windows() -> Result<Option<String>, String> {
 #[cfg(target_os = "linux")]
 fn get_current_ssid_linux() -> Result<Option<String>, String> {
     // Try nmcli first
-    let output = Command::new("nmcli")
+    let output = without_console("nmcli")
         .args(["-t", "-f", "active,ssid", "dev", "wifi"])
         .output();
 
@@ -112,7 +112,7 @@ fn get_current_ssid_linux() -> Result<Option<String>, String> {
     }
 
     // Fallback to iwgetid
-    let output = Command::new("iwgetid").args(["-r"]).output();
+    let output = without_console("iwgetid").args(["-r"]).output();
 
     if let Ok(output) = output {
         if output.status.success() {
@@ -250,9 +250,9 @@ fn scan_macos() -> Result<Vec<WifiNetwork>, String> {
 
 #[cfg(target_os = "windows")]
 fn scan_windows() -> Result<Vec<WifiNetwork>, String> {
-    use std::process::Command;
+    use crate::process::without_console;
 
-    let output = Command::new("netsh")
+    let output = without_console("netsh")
         .args(["wlan", "show", "networks", "mode=Bssid"])
         .output()
         .map_err(|e| format!("Failed to run netsh command: {}", e))?;
@@ -321,10 +321,10 @@ fn scan_windows() -> Result<Vec<WifiNetwork>, String> {
 
 #[cfg(target_os = "linux")]
 fn scan_linux() -> Result<Vec<WifiNetwork>, String> {
-    use std::process::Command;
+    use crate::process::without_console;
 
     // Try nmcli first (most common on modern distros)
-    let output = Command::new("nmcli")
+    let output = without_console("nmcli")
         .args([
             "-t",
             "-f",
@@ -366,7 +366,7 @@ fn scan_linux() -> Result<Vec<WifiNetwork>, String> {
     }
 
     // Fallback to iwlist (requires sudo/root)
-    let output = Command::new("iwlist")
+    let output = without_console("iwlist")
         .args(["scan"])
         .output()
         .map_err(|e| format!("Failed to run iwlist: {}", e))?;

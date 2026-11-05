@@ -1,5 +1,10 @@
 import { useState, useCallback, useRef } from 'react';
-import { DAEMON_CONFIG, fetchWithTimeout, buildApiUrl, getWsBaseUrl } from '../../../config/daemon';
+import {
+  DAEMON_CONFIG,
+  fetchWithTimeout,
+  buildApiUrl,
+  getMoveUpdatesWsUrl,
+} from '../../../config/daemon';
 import useAppStore from '../../../store/useAppStore';
 import { ROBOT_STATUS } from '../../../constants/robotStatus';
 import { telemetry } from '../../../utils/telemetry';
@@ -206,7 +211,7 @@ export function useWakeSleep(): UseWakeSleepResult {
         }, timeoutMs);
 
         try {
-          const wsUrl = `${getWsBaseUrl()}/api/move/ws/updates`;
+          const wsUrl = getMoveUpdatesWsUrl();
           ws = new WebSocket(wsUrl);
           wsRef.current = ws;
 

@@ -104,7 +104,7 @@ function AppCard({
       sx={{
         display: 'flex',
         flexDirection: 'column',
-        width: 'calc((100% - 20px) / 2)',
+        width: '100%',
         minWidth: 0,
         flexShrink: 0,
         borderRadius: RADIUS.xxl,

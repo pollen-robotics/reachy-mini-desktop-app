@@ -158,14 +158,14 @@ pub fn add_log(state: &State<DaemonState>, message: String) {
 
 /// Find PIDs of processes LISTENING on a given port (never includes our own PID).
 fn find_listener_pids(port: u16) -> Vec<String> {
-    use std::process::Command;
+    use crate::process::without_console;
     let own_pid = std::process::id().to_string();
 
     let raw_pids = {
         #[cfg(not(target_os = "windows"))]
         {
             // -sTCP:LISTEN only matches listeners, not outgoing connections
-            Command::new("lsof")
+            without_console("lsof")
                 .args(["-ti", &format!("TCP:{}", port), "-sTCP:LISTEN"])
                 .output()
                 .ok()
@@ -174,7 +174,7 @@ fn find_listener_pids(port: u16) -> Vec<String> {
         }
         #[cfg(target_os = "windows")]
         {
-            let output = Command::new("netstat")
+            let output = without_console("netstat")
                 .args(["-ano"])
                 .output()
                 .ok()
@@ -210,14 +210,14 @@ fn find_listener_pids(port: u16) -> Vec<String> {
 
 /// Send a signal to a list of PIDs.
 fn kill_pids(pids: &[String], force: bool) {
-    use std::process::Command;
+    use crate::process::without_console;
 
     for pid in pids {
         log::info!("[daemon] Killing PID {} (force={})", pid, force);
 
         #[cfg(not(target_os = "windows"))]
         {
-            let mut cmd = Command::new("kill");
+            let mut cmd = without_console("kill");
             if force {
                 cmd.arg("-9");
             }
@@ -226,7 +226,7 @@ fn kill_pids(pids: &[String], force: bool) {
         }
         #[cfg(target_os = "windows")]
         {
-            let _ = Command::new("taskkill")
+            let _ = without_console("taskkill")
                 .args(if force {
                     vec!["/PID", pid, "/F"]
                 } else {
@@ -259,16 +259,16 @@ pub fn cleanup_system_daemons() {
 
     #[cfg(not(target_os = "windows"))]
     {
-        use std::process::Command;
-        let _ = Command::new("pkill")
+        use crate::process::without_console;
+        let _ = without_console("pkill")
             .args(["-9", "-f", DAEMON_PROCESS_PATTERN])
             .output();
     }
     #[cfg(target_os = "windows")]
     {
-        use std::process::Command;
+        use crate::process::without_console;
         // Kill Python processes matching the daemon module name in their command line
-        let output = Command::new("wmic")
+        let output = without_console("wmic")
             .args([
                 "process",
                 "where",
@@ -284,7 +284,9 @@ pub fn cleanup_system_daemons() {
                 let pid = line.trim();
                 if !pid.is_empty() && pid != own_pid && pid.chars().all(|c| c.is_ascii_digit()) {
                     log::info!("[daemon] Killing orphan Python daemon (PID {})", pid);
-                    let _ = Command::new("taskkill").args(["/F", "/PID", pid]).output();
+                    let _ = without_console("taskkill")
+                        .args(["/F", "/PID", pid])
+                        .output();
                 }
             }
         }

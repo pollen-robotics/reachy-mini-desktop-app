@@ -150,25 +150,6 @@ Focus: defects that are **observable** but not yet (or no longer) fixed in the c
 
 ---
 
-## WebRTC
-
-### bug-21 - 🟠 `useWebRTCStream` reconnects on a fixed 5-second interval
-
-- **Status**: OPEN
-- **File**: `src/hooks/media/useWebRTCStream.ts`
-- **Detail**: the auto-reconnect loop fires every 5 s indefinitely, regardless of how badly the previous attempts have failed. Network-level back-off would be safer.
-- **Suggested fix**: capped exponential backoff (5s, 10s, 20s, ..., max 60s, max 10 attempts), reset on `streamsChanged`.
-- **Risk to apply**: low (only WiFi mode).
-
-### bug-7 - 🟢 `useWebRTCStream` types the WS error as `Event & { message?: string }`
-
-- **Status**: OPEN
-- **File**: `src/hooks/media/useWebRTCStream.ts`
-- **Detail**: the actual event is `ErrorEvent`. Cosmetic but worth tightening.
-- **Risk to apply**: trivial.
-
----
-
 ## Logs streaming
 
 ### bug-23 - 🟠 `useDaemonLogStream` can leak orphan reconnect timers under WS-flap

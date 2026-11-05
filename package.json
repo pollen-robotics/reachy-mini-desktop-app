@@ -78,8 +78,8 @@
     "prettier": "^3.7.4",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.58.2",
-    "vite": "^7.2.1",
-    "vitest": "^4.0.18"
+    "vite": "^7.3.7",
+    "vitest": "^4.1.12"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -112,6 +112,9 @@
     "urdf-loader": "^0.12.6",
     "use-sound": "^5.0.0",
     "zustand": "^5.0.8"
+  },
+  "resolutions": {
+    "vite": "^7.3.7"
   },
   "lint-staged": {
     "src/**/*.{js,jsx,ts,tsx}": [

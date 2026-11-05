@@ -5,6 +5,7 @@
 import { logApiCall, logPermission, logTimeout, logError, logSuccess } from '../utils/logging';
 import { LOG_LIMITS } from '../utils/logging/constants';
 import { useStore } from '../store';
+import { getPlatform } from '../utils/platform';
 
 // `tauriFetch` is intentionally NOT used here - it has a known bug where the
 // body stream never completes (see
@@ -404,6 +405,17 @@ export function getBaseUrl(): string {
 export function getWsBaseUrl(): string {
   const httpUrl = getBaseUrl();
   return httpUrl.replace('http://', 'ws://').replace('https://', 'wss://');
+}
+
+/**
+ * Move-updates WebSocket URL. `client` names this app to the robot's
+ * anonymous telemetry (a browser WebSocket can't set headers); daemons that
+ * predate it ignore the parameter.
+ */
+export function getMoveUpdatesWsUrl(): string {
+  const os = getPlatform();
+  const client = `desktop/${__APP_VERSION__}${os === 'unknown' ? '' : ` (${os})`}`;
+  return `${getWsBaseUrl()}/api/move/ws/updates?client=${encodeURIComponent(client)}`;
 }
 
 /** Check whether the app is currently in WiFi mode. */

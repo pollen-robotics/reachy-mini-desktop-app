@@ -95,3 +95,6 @@ docs/latest.json
 
 # Blender source files (too large for git)
 src/assets/robot-3d/blender/
+
+# Generated release notes (scripts/release_notes)
+.release-notes/

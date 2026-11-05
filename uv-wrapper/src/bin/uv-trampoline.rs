@@ -244,6 +244,13 @@ fn main() -> ExitCode {
     let needs_full_bootstrap = !venv_exists(&data_dir, ".venv");
     let needs_apps_venv = !venv_exists(&data_dir, "apps_venv");
 
+    // Existing installs keep their first uv otherwise. Non-fatal: offline, the old uv still works.
+    if !needs_full_bootstrap {
+        if let Err(e) = uv_wrapper::download_uv(&data_dir) {
+            eprintln!("⚠️ uv update failed, keeping the current uv: {}", e);
+        }
+    }
+
     if needs_full_bootstrap {
         println!("📦 First run detected, bootstrapping Python environment...");
         if let Err(e) = bootstrap(&data_dir) {

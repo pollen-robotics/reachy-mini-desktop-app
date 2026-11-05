@@ -1,6 +1,11 @@
 import { useEffect, useRef } from 'react';
 import useAppStore from '../../store/useAppStore';
-import { getWsBaseUrl, buildApiUrl, fetchWithTimeout, DAEMON_CONFIG } from '../../config/daemon';
+import {
+  getMoveUpdatesWsUrl,
+  buildApiUrl,
+  fetchWithTimeout,
+  DAEMON_CONFIG,
+} from '../../config/daemon';
 
 /**
  * WebSocket updates emitted by /api/move/ws/updates.
@@ -106,7 +111,7 @@ export function useActiveMoves(isActive: boolean): void {
       }
 
       try {
-        const wsUrl = `${getWsBaseUrl()}/api/move/ws/updates`;
+        const wsUrl = getMoveUpdatesWsUrl();
         const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {

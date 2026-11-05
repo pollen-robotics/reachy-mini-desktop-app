@@ -38,9 +38,9 @@ pub fn request_all_permissions() {
 #[tauri::command]
 #[cfg(target_os = "macos")]
 pub fn open_camera_settings() -> Result<(), String> {
-    use std::process::Command;
+    use crate::process::without_console;
 
-    let output = Command::new("open")
+    let output = without_console("open")
         .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Camera")
         .output()
         .map_err(|e| format!("Failed to open System Settings: {}", e))?;
@@ -59,9 +59,9 @@ pub fn open_camera_settings() -> Result<(), String> {
 #[tauri::command]
 #[cfg(target_os = "macos")]
 pub fn open_microphone_settings() -> Result<(), String> {
-    use std::process::Command;
+    use crate::process::without_console;
 
-    let output = Command::new("open")
+    let output = without_console("open")
         .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
         .output()
         .map_err(|e| format!("Failed to open System Settings: {}", e))?;
@@ -80,17 +80,17 @@ pub fn open_microphone_settings() -> Result<(), String> {
 #[tauri::command]
 #[cfg(target_os = "macos")]
 pub fn open_wifi_settings() -> Result<(), String> {
-    use std::process::Command;
+    use crate::process::without_console;
 
     // Try the new macOS 13+ Network Settings first
-    let output = Command::new("open")
+    let output = without_console("open")
         .arg("x-apple.systempreferences:com.apple.Network-Settings.extension")
         .output()
         .map_err(|e| format!("Failed to open System Settings: {}", e))?;
 
     if !output.status.success() {
         // Fallback to legacy Network preferences (macOS 12 and earlier)
-        let fallback = Command::new("open")
+        let fallback = without_console("open")
             .arg("x-apple.systempreferences:com.apple.preference.network")
             .output()
             .map_err(|e| format!("Failed to open System Settings: {}", e))?;
@@ -110,9 +110,9 @@ pub fn open_wifi_settings() -> Result<(), String> {
 #[tauri::command]
 #[cfg(target_os = "macos")]
 pub fn open_files_settings() -> Result<(), String> {
-    use std::process::Command;
+    use crate::process::without_console;
 
-    let output = Command::new("open")
+    let output = without_console("open")
         .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders")
         .output()
         .map_err(|e| format!("Failed to open System Settings: {}", e))?;
@@ -131,9 +131,9 @@ pub fn open_files_settings() -> Result<(), String> {
 #[tauri::command]
 #[cfg(target_os = "macos")]
 pub fn open_local_network_settings() -> Result<(), String> {
-    use std::process::Command;
+    use crate::process::without_console;
 
-    let output = Command::new("open")
+    let output = without_console("open")
         .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork")
         .output()
         .map_err(|e| format!("Failed to open System Settings: {}", e))?;
@@ -332,13 +332,13 @@ pub async fn request_location_permission() -> Result<Option<bool>, String> {
 #[tauri::command]
 #[cfg(target_os = "macos")]
 pub fn open_location_settings() -> Result<(), String> {
-    use std::process::Command;
+    use crate::process::without_console;
 
     // macOS 13+ (Ventura, Sonoma, Sequoia…): Privacy & Security pane.
     // There is no dedicated deep-link to Location Services in macOS 13+;
     // opening Privacy & Security is the best we can do.
     let new_url = "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension";
-    let output = Command::new("open")
+    let output = without_console("open")
         .arg(new_url)
         .output()
         .map_err(|e| format!("Failed to open System Settings: {}", e))?;
@@ -350,7 +350,7 @@ pub fn open_location_settings() -> Result<(), String> {
     // Fallback: legacy URL (macOS 12 and earlier)
     let legacy_url =
         "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices";
-    let fallback = Command::new("open")
+    let fallback = without_console("open")
         .arg(legacy_url)
         .output()
         .map_err(|e| format!("Failed to open System Settings: {}", e))?;
@@ -469,10 +469,10 @@ pub async fn request_bluetooth_permission() -> Result<Option<bool>, String> {
 #[tauri::command]
 #[cfg(target_os = "macos")]
 pub fn open_bluetooth_settings() -> Result<(), String> {
-    use std::process::Command;
+    use crate::process::without_console;
 
     // macOS 13+ (Ventura+): Bluetooth settings pane
-    let output = Command::new("open")
+    let output = without_console("open")
         .arg("x-apple.systempreferences:com.apple.BluetoothSettings")
         .output()
         .map_err(|e| format!("Failed to open Bluetooth Settings: {}", e))?;
@@ -482,7 +482,7 @@ pub fn open_bluetooth_settings() -> Result<(), String> {
     }
 
     // Fallback: legacy URL (macOS 12 and earlier)
-    let fallback = Command::new("open")
+    let fallback = without_console("open")
         .arg("x-apple.systempreferences:com.apple.preference.bluetooth")
         .output()
         .map_err(|e| format!("Failed to open Bluetooth Settings: {}", e))?;
@@ -510,9 +510,9 @@ pub fn open_bluetooth_settings() -> Result<(), String> {
 #[tauri::command]
 #[cfg(target_os = "windows")]
 pub fn open_camera_settings() -> Result<(), String> {
-    use std::process::Command;
+    use crate::process::without_console;
     // Open Windows Settings > Privacy > Camera
-    Command::new("cmd")
+    without_console("cmd")
         .args(["/C", "start", "ms-settings:privacy-webcam"])
         .spawn()
         .map_err(|e| format!("Failed to open Settings: {}", e))?;
@@ -522,9 +522,9 @@ pub fn open_camera_settings() -> Result<(), String> {
 #[tauri::command]
 #[cfg(target_os = "windows")]
 pub fn open_microphone_settings() -> Result<(), String> {
-    use std::process::Command;
+    use crate::process::without_console;
     // Open Windows Settings > Privacy > Microphone
-    Command::new("cmd")
+    without_console("cmd")
         .args(["/C", "start", "ms-settings:privacy-microphone"])
         .spawn()
         .map_err(|e| format!("Failed to open Settings: {}", e))?;
@@ -534,9 +534,9 @@ pub fn open_microphone_settings() -> Result<(), String> {
 #[tauri::command]
 #[cfg(target_os = "windows")]
 pub fn open_wifi_settings() -> Result<(), String> {
-    use std::process::Command;
+    use crate::process::without_console;
     // Open Windows Settings > Network & Internet > Wi-Fi
-    Command::new("cmd")
+    without_console("cmd")
         .args(["/C", "start", "ms-settings:network-wifi"])
         .spawn()
         .map_err(|e| format!("Failed to open Settings: {}", e))?;
@@ -546,9 +546,9 @@ pub fn open_wifi_settings() -> Result<(), String> {
 #[tauri::command]
 #[cfg(target_os = "windows")]
 pub fn open_files_settings() -> Result<(), String> {
-    use std::process::Command;
+    use crate::process::without_console;
     // Open Windows Settings > Privacy > File System
-    Command::new("cmd")
+    without_console("cmd")
         .args(["/C", "start", "ms-settings:privacy-broadfilesystemaccess"])
         .spawn()
         .map_err(|e| format!("Failed to open Settings: {}", e))?;
@@ -558,9 +558,9 @@ pub fn open_files_settings() -> Result<(), String> {
 #[tauri::command]
 #[cfg(target_os = "windows")]
 pub fn open_local_network_settings() -> Result<(), String> {
-    use std::process::Command;
+    use crate::process::without_console;
     // Open Windows Settings > Network & Internet (no direct local network privacy setting)
-    Command::new("cmd")
+    without_console("cmd")
         .args(["/C", "start", "ms-settings:network"])
         .spawn()
         .map_err(|e| format!("Failed to open Settings: {}", e))?;
@@ -589,31 +589,33 @@ pub async fn request_local_network_permission() -> Result<Option<bool>, String> 
 pub fn open_camera_settings() -> Result<(), String> {
     // Linux doesn't have a centralized camera settings
     // Best effort: open GNOME Settings if available
-    use std::process::Command;
-    let _ = Command::new("gnome-control-center").arg("privacy").spawn();
+    use crate::process::without_console;
+    let _ = without_console("gnome-control-center")
+        .arg("privacy")
+        .spawn();
     Ok(())
 }
 
 #[tauri::command]
 #[cfg(target_os = "linux")]
 pub fn open_microphone_settings() -> Result<(), String> {
-    use std::process::Command;
+    use crate::process::without_console;
     // Try GNOME Sound settings
-    let _ = Command::new("gnome-control-center").arg("sound").spawn();
+    let _ = without_console("gnome-control-center").arg("sound").spawn();
     Ok(())
 }
 
 #[tauri::command]
 #[cfg(target_os = "linux")]
 pub fn open_wifi_settings() -> Result<(), String> {
-    use std::process::Command;
+    use crate::process::without_console;
     // Try GNOME Network settings first, fallback to nm-connection-editor
-    if Command::new("gnome-control-center")
+    if without_console("gnome-control-center")
         .arg("wifi")
         .spawn()
         .is_err()
     {
-        let _ = Command::new("nm-connection-editor").spawn();
+        let _ = without_console("nm-connection-editor").spawn();
     }
     Ok(())
 }
@@ -623,8 +625,10 @@ pub fn open_wifi_settings() -> Result<(), String> {
 pub fn open_files_settings() -> Result<(), String> {
     // Linux doesn't have centralized file access permissions
     // Best effort: open file manager or GNOME privacy settings
-    use std::process::Command;
-    let _ = Command::new("gnome-control-center").arg("privacy").spawn();
+    use crate::process::without_console;
+    let _ = without_console("gnome-control-center")
+        .arg("privacy")
+        .spawn();
     Ok(())
 }
 
@@ -633,8 +637,10 @@ pub fn open_files_settings() -> Result<(), String> {
 pub fn open_local_network_settings() -> Result<(), String> {
     // Linux doesn't have centralized local network privacy settings
     // Best effort: open GNOME network settings
-    use std::process::Command;
-    let _ = Command::new("gnome-control-center").arg("network").spawn();
+    use crate::process::without_console;
+    let _ = without_console("gnome-control-center")
+        .arg("network")
+        .spawn();
     Ok(())
 }
 
