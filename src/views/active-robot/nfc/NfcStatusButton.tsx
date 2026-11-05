@@ -25,6 +25,7 @@ export const NFC_STATE_COLOR: Record<NfcState, string> = {
 export interface NfcStatusButtonProps {
   state: NfcState;
   onClick: () => void;
+  disabled?: boolean;
 }
 
 /**
@@ -42,6 +43,7 @@ export interface NfcStatusButtonProps {
 export default function NfcStatusButton({
   state,
   onClick,
+  disabled = false,
 }: NfcStatusButtonProps): React.ReactElement {
   const palette = useAppPalette();
   const unavailable = state === 'unavailable';
@@ -51,91 +53,94 @@ export default function NfcStatusButton({
 
   return (
     <Tooltip title="NFC Reader" placement="top" arrow>
-      <ButtonBase
-        onClick={onClick}
-        aria-label={`NFC reader: ${label}`}
-        sx={{
-          boxSizing: 'border-box',
-          height: SIZE,
-          minWidth: SIZE,
-          px: '8px',
-          borderRadius: `${SIZE / 2}px`,
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'flex-start',
-          color: muted ? palette.textMuted : ACCENT.main,
-          bgcolor: palette.surfaceCard,
-          border: '1px solid',
-          borderColor: unavailable ? palette.border : palette.accentBorderStrong,
-          backdropFilter: BLUR.md,
-          boxShadow: palette.shadowSm,
-          transition: transition('all', DURATION.base),
-          '& .nfc-label': {
-            maxWidth: 0,
-            opacity: 0,
-            ml: 0,
-          },
-          '&:hover, &:focus-visible': {
-            bgcolor: palette.isDark ? accentAlpha(0.15) : accentAlpha(0.1),
-            borderColor: ACCENT.main,
-            '& .nfc-label': {
-              maxWidth: 140,
-              opacity: 1,
-              ml: '6px',
-              mr: '4px',
-            },
-          },
-        }}
-      >
-        <Box sx={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
-          <NfcIcon sx={{ fontSize: TYPO.xl }} />
-          {unavailable && (
-            // Diagonal slash across the icon, like a muted speaker icon.
-            <Box
-              sx={{
-                position: 'absolute',
-                left: '50%',
-                top: '50%',
-                width: '120%',
-                height: '1.5px',
-                bgcolor: 'currentColor',
-                borderRadius: '1px',
-                boxShadow: `0 0 0 1px ${palette.surfaceCard}`,
-                transform: 'translate(-50%, -50%) rotate(-45deg)',
-              }}
-            />
-          )}
-          {!muted && (
-            <Box
-              sx={{
-                position: 'absolute',
-                top: -2,
-                right: -3,
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                bgcolor: dotColor,
-                border: `1.5px solid ${palette.surfaceCard}`,
-                transition: transition('background-color', DURATION.base),
-              }}
-            />
-          )}
-        </Box>
-        <Typography
-          component="span"
-          className="nfc-label"
+      <span style={{ display: 'inline-flex' }}>
+        <ButtonBase
+          onClick={onClick}
+          disabled={disabled}
+          aria-label={`NFC reader: ${label}`}
           sx={{
-            fontSize: TYPO.sm,
-            fontWeight: FONT_WEIGHT.semibold,
-            color: muted ? palette.textMuted : palette.textPrimary,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            transition: transition(['max-width', 'opacity', 'margin'], DURATION.medium),
+            boxSizing: 'border-box',
+            height: SIZE,
+            minWidth: SIZE,
+            px: '8px',
+            borderRadius: `${SIZE / 2}px`,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'flex-start',
+            color: muted ? palette.textMuted : ACCENT.main,
+            bgcolor: palette.surfaceCard,
+            border: '1px solid',
+            borderColor: unavailable ? palette.border : palette.accentBorderStrong,
+            backdropFilter: BLUR.md,
+            boxShadow: palette.shadowSm,
+            transition: transition('all', DURATION.base),
+            '&.Mui-disabled': { opacity: 0.4 },
+            '& .nfc-label': {
+              maxWidth: 0,
+              opacity: 0,
+              ml: 0,
+            },
+            '&:hover, &:focus-visible': {
+              bgcolor: palette.isDark ? accentAlpha(0.15) : accentAlpha(0.1),
+              borderColor: ACCENT.main,
+              '& .nfc-label': {
+                maxWidth: 140,
+                opacity: 1,
+                ml: '6px',
+                mr: '4px',
+              },
+            },
           }}
         >
-          {label}
-        </Typography>
-      </ButtonBase>
+          <Box sx={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
+            <NfcIcon sx={{ fontSize: TYPO.xl }} />
+            {unavailable && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  left: '50%',
+                  top: '50%',
+                  width: '120%',
+                  height: '1.5px',
+                  bgcolor: 'currentColor',
+                  borderRadius: '1px',
+                  boxShadow: `0 0 0 1px ${palette.surfaceCard}`,
+                  transform: 'translate(-50%, -50%) rotate(-45deg)',
+                }}
+              />
+            )}
+            {!muted && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  top: -2,
+                  right: -3,
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  bgcolor: dotColor,
+                  border: `1.5px solid ${palette.surfaceCard}`,
+                  transition: transition('background-color', DURATION.base),
+                }}
+              />
+            )}
+          </Box>
+          <Typography
+            component="span"
+            className="nfc-label"
+            sx={{
+              fontSize: TYPO.sm,
+              fontWeight: FONT_WEIGHT.semibold,
+              color: muted ? palette.textMuted : palette.textPrimary,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              transition: transition(['max-width', 'opacity', 'margin'], DURATION.medium),
+            }}
+          >
+            {label}
+          </Typography>
+        </ButtonBase>
+      </span>
     </Tooltip>
   );
 }

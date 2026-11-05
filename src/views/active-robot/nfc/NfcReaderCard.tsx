@@ -216,7 +216,7 @@ export default function NfcReaderCard({
               <Switch
                 checked={state !== 'disabled'}
                 onChange={e => onToggle(e.target.checked)}
-                disabled={!canToggle || isToggling || isErasing}
+                disabled={!canToggle || isToggling || busy}
                 size="small"
                 color="primary"
                 inputProps={{ 'aria-label': 'NFC reader on' }}
@@ -389,7 +389,10 @@ export default function NfcReaderCard({
                 value={draft}
                 onChange={e => setDraft(e.target.value)}
                 onKeyDown={e => {
-                  if (e.key === 'Escape') setEditing(false);
+                  if (e.key === 'Escape') {
+                    e.stopPropagation();
+                    setEditing(false);
+                  }
                   if (e.key === 'Enter' && !e.shiftKey && draft.trim()) {
                     e.preventDefault();
                     submitWrite();
