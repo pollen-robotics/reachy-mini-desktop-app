@@ -45,11 +45,9 @@ export interface ViewportSwapperProps {
   viewCamera: React.ReactElement | null;
   onSwap?: (swapped: boolean) => void;
   initialSwapped?: boolean;
-  /** Rendered just above the small viewport, aligned with its right edge. */
   smallViewportAccessory?: React.ReactNode;
 }
 
-// Small viewport placement, relative to the main viewport's bottom-right corner.
 const SMALL_VIEWPORT = { width: 140, height: 105, bottom: -60, right: 20 } as const;
 const ACCESSORY_GAP = 8;
 

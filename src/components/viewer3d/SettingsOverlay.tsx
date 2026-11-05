@@ -40,8 +40,7 @@ import { SettingsNfcCard } from '../../views/active-robot/nfc';
 import type { UpdateInfo } from './settings/SettingsUpdateCard';
 import type { WifiStatus } from './settings/SettingsWifiCard';
 
-// Let the overlay fade in before scrolling, and the scroll settle before the
-// card starts blinking.
+// Let the overlay fade in before scrolling, and the scroll settle before blinking.
 const FOCUS_SCROLL_DELAY_MS = 100;
 const FOCUS_BLINK_DELAY_MS = 450;
 
@@ -70,7 +69,6 @@ export default function SettingsOverlay({
   const isWifiMode = connectionMode === 'wifi';
   const settingsFocus = useAppStore(state => state.settingsFocus);
 
-  // Opened from the NFC button: bring the NFC card into view and blink it.
   const nfcCardRef = useRef<HTMLDivElement | null>(null);
   const [highlightNfc, setHighlightNfc] = useState<boolean>(false);
   useEffect(() => {
@@ -79,8 +77,7 @@ export default function SettingsOverlay({
     const scrollTimer = setTimeout(() => {
       nfcCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, FOCUS_SCROLL_DELAY_MS);
-    // Clearing the focus re-runs this effect, whose cleanup would cancel the
-    // timers: only clear it once both have fired.
+    // Clearing the focus re-runs this effect: only clear it once both timers have fired.
     const blinkTimer = setTimeout(() => {
       setHighlightNfc(true);
       useAppStore.getState().clearSettingsFocus();

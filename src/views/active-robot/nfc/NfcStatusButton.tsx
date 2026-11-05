@@ -1,27 +1,20 @@
 import React from 'react';
 import { Box, ButtonBase, Tooltip, Typography } from '@mui/material';
 import NfcIcon from '@mui/icons-material/Nfc';
-import { ACCENT, DURATION, STATUS, accentAlpha, transition } from '@styles/tokens';
+import { ACCENT, DURATION, accentAlpha, transition } from '@styles/tokens';
 import { useAppPalette, TYPO, FONT_WEIGHT, BLUR } from '@styles';
 import type { NfcState } from './nfcState';
+import { NFC_STATE_COLOR } from './nfcStateColor';
 
 const SIZE = 36;
 
 const LABEL_OPEN = { maxWidth: 140, opacity: 1, ml: '6px', mr: '4px' } as const;
 
-/** Short on purpose: the label only shows while the button is hovered. */
-export const NFC_STATE_LABEL: Record<NfcState, string> = {
+const NFC_STATE_LABEL: Record<NfcState, string> = {
   disabled: 'NFC off',
   unavailable: 'NFC unavailable',
   idle: 'No tag',
   tag: 'Tag detected',
-};
-
-export const NFC_STATE_COLOR: Record<NfcState, string> = {
-  disabled: STATUS.neutral,
-  unavailable: STATUS.neutral,
-  idle: STATUS.neutral,
-  tag: STATUS.success,
 };
 
 export interface NfcStatusButtonProps {
@@ -30,18 +23,6 @@ export interface NfcStatusButtonProps {
   disabled?: boolean;
 }
 
-/**
- * Pill that shows the NFC reader state as an icon, and spells it out on hover.
- *
- * - unavailable: grey icon struck through, grey outline
- * - disabled: grey icon, accent outline
- * - idle: accent icon, grey dot
- * - tag: accent icon, green dot
- *
- * Anchored by its right edge: the label opens to the right of the icon, so the
- * pill grows leftwards and its right edge stays aligned with whatever it sits
- * above.
- */
 export default function NfcStatusButton({
   state,
   onClick,

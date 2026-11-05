@@ -7,7 +7,6 @@ export interface SettingsNfcCardProps {
   cardStyle?: SxProps<Theme>;
 }
 
-/** NFC Reader card for the Settings page, polling the reader while shown. */
 export default function SettingsNfcCard({ cardStyle }: SettingsNfcCardProps): React.ReactElement {
   const reader = useNfcReader();
 

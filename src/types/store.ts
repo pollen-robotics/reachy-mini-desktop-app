@@ -190,7 +190,6 @@ export interface ToastState {
   severity: ToastSeverity;
 }
 
-/** A Settings card the overlay can scroll to and highlight when it opens. */
 export type SettingsSection = 'nfc';
 
 export interface UiSliceState {
@@ -203,7 +202,6 @@ export interface UiSliceState {
   showBluetoothSupportView: boolean;
   showSetupChoice: boolean;
   showSettings: boolean;
-  /** Card to bring into view when Settings opens; cleared once shown. */
   settingsFocus: SettingsSection | null;
   bleStatus: BleStatus;
   bleDevices: unknown[];

@@ -6,19 +6,16 @@ import type { NfcState, NfcStatus, NfcTag, NfcTagResult, NfcWriteContent } from 
 
 const POLL_INTERVAL_MS = 1000;
 const READ_TIMEOUT_MS = 3000;
-// The daemon waits up to 15s for a tag before answering an erase, and a full
-// erase writes every page; leave room on top of that.
+// The daemon waits up to 15s for a tag, and a full erase writes every page.
 const ERASE_TIMEOUT_MS = 25000;
-// The daemon waits up to 6s for a tag before answering a write.
+// The daemon waits up to 6s for a tag.
 const WRITE_TIMEOUT_MS = 12000;
-// Switching off joins the daemon's reader thread, which answers within a poll.
 const TOGGLE_TIMEOUT_MS = 8000;
 
 export interface UseNfcReaderResult {
   status: NfcStatus | null;
   tag: NfcTag | null;
   state: NfcState;
-  /** Set when the daemon could not be asked at all (older daemon, network). */
   fetchError: string | null;
   isErasing: boolean;
   eraseResult: NfcTagResult | null;
@@ -26,19 +23,26 @@ export interface UseNfcReaderResult {
   isWriting: boolean;
   writeResult: NfcTagResult | null;
   write: (content: NfcWriteContent) => Promise<void>;
-  /** False on a daemon too old to switch the reader, or not answering. */
   canToggle: boolean;
   isToggling: boolean;
   toggleError: string | null;
   setEnabled: (enabled: boolean) => Promise<void>;
-  /** Forget the last erase and write outcomes. */
   clearResults: () => void;
 }
 
-/**
- * POST one tag-modifying operation and fold every way it can fail into a
- * result, so the caller only has one shape to show.
- */
+function postJson(path: string, body: object, timeoutMs: number, label: string): Promise<Response> {
+  return fetchWithTimeout(
+    buildApiUrl(path),
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+    timeoutMs,
+    { label }
+  );
+}
+
 async function postTagOperation(
   path: string,
   body: object,
@@ -46,17 +50,8 @@ async function postTagOperation(
   label: string
 ): Promise<NfcTagResult> {
   try {
-    const res = await fetchWithTimeout(
-      buildApiUrl(path),
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      },
-      timeoutMs,
-      { label }
-    );
-    // The daemon's only 503 on these routes: the reader is switched off.
+    const res = await postJson(path, body, timeoutMs, label);
+    // 503 on these routes: the reader is switched off.
     if (res.status === 503) return { success: false, error: 'DISABLED' };
     if (!res.ok) return { success: false, error: `${label} request failed (${res.status})` };
     return (await res.json()) as NfcTagResult;
@@ -65,15 +60,7 @@ async function postTagOperation(
   }
 }
 
-/**
- * Poll the daemon's NFC reader once a second while the window is visible.
- *
- * The tag is only asked for when the reader is connected: the daemon answers
- * "no tag" otherwise, so the request would tell us nothing.
- *
- * `enabled: false` pauses the poll, so two readers on screen at once (the
- * status button behind Settings, and the Settings card) do not both ask.
- */
+// `enabled: false` pauses the poll, so the button and the Settings card do not both poll.
 export function useNfcReader({ enabled = true }: { enabled?: boolean } = {}): UseNfcReaderResult {
   const [status, setStatus] = useState<NfcStatus | null>(null);
   const [tag, setTag] = useState<NfcTag | null>(null);
@@ -179,15 +166,11 @@ export function useNfcReader({ enabled = true }: { enabled?: boolean } = {}): Us
     let error: string | null = null;
     let nextStatus: NfcStatus | null = null;
     try {
-      const res = await fetchWithTimeout(
-        buildApiUrl('/api/nfc/enabled'),
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ enabled }),
-        },
+      const res = await postJson(
+        '/api/nfc/enabled',
+        { enabled },
         TOGGLE_TIMEOUT_MS,
-        { label: enabled ? 'NFC reader on' : 'NFC reader off' }
+        enabled ? 'NFC reader on' : 'NFC reader off'
       );
       if (res.ok) nextStatus = (await res.json()) as NfcStatus;
       else error = `Could not switch the reader ${enabled ? 'on' : 'off'} (${res.status})`;
@@ -195,7 +178,6 @@ export function useNfcReader({ enabled = true }: { enabled?: boolean } = {}): Us
       error = 'Lost the link to the daemon';
     }
     if (!mountedRef.current) return;
-    // Show the switch's new position now rather than at the next poll.
     if (nextStatus) {
       setStatus(nextStatus);
       if (!nextStatus.connected) setTag(null);
@@ -222,5 +204,3 @@ export function useNfcReader({ enabled = true }: { enabled?: boolean } = {}): Us
     setEnabled,
   };
 }
-
-export default useNfcReader;

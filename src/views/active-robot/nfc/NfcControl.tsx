@@ -4,9 +4,8 @@ import { selectIsBusy } from '../../../store/slices';
 import NfcStatusButton from './NfcStatusButton';
 import { useNfcReader } from './useNfcReader';
 
-/** NFC status button; opens Settings on the NFC Reader card. */
 export default function NfcControl(): React.ReactElement {
-  // Settings covers the button and polls the reader itself while open.
+  // Settings polls the reader itself while open.
   const settingsOpen = useAppStore(state => state.showSettings);
   const reader = useNfcReader({ enabled: !settingsOpen });
   const isBusy = useAppStore(selectIsBusy);

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { deriveNfcState, describeTagError, needsFullErase } from '../nfcState';
+import {
+  deriveNfcState,
+  describeTagError,
+  isRawPreviewTruncated,
+  ndefMessageBytes,
+  needsFullErase,
+} from '../nfcState';
 import type { NfcStatus, NfcTag } from '../nfcState';
 
 const connected: NfcStatus = { connected: true, chip_detected: true, driver_available: true };
@@ -33,10 +39,7 @@ describe('deriveNfcState', () => {
     ).toBe('disabled');
   });
 
-  it('treats a daemon without the switch as switched on', () => {
-    expect(deriveNfcState(connected, null)).toBe('idle');
-  });
-
+  // No `enabled` field counts as on.
   it('is idle on a connected reader with no tag', () => {
     expect(deriveNfcState(connected, null)).toBe('idle');
     expect(deriveNfcState(connected, { present: false })).toBe('idle');
@@ -73,5 +76,37 @@ describe('describeTagError', () => {
     expect(describeTagError('DISABLED')).toMatch(/switched off/i);
     expect(describeTagError('UNCERTAIN')).toMatch(/check the tag/i);
     expect(describeTagError('BUSY')).toMatch(/busy/i);
+  });
+});
+
+// Expected sizes: len(winnie_nfc.ndef.build_text / build_uri(...)).
+describe('ndefMessageBytes', () => {
+  it('matches the driver for text, across both length formats', () => {
+    expect(ndefMessageBytes({ text: '' })).toBe(10);
+    expect(ndefMessageBytes({ text: 'hi' })).toBe(12);
+    expect(ndefMessageBytes({ text: 'a'.repeat(250) })).toBe(262);
+    expect(ndefMessageBytes({ text: 'a'.repeat(251) })).toBe(263);
+    expect(ndefMessageBytes({ text: 'a'.repeat(252) })).toBe(264);
+    expect(ndefMessageBytes({ text: 'a'.repeat(300) })).toBe(315);
+  });
+
+  it('counts UTF-8 bytes, not characters', () => {
+    expect(ndefMessageBytes({ text: 'é'.repeat(10) })).toBe(30);
+    expect(ndefMessageBytes({ text: '🎩'.repeat(100) })).toBe(415);
+  });
+
+  it('abbreviates the longest URI prefix, like the driver', () => {
+    expect(ndefMessageBytes({ uri: 'https://www.pollen-robotics.com' })).toBe(27);
+    expect(ndefMessageBytes({ uri: 'https://x.io' })).toBe(12);
+    expect(ndefMessageBytes({ uri: 'foo:bar' })).toBe(15);
+    expect(ndefMessageBytes({ uri: 'urn:epc:id:abc' })).toBe(11);
+    expect(ndefMessageBytes({ uri: 'https://' + 'a'.repeat(300) })).toBe(313);
+  });
+});
+
+describe('isRawPreviewTruncated', () => {
+  it('is true only for a full 32-byte preview', () => {
+    expect(isRawPreviewTruncated('42'.repeat(32))).toBe(true);
+    expect(isRawPreviewTruncated('42414447')).toBe(false);
   });
 });

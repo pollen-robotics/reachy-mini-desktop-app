@@ -1,9 +1,5 @@
-/**
- * NFC reader types and the pure logic around them, kept free of imports so
- * tests can load it without the app (and its browser-only modules).
- */
+// No imports: tests load this without the app.
 
-/** Why the reader is not serving: the daemon's `NfcStatus.error_code`. */
 export type NfcStatusError =
   | 'DISABLED'
   | 'NO_BOARD'
@@ -11,24 +7,19 @@ export type NfcStatusError =
   | 'PORT_CONFLICT'
   | 'LINK_ERROR';
 
-/** Mirrors the daemon's `NfcStatus` (`GET /api/nfc/status`). */
 export interface NfcStatus {
   connected: boolean;
-  /** Switched on or off from Settings. Absent on daemons without the switch. */
   enabled?: boolean;
   chip_detected: boolean;
   driver_available: boolean;
   port?: string | null;
-  /** From the board's USB product string ("Winnie NFC 1.2"). Absent on older daemons. */
   board_version?: string | null;
   chip_version?: string | null;
-  /** For people; branch on `error_code`, the wording may change. */
   error?: string | null;
   error_code?: NfcStatusError | null;
   last_seen_at?: string | null;
 }
 
-/** One NDEF record. `kind` is "text", "uri" or "other". */
 export interface NfcRecord {
   kind: 'text' | 'uri' | 'other' | string;
   value?: string | null;
@@ -36,7 +27,6 @@ export interface NfcRecord {
   data_hex?: string | null;
 }
 
-/** Mirrors the daemon's `NfcTag` (`GET /api/nfc/tag`). */
 export interface NfcTag {
   present: boolean;
   uid?: string | null;
@@ -52,19 +42,15 @@ export interface NfcTag {
   last_read_at?: string | null;
 }
 
-/** Mirrors the daemon's `NfcWriteResult`, answered by both erase and write. */
 export interface NfcTagResult {
   success: boolean;
   error?: string | null;
 }
 
-/** What `POST /api/nfc/write` puts on the tag: one text or URI record. */
 export type NfcWriteContent = { text: string } | { uri: string };
 
-/** What the reader is doing, as the status button shows it. */
 export type NfcState = 'disabled' | 'unavailable' | 'idle' | 'tag';
 
-/** Stable error codes returned by the daemon's erase and write endpoints. */
 const TAG_ERROR_MESSAGES: Record<string, string> = {
   NO_TAG: 'No tag on the reader',
   TOO_LONG: 'Too long for this tag',
@@ -79,38 +65,64 @@ const TAG_ERROR_MESSAGES: Record<string, string> = {
   UNCERTAIN: 'The write may not have finished: check the tag',
   BUSY: 'The NFC reader is busy, try again',
   DRIVER_MISSING: 'NFC driver not installed on the robot',
-  // Not from a write result: the daemon answers 503 while the reader is off.
+  // Answered as a 503 while the reader is off.
   DISABLED: 'NFC reader is switched off',
 };
 
-/**
- * Turn an erase or write error code into a line for the user. Unknown codes are shown
- * as-is: a code we have never seen is more useful than a generic message.
- */
+// Unknown codes are shown as-is.
 export function describeTagError(code: string | null | undefined): string {
   if (!code) return 'Unknown error';
   return TAG_ERROR_MESSAGES[code] ?? code;
 }
 
-/**
- * Collapse the daemon's status and tag into the states the button shows.
- *
- * "disabled" is the user's choice and wins over everything else.
- * Anything short of a connected reader is "unavailable": no answer from the
- * daemon, an older daemon without the NFC routes, the driver missing, or the
- * board unplugged all look the same from the button.
- */
 export function deriveNfcState(status: NfcStatus | null, tag: NfcTag | null): NfcState {
   if (status?.enabled === false) return 'disabled';
   if (!status?.connected) return 'unavailable';
   return tag?.present ? 'tag' : 'idle';
 }
 
-/**
- * True when the tag holds a payload that is not NDEF (a bare code written
- * straight into memory), which only a full erase removes.
- */
+// A non-NDEF payload only goes away with a full erase.
 export function needsFullErase(tag: NfcTag | null): boolean {
   if (!tag?.present) return false;
   return Boolean(tag.raw_hex) && (tag.records?.length ?? 0) === 0;
+}
+
+// The daemon's RAW_PREVIEW_BYTES.
+const RAW_PREVIEW_BYTES = 32;
+
+export function isRawPreviewTruncated(rawHex: string): boolean {
+  return rawHex.length >= RAW_PREVIEW_BYTES * 2;
+}
+
+// Driver order: the index of the longest matching prefix is written on the tag.
+// prettier-ignore
+const URI_PREFIXES = [
+  '', 'http://www.', 'https://www.', 'http://', 'https://', 'tel:',
+  'mailto:', 'ftp://anonymous:anonymous@', 'ftp://ftp.', 'ftps://',
+  'sftp://', 'smb://', 'nfs://', 'ftp://', 'dav://', 'news:',
+  'telnet://', 'imap:', 'rtsp://', 'urn:', 'pop:', 'sip:', 'sips:',
+  'tftp:', 'btspp://', 'btl2cap://', 'btgoep://', 'tcpobex://',
+  'irdaobex://', 'file://', 'urn:epc:id:', 'urn:epc:tag:',
+  'urn:epc:pat:', 'urn:epc:raw:', 'urn:epc:', 'urn:nfc:',
+];
+
+const TEXT_LANG = 'en';
+
+// Size of the NDEF message the driver writes (winnie_nfc ndef.build_text / build_uri).
+export function ndefMessageBytes(content: NfcWriteContent): number {
+  const utf8 = (s: string): number => new TextEncoder().encode(s).length;
+  let payload: number;
+  if ('uri' in content) {
+    const prefix = URI_PREFIXES.reduce(
+      (best, p) => (p && content.uri.startsWith(p) && p.length > best.length ? p : best),
+      ''
+    );
+    payload = 1 + utf8(content.uri.slice(prefix.length));
+  } else {
+    payload = 1 + TEXT_LANG.length + utf8(content.text);
+  }
+  // Record: header, type length, payload length (1 byte up to 255, else 4), type "T"/"U".
+  const record = 2 + (payload <= 0xff ? 1 : 4) + 1 + payload;
+  // TLV: tag, length (1 byte up to 254, else 3), message, terminator.
+  return 1 + (record <= 0xfe ? 1 : 3) + record + 1;
 }

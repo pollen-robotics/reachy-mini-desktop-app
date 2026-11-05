@@ -18,9 +18,11 @@ import SectionHeader from '../../../components/viewer3d/settings/SectionHeader';
 import { STATUS } from '@styles/tokens';
 import { useAppPalette, TYPO, FONT_WEIGHT, RADIUS } from '@styles';
 import { openUrl } from '../../../utils/tauriCompat';
-import { NFC_STATE_COLOR } from './NfcStatusButton';
+import { NFC_STATE_COLOR } from './nfcStateColor';
 import {
   describeTagError,
+  isRawPreviewTruncated,
+  ndefMessageBytes,
   needsFullErase,
   type NfcRecord,
   type NfcState,
@@ -30,10 +32,9 @@ import {
   type NfcWriteContent,
 } from './nfcState';
 
-/** Same page as the conversation app's "Get the NFC add-on". */
 const ADD_ON_STORE_URL = 'https://store.pollen-robotics.com/products/reachy-mini-accessory-pack';
 
-/** The daemon refuses more than this; the tag's own capacity is smaller still. */
+// Daemon limit; the tag capacity is checked separately, in bytes.
 const MAX_WRITE_CHARS = 860;
 
 type WriteKind = 'text' | 'uri';
@@ -57,15 +58,12 @@ export interface NfcReaderCardProps {
   cardStyle?: SxProps<Theme>;
 }
 
-// A reader the daemon cannot find gets its own card (see `absent`), so these
-// only cover the daemon not answering, the switch off, and a live reader.
 function readerTitle(status: NfcStatus | null): string {
   if (!status) return 'Unknown';
   if (status.enabled === false) return 'Reader switched off';
   return 'Reader connected';
 }
 
-/** Null when the title says it all. */
 function readerDetail(status: NfcStatus | null, fetchError: string | null): string | null {
   if (!status) return fetchError ?? 'Waiting for the daemon…';
   if (status.enabled === false) return 'Turn it on to read tags';
@@ -77,7 +75,6 @@ function recordValue(record: NfcRecord): string {
   return record.value ?? [record.type_name, record.data_hex].filter(Boolean).join(' ');
 }
 
-/** What the editor opens on: the tag's first text or URI record, if any. */
 function editableContent(records: NfcRecord[]): { kind: WriteKind; value: string } {
   const record = records.find(r => (r.kind === 'text' || r.kind === 'uri') && r.value);
   if (!record) return { kind: 'text', value: '' };
@@ -115,8 +112,7 @@ export default function NfcReaderCard({
   const busy = isErasing || isWriting;
   const result = writeResult ?? eraseResult;
 
-  // A result, a pending confirmation or an open editor belongs to the tag it
-  // was about.
+  // Reset when the tag changes.
   useEffect(() => {
     setConfirming(false);
     setEditing(false);
@@ -132,9 +128,17 @@ export default function NfcReaderCard({
     setEditing(true);
   };
 
+  // The daemon only answers TOO_LONG once a tag is presented.
+  const writeContent: NfcWriteContent =
+    writeKind === 'uri' ? { uri: draft.trim() } : { text: draft };
+  const writeBytes = ndefMessageBytes(writeContent);
+  const capacity = tag?.present ? (tag.capacity ?? null) : null;
+  const tooLong = capacity !== null && writeBytes > capacity;
+  const canSubmit = draft.trim() !== '' && !tooLong;
+
   const submitWrite = (): void => {
     setEditing(false);
-    onWrite(writeKind === 'uri' ? { uri: draft.trim() } : { text: draft });
+    onWrite(writeContent);
   };
 
   const labelSx = {
@@ -149,9 +153,7 @@ export default function NfcReaderCard({
 
   const monoSx = { fontFamily: 'monospace', fontSize: TYPO.xs, color: textSecondary } as const;
 
-  // The daemon answers but finds no board: most robots have no add-on, so
-  // present it rather than a reader with nothing to do. A reader switched off
-  // keeps the full card, since its switch is the way back on.
+  // No board: show the add-on. A reader switched off keeps the full card for its switch.
   const absent = status !== null && !status.connected && status.enabled !== false;
 
   if (absent) {
@@ -226,7 +228,6 @@ export default function NfcReaderCard({
         }
       />
 
-      {/* Reader module */}
       <Box sx={{ textAlign: 'center', mb: 2 }}>
         <Typography
           sx={{ fontSize: TYPO.md, fontWeight: FONT_WEIGHT.semibold, color: textPrimary, mb: 0.5 }}
@@ -241,7 +242,6 @@ export default function NfcReaderCard({
         )}
       </Box>
 
-      {/* Tag */}
       <Box
         sx={{
           minHeight: 120,
@@ -264,8 +264,6 @@ export default function NfcReaderCard({
               bgcolor: NFC_STATE_COLOR[state],
             }}
           />
-          {/* lineHeight 1: the caps then sit in the middle of the line box,
-              level with the dot. */}
           <Typography sx={{ ...labelSx, lineHeight: 1 }}>
             {tag?.present ? 'Tag' : 'No tag'}
           </Typography>
@@ -330,7 +328,10 @@ export default function NfcReaderCard({
                     </Box>
                   ))
                 ) : tag.raw_hex ? (
-                  <Typography sx={{ ...monoSx, wordBreak: 'break-all' }}>{tag.raw_hex}…</Typography>
+                  <Typography sx={{ ...monoSx, wordBreak: 'break-all' }}>
+                    {tag.raw_hex}
+                    {isRawPreviewTruncated(tag.raw_hex) && '…'}
+                  </Typography>
                 ) : (
                   <Typography sx={{ fontSize: TYPO.sm, color: STATUS.warning }}>
                     {tag.error ?? 'Content could not be read'}
@@ -339,8 +340,6 @@ export default function NfcReaderCard({
               </Box>
             </Box>
 
-            {/* Pushed to the bottom of the box: a quiet acknowledgement, the
-                content above already shows what changed. */}
             {result?.success && (
               <Box sx={{ mt: 'auto', display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <CheckIcon sx={{ fontSize: TYPO.sm, color: textMuted }} />
@@ -353,15 +352,12 @@ export default function NfcReaderCard({
         )}
       </Box>
 
-      {/* Actions */}
       <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
         {editing ? (
           <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1 }}>
             <Typography component="label" htmlFor="nfc-tag-content" sx={labelSx}>
               Tag content
             </Typography>
-            {/* Top-aligned: a multiline field grows downwards, the toggle stays
-                level with its first line. */}
             <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
               <ToggleButtonGroup
                 exclusive
@@ -393,7 +389,7 @@ export default function NfcReaderCard({
                     e.stopPropagation();
                     setEditing(false);
                   }
-                  if (e.key === 'Enter' && !e.shiftKey && draft.trim()) {
+                  if (e.key === 'Enter' && !e.shiftKey && canSubmit) {
                     e.preventDefault();
                     submitWrite();
                   }
@@ -401,6 +397,18 @@ export default function NfcReaderCard({
                 inputProps={{ maxLength: MAX_WRITE_CHARS }}
               />
             </Box>
+            {capacity !== null && (
+              <Typography
+                sx={{
+                  fontSize: TYPO.tiny,
+                  color: tooLong ? STATUS.error : textMuted,
+                  textAlign: 'right',
+                }}
+              >
+                {tooLong && 'Too long for this tag · '}
+                {writeBytes} / {capacity} bytes
+              </Typography>
+            )}
             {records.length > 1 && (
               <Typography sx={{ fontSize: TYPO.tiny, color: textMuted, textAlign: 'center' }}>
                 Replaces all {records.length} records on the tag.
@@ -417,7 +425,7 @@ export default function NfcReaderCard({
               <Button
                 size="small"
                 variant="outlined"
-                disabled={!draft.trim()}
+                disabled={!canSubmit}
                 onClick={submitWrite}
                 sx={{ textTransform: 'none' }}
               >
@@ -451,7 +459,6 @@ export default function NfcReaderCard({
             </Button>
           </Box>
         ) : state === 'tag' || busy ? (
-          // No tag, or the reader off: nothing to modify or erase.
           <Box sx={{ display: 'flex', gap: 1.5 }}>
             <Button
               size="small"

@@ -93,7 +93,6 @@ export const createUISlice: StateCreator<AppState, [], [], UiSlice> = (set, get)
   setShowBluetoothSupportView: value => set({ showBluetoothSupportView: value }),
   setShowSetupChoice: value => set({ showSetupChoice: value }),
 
-  // Settings overlay
   openSettings: focus => set({ showSettings: true, settingsFocus: focus ?? null }),
   closeSettings: () => set({ showSettings: false, settingsFocus: null }),
   clearSettingsFocus: () => set({ settingsFocus: null }),

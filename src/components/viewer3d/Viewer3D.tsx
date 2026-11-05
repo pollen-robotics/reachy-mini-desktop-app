@@ -180,8 +180,6 @@ export default function RobotViewer3D({
 
   const showSpinner = shouldWaitForPose && (!isPoseReady || !spinnerGraceElapsed);
 
-  // Settings open state lives in the store so other controls (the NFC button)
-  // can open it on a given card.
   const showSettingsOverlay = useAppStore(state => state.showSettings);
   const openSettings = useCallback(() => useAppStore.getState().openSettings(), []);
   const closeSettings = useCallback(() => useAppStore.getState().closeSettings(), []);
