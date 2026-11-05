@@ -13,6 +13,7 @@ const LABEL_OPEN = { maxWidth: 140, opacity: 1, ml: '6px', mr: '4px' } as const;
 const NFC_STATE_LABEL: Record<NfcState, string> = {
   disabled: 'NFC off',
   unavailable: 'NFC unavailable',
+  connecting: 'Connecting…',
   idle: 'No tag',
   tag: 'Tag detected',
 };
@@ -30,7 +31,8 @@ export default function NfcStatusButton({
 }: NfcStatusButtonProps): React.ReactElement {
   const palette = useAppPalette();
   const unavailable = state === 'unavailable';
-  const muted = unavailable || state === 'disabled';
+  const connecting = state === 'connecting';
+  const muted = unavailable || connecting || state === 'disabled';
   const dotColor = NFC_STATE_COLOR[state];
   const label = NFC_STATE_LABEL[state];
 
@@ -71,7 +73,15 @@ export default function NfcStatusButton({
           }}
         >
           <Box sx={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
-            <NfcIcon sx={{ fontSize: TYPO.xl }} />
+            <NfcIcon
+              sx={{
+                fontSize: TYPO.xl,
+                ...(connecting && {
+                  animation: 'nfcConnecting 1.2s ease-in-out infinite',
+                  '@keyframes nfcConnecting': { '50%': { opacity: 0.35 } },
+                }),
+              }}
+            />
             {unavailable && (
               <Box
                 sx={{

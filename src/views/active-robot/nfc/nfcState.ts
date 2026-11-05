@@ -49,7 +49,7 @@ export interface NfcTagResult {
 
 export type NfcWriteContent = { text: string } | { uri: string };
 
-export type NfcState = 'disabled' | 'unavailable' | 'idle' | 'tag';
+export type NfcState = 'disabled' | 'unavailable' | 'connecting' | 'idle' | 'tag';
 
 const TAG_ERROR_MESSAGES: Record<string, string> = {
   NO_TAG: 'No tag on the reader',
@@ -88,7 +88,8 @@ export function isReaderAbsentForGood(status: NfcStatus): boolean {
 
 export function deriveNfcState(status: NfcStatus | null, tag: NfcTag | null): NfcState {
   if (status?.enabled === false) return 'disabled';
-  if (!status?.connected) return 'unavailable';
+  if (!status) return 'unavailable';
+  if (!status.connected) return isReaderAbsentForGood(status) ? 'unavailable' : 'connecting';
   return tag?.present ? 'tag' : 'idle';
 }
 

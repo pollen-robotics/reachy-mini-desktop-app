@@ -5,6 +5,7 @@ import type { NfcState } from './nfcState';
 export const NFC_STATE_COLOR: Record<NfcState, string> = {
   disabled: STATUS.neutral,
   unavailable: STATUS.neutral,
+  connecting: STATUS.neutral,
   idle: STATUS.neutral,
   tag: STATUS.success,
 };

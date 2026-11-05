@@ -22,6 +22,7 @@ import { NFC_STATE_COLOR } from './nfcStateColor';
 import {
   describeTagError,
   isRawPreviewTruncated,
+  isReaderAbsentForGood,
   ndefMessageBytes,
   needsFullErase,
   type NfcRecord,
@@ -61,6 +62,7 @@ export interface NfcReaderCardProps {
 function readerTitle(status: NfcStatus | null): string {
   if (!status) return 'Unknown';
   if (status.enabled === false) return 'Reader switched off';
+  if (!status.connected) return 'Connecting…';
   return 'Reader connected';
 }
 
@@ -153,8 +155,8 @@ export default function NfcReaderCard({
 
   const monoSx = { fontFamily: 'monospace', fontSize: TYPO.xs, color: textSecondary } as const;
 
-  // No board: show the add-on. A reader switched off keeps the full card for its switch.
-  const absent = status !== null && !status.connected && status.enabled !== false;
+  // No board: show the add-on. While the reader starts, it is not connected yet either.
+  const absent = status !== null && isReaderAbsentForGood(status);
 
   if (absent) {
     return (
@@ -280,9 +282,11 @@ export default function NfcReaderCard({
             <Typography sx={{ fontSize: TYPO.sm, color: textMuted, textAlign: 'center' }}>
               {state === 'disabled'
                 ? 'Reader is off'
-                : state === 'unavailable'
-                  ? 'No reader to read from'
-                  : 'Place a tag on the reader'}
+                : state === 'connecting'
+                  ? 'Waiting for the reader…'
+                  : state === 'unavailable'
+                    ? 'No reader to read from'
+                    : 'Place a tag on the reader'}
             </Typography>
           </Box>
         ) : (
