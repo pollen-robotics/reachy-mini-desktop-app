@@ -293,6 +293,7 @@ export default function RobotViewer3D({
 
       <SettingsOverlay
         open={showSettingsOverlay}
+        onOpen={openSettings}
         onClose={closeSettings}
         darkMode={palette.isDark}
       />
