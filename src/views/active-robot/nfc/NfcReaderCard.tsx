@@ -45,6 +45,7 @@ export interface NfcReaderCardProps {
   tag: NfcTag | null;
   state: NfcState;
   fetchError: string | null;
+  unsupported: boolean;
   isErasing: boolean;
   eraseResult: NfcTagResult | null;
   onErase: (full: boolean) => void;
@@ -92,6 +93,7 @@ export default function NfcReaderCard({
   tag,
   state,
   fetchError,
+  unsupported,
   isErasing,
   eraseResult,
   onErase,
@@ -160,9 +162,10 @@ export default function NfcReaderCard({
   const monoSx = { fontFamily: 'monospace', fontSize: TYPO.xs, color: textSecondary } as const;
 
   // No board: show the add-on. While the reader starts, it is not connected yet either.
+  // An outdated daemon gets the same card, pointing to the update instead.
   const absent = status !== null && isReaderAbsentForGood(status);
 
-  if (absent) {
+  if (absent || unsupported) {
     return (
       <Box sx={{ ...cardStyle, display: 'flex', flexDirection: 'column' }}>
         <SectionHeader title="NFC Reader" icon={NfcIcon} darkMode={palette.isDark} />
@@ -178,27 +181,36 @@ export default function NfcReaderCard({
           <Typography
             sx={{ fontSize: TYPO.md, fontWeight: FONT_WEIGHT.semibold, color: textPrimary }}
           >
-            No NFC reader detected
+            {unsupported ? 'Update Reachy Mini to use NFC' : 'No NFC reader detected'}
           </Typography>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {unsupported ? (
             <Typography sx={{ fontSize: TYPO.sm, color: textSecondary, lineHeight: 1.5 }}>
-              Pop a hat on Reachy Mini and watch its personality change! The Conversation app reads
-              the hat's NFC tag and takes on its character.
+              The software on this robot does not support the NFC reader yet. Update it to read and
+              write NFC tags.
             </Typography>
-            <Typography sx={{ fontSize: TYPO.sm, color: textSecondary, lineHeight: 1.5 }}>
-              Got an idea? Tag any object and make it trigger your own behaviors in your apps.
-            </Typography>
-          </Box>
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={() => void openUrl(ADD_ON_STORE_URL)}
-            endIcon={<OpenInNewIcon sx={{ fontSize: TYPO.md }} />}
-            sx={{ textTransform: 'none' }}
-          >
-            Get the NFC add-on
-          </Button>
-          {!status.driver_available && (
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <Typography sx={{ fontSize: TYPO.sm, color: textSecondary, lineHeight: 1.5 }}>
+                Pop a hat on Reachy Mini and watch its personality change! The Conversation app
+                reads the hat&apos;s NFC tag and takes on its character.
+              </Typography>
+              <Typography sx={{ fontSize: TYPO.sm, color: textSecondary, lineHeight: 1.5 }}>
+                Got an idea? Tag any object and make it trigger your own behaviors in your apps.
+              </Typography>
+            </Box>
+          )}
+          {!unsupported && (
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => void openUrl(ADD_ON_STORE_URL)}
+              endIcon={<OpenInNewIcon sx={{ fontSize: TYPO.md }} />}
+              sx={{ textTransform: 'none' }}
+            >
+              Get the NFC add-on
+            </Button>
+          )}
+          {!unsupported && status?.driver_available === false && (
             <Typography sx={{ fontSize: TYPO.tiny, color: textMuted }}>
               Already fitted? Install reachy_mini[nfc] on the robot.
             </Typography>

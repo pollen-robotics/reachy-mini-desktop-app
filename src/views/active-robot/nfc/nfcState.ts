@@ -81,7 +81,8 @@ export function describeTagError(code: string | null | undefined): string {
   return TAG_ERROR_MESSAGES[code] ?? code;
 }
 
-// None of these change while the app runs.
+// None of these change without restarting the daemon, which disconnects the app.
+// The board must not be hot-plugged: the robot is switched off to fit it.
 const ABSENT_FOR_GOOD: ReadonlyArray<NfcStatusError> = [
   'NO_BOARD',
   'DRIVER_MISSING',

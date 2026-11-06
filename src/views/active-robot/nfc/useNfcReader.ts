@@ -17,6 +17,8 @@ export interface UseNfcReaderResult {
   tag: NfcTag | null;
   state: NfcState;
   fetchError: string | null;
+  // The daemon has no NFC support: the robot needs an update.
+  unsupported: boolean;
   isErasing: boolean;
   eraseResult: NfcTagResult | null;
   erase: (full: boolean) => Promise<void>;
@@ -66,6 +68,7 @@ export function useNfcReader({ enabled = true }: { enabled?: boolean } = {}): Us
   const [status, setStatus] = useState<NfcStatus | null>(null);
   const [tag, setTag] = useState<NfcTag | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [unsupported, setUnsupported] = useState<boolean>(false);
   const [isErasing, setIsErasing] = useState<boolean>(false);
   const [eraseResult, setEraseResult] = useState<NfcTagResult | null>(null);
   const [isWriting, setIsWriting] = useState<boolean>(false);
@@ -96,14 +99,17 @@ export function useNfcReader({ enabled = true }: { enabled?: boolean } = {}): Us
           READ_TIMEOUT_MS,
           { silent: true }
         );
-        if (!statusRes.ok) {
-          final = statusRes.status === 404;
-          throw new Error(
-            statusRes.status === 404
-              ? 'This daemon version has no NFC support'
-              : `NFC status request failed (${statusRes.status})`
-          );
+        // No NFC routes: the daemon predates NFC support.
+        if (statusRes.status === 404) {
+          final = true;
+          if (cancelled) return;
+          setUnsupported(true);
+          setStatus(null);
+          setTag(null);
+          setFetchError(null);
+          return;
         }
+        if (!statusRes.ok) throw new Error(`NFC status request failed (${statusRes.status})`);
         const nextStatus = (await statusRes.json()) as NfcStatus;
         final = isReaderAbsentForGood(nextStatus);
         let nextTag: NfcTag | null = null;
@@ -195,6 +201,7 @@ export function useNfcReader({ enabled = true }: { enabled?: boolean } = {}): Us
     tag,
     state: deriveNfcState(status, tag),
     fetchError,
+    unsupported,
     isErasing,
     eraseResult,
     erase,

@@ -16,6 +16,7 @@ export default function SettingsNfcCard({ cardStyle }: SettingsNfcCardProps): Re
       tag={reader.tag}
       state={reader.state}
       fetchError={reader.fetchError}
+      unsupported={reader.unsupported}
       isErasing={reader.isErasing}
       eraseResult={reader.eraseResult}
       onErase={full => void reader.erase(full)}
