@@ -62,9 +62,9 @@ async function postTagOperation(
   }
 }
 
-// `enabled: false` pauses the poll, so the button and the Settings card do not both poll.
+// `polling: false` pauses the poll, so the button and the Settings card do not both poll.
 // It also stops once the answer cannot change.
-export function useNfcReader({ enabled = true }: { enabled?: boolean } = {}): UseNfcReaderResult {
+export function useNfcReader({ polling = true }: { polling?: boolean } = {}): UseNfcReaderResult {
   const [status, setStatus] = useState<NfcStatus | null>(null);
   const [tag, setTag] = useState<NfcTag | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -86,7 +86,7 @@ export function useNfcReader({ enabled = true }: { enabled?: boolean } = {}): Us
   }, []);
 
   useEffect(() => {
-    if (!isVisible || !enabled) return;
+    if (!isVisible || !polling) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -96,8 +96,7 @@ export function useNfcReader({ enabled = true }: { enabled?: boolean } = {}): Us
         const statusRes = await fetchWithTimeout(
           buildApiUrl('/api/nfc/status'),
           {},
-          READ_TIMEOUT_MS,
-          { silent: true }
+          READ_TIMEOUT_MS
         );
         // No NFC routes: the daemon predates NFC support.
         if (statusRes.status === 404) {
@@ -114,9 +113,7 @@ export function useNfcReader({ enabled = true }: { enabled?: boolean } = {}): Us
         final = isReaderAbsentForGood(nextStatus);
         let nextTag: NfcTag | null = null;
         if (nextStatus.connected) {
-          const tagRes = await fetchWithTimeout(buildApiUrl('/api/nfc/tag'), {}, READ_TIMEOUT_MS, {
-            silent: true,
-          });
+          const tagRes = await fetchWithTimeout(buildApiUrl('/api/nfc/tag'), {}, READ_TIMEOUT_MS);
           if (tagRes.ok) nextTag = (await tagRes.json()) as NfcTag;
         }
         if (cancelled) return;
@@ -138,7 +135,7 @@ export function useNfcReader({ enabled = true }: { enabled?: boolean } = {}): Us
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [isVisible, enabled]);
+  }, [isVisible, polling]);
 
   const erase = useCallback(async (full: boolean): Promise<void> => {
     setIsErasing(true);

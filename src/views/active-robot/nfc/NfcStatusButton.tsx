@@ -70,8 +70,8 @@ export default function NfcStatusButton({
             '&:hover, &:focus-visible': {
               bgcolor: palette.isDark ? accentAlpha(0.15) : accentAlpha(0.1),
               borderColor: ACCENT.main,
-              '& .nfc-label': LABEL_OPEN,
             },
+            '&:focus-visible .nfc-label': LABEL_OPEN,
           }}
         >
           <Box sx={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
