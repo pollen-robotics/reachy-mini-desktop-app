@@ -243,6 +243,7 @@ function ActiveRobotView({
 
   // Logs fullscreen modal
   const [logsFullscreenOpen, setLogsFullscreenOpen] = useState<boolean>(false);
+  const [viewsSwapped, setViewsSwapped] = useState<boolean>(false);
 
   // Remote daemon log stream (WiFi mode only).
   // Side-effect hook: pushes incoming lines into `state.logs`, so every
@@ -567,7 +568,8 @@ function ActiveRobotView({
                   />
                 }
                 viewCamera={<CameraFeed width={640} height={480} isLarge={true} />}
-                smallViewportAccessory={<NfcControl />}
+                onSwap={setViewsSwapped}
+                smallViewportAccessory={<NfcControl disabled={viewsSwapped} />}
               />
 
               {/* Power Button - top left corner (sleep + disable motors + kill daemon) */}

@@ -87,14 +87,10 @@ export default function ViewportSwapper({
 
   // Handle swap
   const handleSwap = useCallback(() => {
-    setIsSwapped(prev => {
-      const newSwapped = !prev;
-      if (onSwap) {
-        onSwap(newSwapped);
-      }
-      return newSwapped;
-    });
-  }, [onSwap]);
+    const newSwapped = !isSwapped;
+    setIsSwapped(newSwapped);
+    onSwap?.(newSwapped);
+  }, [isSwapped, onSwap]);
 
   // ✅ Create small view versions with additional props
   // These are rendered conditionally based on swap state
