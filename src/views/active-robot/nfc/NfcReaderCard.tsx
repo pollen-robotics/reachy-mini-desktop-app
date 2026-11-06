@@ -409,7 +409,7 @@ export default function NfcReaderCard({
                     e.stopPropagation();
                     setEditing(false);
                   }
-                  if (e.key === 'Enter' && !e.shiftKey && canSubmit) {
+                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && canSubmit) {
                     e.preventDefault();
                     submitWrite();
                   }

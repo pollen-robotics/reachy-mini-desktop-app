@@ -77,6 +77,7 @@ export function useNfcReader({ polling = true }: { polling?: boolean } = {}): Us
   const [toggleError, setToggleError] = useState<string | null>(null);
   const isVisible = useWindowVisible();
   const mountedRef = useRef<boolean>(true);
+  const statusGenRef = useRef<number>(0);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -91,6 +92,8 @@ export function useNfcReader({ polling = true }: { polling?: boolean } = {}): Us
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const poll = async (): Promise<void> => {
+      const gen = statusGenRef.current;
+      const stale = (): boolean => cancelled || gen !== statusGenRef.current;
       let final = false;
       try {
         const statusRes = await fetchWithTimeout(
@@ -110,18 +113,18 @@ export function useNfcReader({ polling = true }: { polling?: boolean } = {}): Us
         }
         if (!statusRes.ok) throw new Error(`NFC status request failed (${statusRes.status})`);
         const nextStatus = (await statusRes.json()) as NfcStatus;
-        final = isReaderAbsentForGood(nextStatus);
         let nextTag: NfcTag | null = null;
         if (nextStatus.connected) {
           const tagRes = await fetchWithTimeout(buildApiUrl('/api/nfc/tag'), {}, READ_TIMEOUT_MS);
           if (tagRes.ok) nextTag = (await tagRes.json()) as NfcTag;
         }
-        if (cancelled) return;
+        if (stale()) return;
+        final = isReaderAbsentForGood(nextStatus);
         setStatus(nextStatus);
         setTag(nextTag);
         setFetchError(null);
       } catch (err) {
-        if (cancelled) return;
+        if (stale()) return;
         setStatus(null);
         setTag(null);
         setFetchError(err instanceof Error ? err.message : String(err));
@@ -168,6 +171,7 @@ export function useNfcReader({ polling = true }: { polling?: boolean } = {}): Us
   }, []);
 
   const setEnabled = useCallback(async (enabled: boolean): Promise<void> => {
+    statusGenRef.current += 1;
     setIsToggling(true);
     setToggleError(null);
     let error: string | null = null;
@@ -185,6 +189,8 @@ export function useNfcReader({ polling = true }: { polling?: boolean } = {}): Us
       error = 'Lost the link to the daemon';
     }
     if (!mountedRef.current) return;
+    // Drop the polls sent while the toggle was in flight too.
+    statusGenRef.current += 1;
     if (nextStatus) {
       setStatus(nextStatus);
       if (!nextStatus.connected) setTag(null);
