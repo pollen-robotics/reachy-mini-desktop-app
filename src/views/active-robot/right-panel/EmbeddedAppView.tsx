@@ -6,6 +6,7 @@ import { useActiveRobotContext } from '../context';
 import { openAppWindow, closeAppWindow } from '../../../utils/windowManager';
 import useAppStore from '../../../store/useAppStore';
 import { buildApiUrl, fetchWithTimeout, DAEMON_CONFIG } from '../../../config/daemon';
+import { useEmbeddedAppOpenUrl } from '../../../hooks/system';
 import { ACCENT, STATUS, blackAlpha, whiteAlpha } from '@styles/tokens';
 import { FONT_WEIGHT, RADIUS, TYPO, useAppPalette } from '@styles';
 
@@ -109,6 +110,9 @@ export default function EmbeddedAppView(
       if (bustKeyRef.current === key) setCacheReady(true);
     });
   }, [embeddedAppUrl, currentAppName]);
+
+  // Apps cannot open a browser from inside the webview, so they ask us to.
+  useEmbeddedAppOpenUrl(embeddedAppUrl);
 
   const iframeSrc = useMemo(
     () => (embeddedAppUrl && cacheReady ? buildEmbeddedUrl(embeddedAppUrl, isDark) : null),

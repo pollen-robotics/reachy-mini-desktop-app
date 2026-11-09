@@ -19,3 +19,4 @@ export { useViewRouter, ViewRouterWrapper } from './useViewRouter';
 export { useLocalWifiScan } from './useLocalWifiScan';
 export { useDeepLink } from './useDeepLink';
 export { useWindowVisible } from './useWindowVisible';
+export { useEmbeddedAppOpenUrl } from './useEmbeddedAppOpenUrl';
