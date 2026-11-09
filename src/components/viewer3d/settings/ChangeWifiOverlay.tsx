@@ -140,7 +140,7 @@ export default function ChangeWifiOverlay({
           onClick={onConnect}
           variant="outlined"
           color="primary"
-          disabled={!selectedSSID || !wifiPassword || isConnecting}
+          disabled={!selectedSSID || isConnecting}
           fullWidth
           sx={{
             py: 1.25,

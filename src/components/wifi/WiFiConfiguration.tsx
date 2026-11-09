@@ -140,7 +140,7 @@ export default function WiFiConfiguration({
 
   // Connect to WiFi
   const handleConnect = useCallback(async () => {
-    if (!selectedSSID || !wifiPassword) return;
+    if (!selectedSSID) return;
     const ssidToUse = selectedSSID;
 
     // 📊 Telemetry - Track WiFi setup started
@@ -648,7 +648,7 @@ export default function WiFiConfiguration({
           disabled={isConnecting}
           sx={inputStyles}
           onKeyPress={(e: React.KeyboardEvent<HTMLInputElement>) => {
-            if (e.key === 'Enter' && selectedSSID && wifiPassword) {
+            if (e.key === 'Enter' && selectedSSID) {
               handleConnect();
             }
           }}
@@ -679,7 +679,7 @@ export default function WiFiConfiguration({
         <Button
           variant="outlined"
           onClick={handleConnect}
-          disabled={!selectedSSID || !wifiPassword || isConnecting}
+          disabled={!selectedSSID || isConnecting}
           fullWidth
           sx={{
             borderColor: ACCENT.main,
