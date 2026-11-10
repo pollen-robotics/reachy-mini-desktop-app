@@ -45,13 +45,18 @@ export interface ViewportSwapperProps {
   viewCamera: React.ReactElement | null;
   onSwap?: (swapped: boolean) => void;
   initialSwapped?: boolean;
+  smallViewportAccessory?: React.ReactNode;
 }
+
+const SMALL_VIEWPORT = { width: 140, height: 105, bottom: -60, right: 20 } as const;
+const ACCESSORY_GAP = 8;
 
 export default function ViewportSwapper({
   view3D,
   viewCamera,
   onSwap,
   initialSwapped = false,
+  smallViewportAccessory,
 }: ViewportSwapperProps): React.ReactElement {
   const [isSwapped, setIsSwapped] = useState<boolean>(initialSwapped);
   const [isMounted, setIsMounted] = useState<boolean>(false);
@@ -82,14 +87,10 @@ export default function ViewportSwapper({
 
   // Handle swap
   const handleSwap = useCallback(() => {
-    setIsSwapped(prev => {
-      const newSwapped = !prev;
-      if (onSwap) {
-        onSwap(newSwapped);
-      }
-      return newSwapped;
-    });
-  }, [onSwap]);
+    const newSwapped = !isSwapped;
+    setIsSwapped(newSwapped);
+    onSwap?.(newSwapped);
+  }, [isSwapped, onSwap]);
 
   // ✅ Create small view versions with additional props
   // These are rendered conditionally based on swap state
@@ -160,10 +161,10 @@ export default function ViewportSwapper({
       <Box
         sx={{
           position: 'absolute',
-          bottom: -60,
-          right: 20,
-          width: 140,
-          height: 105,
+          bottom: SMALL_VIEWPORT.bottom,
+          right: SMALL_VIEWPORT.right,
+          width: SMALL_VIEWPORT.width,
+          height: SMALL_VIEWPORT.height,
           // z-index hierarchy: 10 = UI controls (small viewport overlay)
           zIndex: 10,
           '&:hover .swap-button': {
@@ -217,6 +218,21 @@ export default function ViewportSwapper({
           ⇄
         </IconButton>
       </Box>
+
+      {smallViewportAccessory && (
+        <Box
+          sx={{
+            position: 'absolute',
+            bottom: SMALL_VIEWPORT.bottom + SMALL_VIEWPORT.height + ACCESSORY_GAP,
+            right: SMALL_VIEWPORT.right,
+            display: 'flex',
+            justifyContent: 'flex-end',
+            zIndex: 10,
+          }}
+        >
+          {smallViewportAccessory}
+        </Box>
+      )}
 
       {/* Portals: teleport views to containers */}
       {/* ✅ FIX: Only ONE 3D view is rendered at a time (no duplicate WebGL contexts) */}

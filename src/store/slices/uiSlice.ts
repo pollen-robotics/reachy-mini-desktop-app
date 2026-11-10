@@ -38,6 +38,8 @@ export const uiInitialState: UiSliceState = {
   showFirstTimeWifiSetup: false,
   showBluetoothSupportView: false,
   showSetupChoice: false,
+  showSettings: false,
+  settingsFocus: null,
   bleStatus: 'disconnected',
   bleDevices: [],
   bleDeviceAddress: null,
@@ -90,6 +92,10 @@ export const createUISlice: StateCreator<AppState, [], [], UiSlice> = (set, get)
   setShowFirstTimeWifiSetup: value => set({ showFirstTimeWifiSetup: value }),
   setShowBluetoothSupportView: value => set({ showBluetoothSupportView: value }),
   setShowSetupChoice: value => set({ showSetupChoice: value }),
+
+  openSettings: focus => set({ showSettings: true, settingsFocus: focus ?? null }),
+  closeSettings: () => set({ showSettings: false, settingsFocus: null }),
+  clearSettingsFocus: () => set({ settingsFocus: null }),
 
   // BLE state management
   setBleStatus: value => set({ bleStatus: value }),

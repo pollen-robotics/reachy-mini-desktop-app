@@ -6,6 +6,7 @@ import FullscreenOverlayUntyped from '../../components/FullscreenOverlay';
 import Viewer3DUntyped from '../../components/viewer3d';
 import CameraFeed from './camera/CameraFeed';
 import { ViewportSwapper } from './layout';
+import { NfcControl } from './nfc';
 import LogConsoleUntyped from '@components/LogConsole';
 import { RightPanel } from './right-panel';
 import RobotHeader from './RobotHeader';
@@ -242,6 +243,7 @@ function ActiveRobotView({
 
   // Logs fullscreen modal
   const [logsFullscreenOpen, setLogsFullscreenOpen] = useState<boolean>(false);
+  const [viewsSwapped, setViewsSwapped] = useState<boolean>(false);
 
   // Remote daemon log stream (WiFi mode only).
   // Side-effect hook: pushes incoming lines into `state.logs`, so every
@@ -566,6 +568,8 @@ function ActiveRobotView({
                   />
                 }
                 viewCamera={<CameraFeed width={640} height={480} isLarge={true} />}
+                onSwap={setViewsSwapped}
+                smallViewportAccessory={<NfcControl disabled={viewsSwapped} />}
               />
 
               {/* Power Button - top left corner (sleep + disable motors + kill daemon) */}

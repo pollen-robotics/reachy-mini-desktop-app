@@ -36,8 +36,13 @@ import {
   ChangeWifiOverlay,
   WifiConnectingOverlay,
 } from './settings';
+import { SettingsNfcCard } from '../../views/active-robot/nfc';
 import type { UpdateInfo } from './settings/SettingsUpdateCard';
 import type { WifiStatus } from './settings/SettingsWifiCard';
+
+// Let the overlay fade in before scrolling, and the scroll settle before blinking.
+const FOCUS_SCROLL_DELAY_MS = 100;
+const FOCUS_BLINK_DELAY_MS = 450;
 
 type UpdateJobStatus = 'pending' | 'in_progress' | 'done' | 'failed' | 'restarting' | string;
 
@@ -62,6 +67,26 @@ export default function SettingsOverlay({
   const palette = useAppPalette();
   const { connectionMode, remoteHost, resetAll, clearApps } = useAppStore();
   const isWifiMode = connectionMode === 'wifi';
+  const settingsFocus = useAppStore(state => state.settingsFocus);
+
+  const nfcCardRef = useRef<HTMLDivElement | null>(null);
+  const [highlightNfc, setHighlightNfc] = useState<boolean>(false);
+  useEffect(() => {
+    if (!open || settingsFocus !== 'nfc') return;
+    setHighlightNfc(false);
+    const scrollTimer = setTimeout(() => {
+      nfcCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, FOCUS_SCROLL_DELAY_MS);
+    // Clearing the focus re-runs this effect: only clear it once both timers have fired.
+    const blinkTimer = setTimeout(() => {
+      setHighlightNfc(true);
+      useAppStore.getState().clearSettingsFocus();
+    }, FOCUS_BLINK_DELAY_MS);
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(blinkTimer);
+    };
+  }, [open, settingsFocus]);
 
   const safelyParkRobot = async (): Promise<boolean> => {
     try {
@@ -856,6 +881,27 @@ export default function SettingsOverlay({
             ) : (
               <SettingsDaemonCard darkMode={palette.isDark} cardStyle={cardStyle} />
             )}
+
+            <Box
+              ref={nfcCardRef}
+              onAnimationEnd={e => {
+                if (e.animationName === 'nfcFocusBlink') setHighlightNfc(false);
+              }}
+              sx={{ display: 'flex', flexDirection: 'column' }}
+            >
+              <SettingsNfcCard
+                cardStyle={{
+                  ...cardStyle,
+                  flex: 1,
+                  ...(highlightNfc && {
+                    animation: 'nfcFocusBlink 0.5s ease-in-out 3',
+                    '@keyframes nfcFocusBlink': {
+                      '50%': { borderColor: ACCENT.main, boxShadow: `0 0 0 2px ${ACCENT.main}` },
+                    },
+                  }),
+                }}
+              />
+            </Box>
 
             <SettingsPreferencesCard darkMode={palette.isDark} cardStyle={cardStyle} />
 

@@ -180,9 +180,9 @@ export default function RobotViewer3D({
 
   const showSpinner = shouldWaitForPose && (!isPoseReady || !spinnerGraceElapsed);
 
-  const [showSettingsOverlay, setShowSettingsOverlay] = useState<boolean>(false);
-  const openSettings = useCallback(() => setShowSettingsOverlay(true), []);
-  const closeSettings = useCallback(() => setShowSettingsOverlay(false), []);
+  const showSettingsOverlay = useAppStore(state => state.showSettings);
+  const openSettings = useCallback(() => useAppStore.getState().openSettings(), []);
+  const closeSettings = useCallback(() => useAppStore.getState().closeSettings(), []);
 
   return (
     <Box
@@ -292,8 +292,8 @@ export default function RobotViewer3D({
       )}
 
       <SettingsOverlay
-        open={showSettingsOverlay}
-        onOpen={openSettings}
+        open={showSettingsOverlay && !hideControls}
+        onOpen={hideControls ? undefined : openSettings}
         onClose={closeSettings}
         darkMode={palette.isDark}
       />

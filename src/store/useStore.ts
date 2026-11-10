@@ -133,6 +133,9 @@ const storeCreator: StateCreator<FullAppState, [], [], FullAppState> = (set, get
       // next attempt starts from scratch rather than re-entering the update
       // view based on stale state from a previous host.
       wirelessUpdate: wirelessUpdateInitialState.wirelessUpdate,
+
+      showSettings: false,
+      settingsFocus: null,
     } as Partial<FullAppState>);
   },
 

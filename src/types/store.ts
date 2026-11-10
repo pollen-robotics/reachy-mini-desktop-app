@@ -190,6 +190,8 @@ export interface ToastState {
   severity: ToastSeverity;
 }
 
+export type SettingsSection = 'nfc';
+
 export interface UiSliceState {
   darkMode: boolean;
   openWindows: string[];
@@ -199,6 +201,8 @@ export interface UiSliceState {
   showFirstTimeWifiSetup: boolean;
   showBluetoothSupportView: boolean;
   showSetupChoice: boolean;
+  showSettings: boolean;
+  settingsFocus: SettingsSection | null;
   bleStatus: BleStatus;
   bleDevices: unknown[];
   bleDeviceAddress: string | null;
@@ -222,6 +226,10 @@ export interface UiSliceActions {
   setShowFirstTimeWifiSetup: (value: boolean) => void;
   setShowBluetoothSupportView: (value: boolean) => void;
   setShowSetupChoice: (value: boolean) => void;
+
+  openSettings: (focus?: SettingsSection) => void;
+  closeSettings: () => void;
+  clearSettingsFocus: () => void;
 
   setBleStatus: (value: BleStatus) => void;
   setBleDevices: (value: unknown[]) => void;

@@ -183,7 +183,13 @@ export const DAEMON_CONFIG = {
   },
 
   // Endpoints to NOT log (frequent calls).
-  SILENT_ENDPOINTS: ['/api/state/full', '/api/daemon/status', '/api/apps/list-available/installed'],
+  SILENT_ENDPOINTS: [
+    '/api/state/full',
+    '/api/daemon/status',
+    '/api/apps/list-available/installed',
+    '/api/nfc/status',
+    '/api/nfc/tag',
+  ],
 } as const;
 
 /**
