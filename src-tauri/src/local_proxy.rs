@@ -711,7 +711,15 @@ async fn handle_http(
     Ok(())
 }
 
-/// Validate that a host is on a private/local network (prevents SSRF to public hosts).
+/// Return whether an IPv4 address is in Tailscale's CGNAT allocation
+/// (100.64.0.0/10).
+fn is_tailnet_ipv4(ip: std::net::Ipv4Addr) -> bool {
+    let octets = ip.octets();
+    octets[0] == 100 && (64..=127).contains(&octets[1])
+}
+
+/// Validate that a host is on a private/local network or the Tailnet
+/// (prevents SSRF to public hosts).
 fn is_private_network_host(host: &str) -> bool {
     if host == "localhost" || host == "127.0.0.1" || host == "::1" {
         return true;
@@ -723,7 +731,9 @@ fn is_private_network_host(host: &str) -> bool {
 
     if let Ok(ip) = host.parse::<std::net::IpAddr>() {
         return match ip {
-            std::net::IpAddr::V4(v4) => v4.is_private() || v4.is_loopback() || v4.is_link_local(),
+            std::net::IpAddr::V4(v4) => {
+                v4.is_private() || v4.is_loopback() || v4.is_link_local() || is_tailnet_ipv4(v4)
+            }
             std::net::IpAddr::V6(v6) => {
                 v6.is_loopback()
                     || v6.segments()[0] == 0xfe80  // link-local
@@ -782,4 +792,37 @@ pub async fn clear_target_host(state: &Arc<LocalProxyState>) {
     let mut target = state.target_host.write().await;
     log::info!("[proxy] Target host cleared");
     *target = None;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_private_network_host;
+
+    #[test]
+    fn accepts_tailnet_ipv4_addresses() {
+        assert!(is_private_network_host("100.64.0.1"));
+        assert!(is_private_network_host("100.84.91.69"));
+        assert!(is_private_network_host("100.127.255.254"));
+    }
+
+    #[test]
+    fn rejects_addresses_adjacent_to_tailnet_range() {
+        assert!(!is_private_network_host("100.63.255.255"));
+        assert!(!is_private_network_host("100.128.0.0"));
+    }
+
+    #[test]
+    fn keeps_public_addresses_blocked() {
+        assert!(!is_private_network_host("8.8.8.8"));
+        assert!(!is_private_network_host("example.com"));
+    }
+
+    #[test]
+    fn keeps_existing_local_targets_allowed() {
+        assert!(is_private_network_host("localhost"));
+        assert!(is_private_network_host("reachy-mini.local"));
+        assert!(is_private_network_host("10.42.0.1"));
+        assert!(is_private_network_host("192.168.50.158"));
+        assert!(is_private_network_host("fd7a:115c:a1e0::b439:5b46"));
+    }
 }
