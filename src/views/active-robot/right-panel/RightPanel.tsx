@@ -126,7 +126,7 @@ export default function RightPanel({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        overflowY: isEmbeddedApp || !isAuthenticated ? 'hidden' : 'scroll',
+        overflowY: isEmbeddedApp || showLoginOverlay ? 'hidden' : 'scroll',
         overflowX: 'hidden',
         pt: 0,
         bgcolor: 'transparent !important',
