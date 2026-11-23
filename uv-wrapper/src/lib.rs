@@ -93,23 +93,22 @@ pub fn get_installed_version(data_dir: &PathBuf, venv_name: &str) -> Option<(u32
         })?;
 
     let metadata = fs::read_to_string(entry.path().join("METADATA")).ok()?;
-    let version_line = metadata
-        .lines()
-        .find(|l| l.starts_with("Version: "))?;
+    let version_line = metadata.lines().find(|l| l.starts_with("Version: "))?;
     let version_str = version_line.strip_prefix("Version: ")?.trim();
+    parse_version_triplet(version_str)
+}
 
-    // Parse "X.Y.Z" (ignore pre-release suffixes like rc1, .dev0, etc.)
-    let parts: Vec<&str> = version_str.split('.').collect();
-    if parts.len() >= 3 {
-        let major = parts[0].parse().ok()?;
-        let minor = parts[1].parse().ok()?;
-        // Strip non-numeric suffix from patch (e.g., "0rc1" → "0")
-        let patch_str: String = parts[2].chars().take_while(|c| c.is_ascii_digit()).collect();
-        let patch = patch_str.parse().ok()?;
-        Some((major, minor, patch))
-    } else {
-        None
-    }
+fn parse_version_triplet(version: &str) -> Option<(u32, u32, u32)> {
+    let mut parts = version.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    // Strip non-numeric suffix from the patch (e.g., "0rc1" → "0").
+    let patch: String = parts
+        .next()?
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    Some((major, minor, patch.parse().ok()?))
 }
 
 /// Check if the .venv has a reachy-mini version too old to work with the current app.
@@ -380,7 +379,7 @@ pub fn bootstrap(data_dir: &PathBuf) -> Result<(), String> {
     Ok(())
 }
 
-/// Path to the marker file that records which reachy-mini spec was last installed.
+/// Path to the marker file that records the reachy-mini spec last checked at startup.
 pub fn spec_marker_path(data_dir: &PathBuf) -> PathBuf {
     data_dir.join(".reachy_mini_spec")
 }
@@ -401,9 +400,15 @@ pub fn write_spec_marker(data_dir: &PathBuf) {
     let _ = fs::write(spec_marker_path(data_dir), get_reachy_mini_spec());
 }
 
-/// Upgrade reachy-mini in both venvs to match the current spec.
+/// Apply the current spec to existing venvs, preserving releases newer than a plain version pin.
 pub fn upgrade_venvs(data_dir: &PathBuf) -> Result<(), String> {
     let package_spec = get_reachy_mini_spec();
+    let pinned_version = package_spec
+        .strip_prefix("reachy-mini==")
+        .and_then(|version| {
+            let triplet @ (major, minor, patch) = parse_version_triplet(version)?;
+            (version == format!("{major}.{minor}.{patch}")).then_some(triplet)
+        });
 
     let python_rel = if cfg!(target_os = "windows") {
         ".venv\\Scripts\\python.exe"
@@ -416,17 +421,24 @@ pub fn upgrade_venvs(data_dir: &PathBuf) -> Result<(), String> {
         "apps_venv/bin/python3"
     };
 
-    println!("[upgrade] Upgrading .venv to {}...", package_spec);
-    run_uv(
-        data_dir,
-        &["pip", "install", "-U", "--python", python_rel, &package_spec],
-    )?;
-
-    if python_exe_path(data_dir, "apps_venv").exists() {
-        println!("[upgrade] Upgrading apps_venv to {}...", package_spec);
+    for (venv_name, python) in [(".venv", python_rel), ("apps_venv", apps_python_rel)] {
+        if venv_name == "apps_venv" && !venv_exists(data_dir, venv_name) {
+            continue;
+        }
+        let newer_version = pinned_version.and_then(|pin| {
+            get_installed_version(data_dir, venv_name).filter(|installed| *installed > pin)
+        });
+        if newer_version.is_some() {
+            println!(
+                "[upgrade] Keeping newer reachy-mini in {} (build pin: {})",
+                venv_name, package_spec
+            );
+            continue;
+        }
+        println!("[upgrade] Upgrading {} to {}...", venv_name, package_spec);
         run_uv(
             data_dir,
-            &["pip", "install", "-U", "--python", apps_python_rel, &package_spec],
+            &["pip", "install", "-U", "--python", python, &package_spec],
         )?;
     }
 

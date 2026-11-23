@@ -152,6 +152,9 @@ Apps are managed through the FastAPI daemon API, which handles installation and 
 | **Web Dashboard** | `WebApp.tsx` | Standalone web version for daemon control (build with `yarn build:web`) |
 | **Dev Playground** | `DevPlayground.tsx` | Component playground accessible at `/#dev` in development mode |
 
+For USB and Simulation, startup repair preserves existing `reachy-mini` installations with a
+newer release number than the build's version pin. Newly created Python environments start at the pin.
+
 ## 🛠️ Development
 
 ### Available Scripts
