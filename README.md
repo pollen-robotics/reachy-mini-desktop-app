@@ -142,6 +142,8 @@ The application includes a built-in store for discovering and installing apps:
 - **Deep Links**: Install apps directly via `reachymini://` deep links
 - **Create Apps**: Access tutorials to learn how to build your own Reachy Mini applications
 
+Choose **Continue without signing in** at the Hugging Face prompt to view your installed apps.
+
 Apps are managed through the FastAPI daemon API, which handles installation and execution.
 
 ### Running Modes
