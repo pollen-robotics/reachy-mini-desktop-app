@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// #272: when an app advertised an unparseable web interface URL, the check kept
-// retrying until its timeout, and the timeout stops the running app. An invalid
-// address must never reach onTimeout.
+// Regression for #272: an unparseable web interface address used to retry
+// until the probe timed out.
 
 const { logWarning } = vi.hoisted(() => ({ logWarning: vi.fn() }));
 
@@ -33,7 +32,7 @@ describe('startUrlAccessibilityCheck', () => {
     vi.unstubAllGlobals();
   });
 
-  it('never times out (so never stops the app) on an invalid URL', async () => {
+  it('skips the poll and timeout callback on an invalid URL', async () => {
     const check = start('ElevenLabs Conversational AI Agents integration for Reachy Mini');
 
     await vi.advanceTimersByTimeAsync(TIMEOUT_MS * 2);

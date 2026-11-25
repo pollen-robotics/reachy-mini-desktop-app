@@ -18,9 +18,8 @@ const warnedInvalidUrls = new Set<string>();
 
 /**
  * Poll an app's web interface until it answers or `timeoutMs` elapses.
- * Returns a cancel function, or null without polling (and without ever calling
- * `onTimeout`) when the address isn't a usable http(s) URL: a bad address must
- * not get the running app stopped.
+ * Returns a cancel function. An unusable HTTP(S) address returns null before
+ * starting a poll or scheduling the timeout callback.
  */
 export function startUrlAccessibilityCheck(
   url: string,
