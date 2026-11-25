@@ -65,7 +65,7 @@ application-store/
 | ---------------------- | -------------------------------------------- |
 | **useApps**            | Main orchestration hook, combines all others |
 | **useAppsStore**       | Connect to Zustand store for app state       |
-| **useAppFetching**     | Fetch apps from website API (pre-enriched)   |
+| **useAppFetching**     | Fetch the public and daemon catalogs         |
 | **useAppFiltering**    | Filter apps by search query and category     |
 | **useAppHandlers**     | Handle install/uninstall/start/stop actions  |
 | **useAppInstallation** | Manage installation overlay state            |
@@ -92,6 +92,7 @@ flowchart TB
 
     subgraph External["External"]
         Website["Website API (cached)"]
+        Daemon["Robot daemon catalog"]
     end
 
     Button --> Modal
@@ -102,8 +103,14 @@ flowchart TB
     Filtering --> Cards
 
     Fetching --> Website
+    Fetching --> Daemon
     Website --> Filtering
+    Daemon --> Filtering
 ```
+
+When Discover has no cached apps, it shows the first catalog that returns apps
+while the other source loads. Install actions become available after the catalog
+and installed-app requests finish.
 
 ### Installation Flow
 

@@ -105,6 +105,7 @@ const storeCreator: StateCreator<FullAppState, [], [], FullAppState> = (set, get
 
       // Apps state reset
       availableApps: [],
+      appsCatalogPreview: [],
       installedApps: [],
       currentApp: null,
       activeJobs: {},

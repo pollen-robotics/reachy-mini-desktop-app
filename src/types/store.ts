@@ -129,6 +129,7 @@ export type RobotSlice = RobotSliceState & RobotSliceActions;
 
 export interface AppsSliceState {
   availableApps: unknown[];
+  appsCatalogPreview: unknown[];
   installedApps: unknown[];
   currentApp: unknown | null;
   activeJobs: Record<string, unknown>;
@@ -150,6 +151,7 @@ export interface AppsSliceState {
 
 export interface AppsSliceActions {
   setAvailableApps: (apps: unknown[]) => void;
+  setAppsCatalogPreview: (apps: unknown[], availableAtStart: unknown[]) => void;
   setInstalledApps: (apps: unknown[]) => void;
   setCurrentApp: (app: unknown | null) => void;
   setActiveJobs: (
