@@ -156,6 +156,7 @@ flowchart LR
 ### App Management
 
 - Start/stop running apps
+- Open an app's optional web interface. If the interface probe times out, Open is hidden and an already running app keeps running.
 - View app logs in real-time
 - Uninstall apps
 - Status indicators (running, error, etc.)

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -172,35 +172,24 @@ function AppStartingTimeoutWatcher({
 }
 
 interface OpenAppButtonProps {
-  appName: string;
   customAppUrl?: string;
   isStartingOrRunning: boolean;
-  isRunning: boolean;
   isPoppedOut?: boolean;
-  onTimeout?: () => void;
 }
 
 function OpenAppButton({
   customAppUrl,
   isStartingOrRunning,
   isPoppedOut,
-  onTimeout,
 }: OpenAppButtonProps): React.ReactElement | null {
   const palette = useAppPalette();
   const [hasTimedOut, setHasTimedOut] = useState<boolean>(false);
   const webAppUrl = parseWebAppUrl(customAppUrl, getDaemonHostname());
 
-  const handleTimeout = useCallback(() => {
-    setHasTimedOut(true);
-    if (onTimeout) {
-      onTimeout();
-    }
-  }, [onTimeout]);
-
   const { isAccessible, isChecking } = useUrlAccessibility(
     webAppUrl,
     isStartingOrRunning && !!webAppUrl && !hasTimedOut,
-    handleTimeout,
+    () => setHasTimedOut(true),
     60000
   );
 
@@ -774,17 +763,9 @@ export default function InstalledAppsSection({
                       })()}
 
                       <OpenAppButton
-                        appName={app.name}
                         customAppUrl={app.extra?.custom_app_url}
                         isStartingOrRunning={isStartingOrRunning}
-                        isRunning={isCurrentlyRunning}
                         isPoppedOut={isPoppedOut}
-                        onTimeout={() => {
-                          console.error(`[${app.name}] Web interface timeout - stopping app`);
-                          if (isThisAppCurrent) {
-                            stopCurrentApp();
-                          }
-                        }}
                       />
 
                       {isStoppingApp && isThisAppCurrent ? (
