@@ -3,6 +3,7 @@ import { Box, Typography, Tooltip, IconButton, Avatar } from '@mui/material';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { useActiveRobotContext } from '../../context';
+import useAppStore from '@store/useAppStore';
 import {
   useApps,
   useAppHandlers,
@@ -235,9 +236,12 @@ export default function ApplicationsSection({
     ? activeJobsArray.find((job: { appName?: string }) => job.appName === installingAppName)
     : null;
 
+  const catalogPreview = useAppStore(s => s.appsCatalogPreview) as typeof availableApps;
+  const hasCatalogPreview = catalogPreview.length > 0;
+  const catalogApps = hasCatalogPreview ? catalogPreview : availableApps;
   // ✅ Filter & sort apps client-side (data is cached for 1 day)
   const { categories, filteredApps } = useAppFiltering(
-    availableApps,
+    catalogApps,
     searchQuery,
     selectedCategory,
     officialOnly,
@@ -414,8 +418,9 @@ export default function ApplicationsSection({
         /* TODO(ts): `DiscoverModal` and `useAppFiltering` re-define `AppLike` with incompatible shapes outside this agent's scope. */
         filteredApps={filteredApps as never}
         darkMode={downstreamDarkMode}
-        isBusy={effectiveIsBusy}
+        isBusy={effectiveIsBusy || isLoading}
         isLoading={isLoading}
+        hasCatalogPreview={hasCatalogPreview}
         error={appsError}
         activeJobs={activeJobs}
         isJobRunning={isJobRunning}
@@ -430,7 +435,7 @@ export default function ApplicationsSection({
         categories={categories}
         selectedCategory={selectedCategory}
         setSelectedCategory={setSelectedCategory}
-        totalAppsCount={availableApps.length}
+        totalAppsCount={catalogApps.length}
         /* TODO(ts): `DiscoverModal` lives in a `.jsx` file outside this agent's scope; relax prop types locally. */
         installedApps={installedApps as never[]}
         onOpenCreateTutorial={() => openModal('createTutorial')}

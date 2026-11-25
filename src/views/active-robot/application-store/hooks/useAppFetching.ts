@@ -238,7 +238,7 @@ interface FetchResult {
 }
 
 interface UseAppFetchingReturn {
-  fetchAppsFromWebsite: () => Promise<AppLike[]>;
+  fetchAppsFromWebsite: (onCatalogPreview?: (apps: AppLike[]) => void) => Promise<AppLike[]>;
   fetchInstalledApps: (retryCount?: number) => Promise<FetchResult>;
 }
 
@@ -263,78 +263,87 @@ export function useAppFetching(): UseAppFetchingReturn {
     }
   }, []);
 
-  const fetchAppsFromWebsite = useCallback(async (): Promise<AppLike[]> => {
-    const daemonCatalogResult = await fetchAppsFromDaemonCatalog();
+  const fetchAppsFromWebsite = useCallback(
+    async (onPreview?: (apps: AppLike[]) => void) => {
+      const daemonCatalog = fetchAppsFromDaemonCatalog().then(({ apps }) => {
+        onPreview?.(apps);
+        return apps;
+      });
+      let websiteApps: AppLike[];
+      let cacheAge: string;
 
-    try {
-      // No `credentials: 'include'`. The catalog is public, and the Space does
-      // not send `Access-Control-Allow-Credentials`, so a credentialed request
-      // is rejected by CORS before we ever see the body — the website source
-      // then silently never contributes and we fall back to the daemon catalog
-      // on every single call.
-      const websiteResponse = await fetchExternal(
-        WEBSITE_API_URL,
-        {},
-        DAEMON_CONFIG.TIMEOUTS.APPS_CATALOG,
-        {
-          silent: true,
-        }
-      );
-
-      if (!websiteResponse.ok) {
-        const error = new Error(`Website API returned ${websiteResponse.status}`);
-        error.name = 'NetworkError';
-        throw error;
-      }
-
-      const websiteData = await websiteResponse.json();
-      const websiteApps = normalizeCatalogApps(websiteData);
-      const mergedApps = mergeCatalogApps(websiteApps, daemonCatalogResult.apps);
-
-      // Cache age moved from response body to the standard `Age`
-      // HTTP header (RFC 7234 §5.1) so the body stays byte-stable
-      // across same-cache-window requests and ETag-based 304s
-      // work. Falls back to `?` when the header is absent (older
-      // website deploy or a daemon-only fallback) to keep the log
-      // line readable rather than emitting `null`.
-      const cacheAge = websiteResponse.headers.get('age') ?? '?';
-      console.log(
-        `[Apps] Fetched ${mergedApps.length} apps from catalog (website=${websiteApps.length}, daemon=${daemonCatalogResult.apps.length}, cache age: ${cacheAge}s)`
-      );
-
-      return mergedApps;
-    } catch (error) {
-      if (daemonCatalogResult.apps.length > 0) {
-        console.log(
-          `[Apps] Falling back to daemon catalog only (${daemonCatalogResult.apps.length} apps)`
+      try {
+        // No `credentials: 'include'`. The catalog is public, and the Space does
+        // not send `Access-Control-Allow-Credentials`, so a credentialed request
+        // is rejected by CORS before we ever see the body — the website source
+        // then silently never contributes and we fall back to the daemon catalog
+        // on every single call.
+        const websiteResponse = await fetchExternal(
+          WEBSITE_API_URL,
+          {},
+          DAEMON_CONFIG.TIMEOUTS.APPS_CATALOG,
+          {
+            silent: true,
+          }
         );
-        return daemonCatalogResult.apps;
+
+        if (!websiteResponse.ok) {
+          const error = new Error(`Website API returned ${websiteResponse.status}`);
+          error.name = 'NetworkError';
+          throw error;
+        }
+
+        const websiteData = await websiteResponse.json();
+        websiteApps = normalizeCatalogApps(websiteData);
+
+        // Cache age moved from response body to the standard `Age`
+        // HTTP header (RFC 7234 §5.1) so the body stays byte-stable
+        // across same-cache-window requests and ETag-based 304s
+        // work. Falls back to `?` when the header is absent (older
+        // website deploy or a daemon-only fallback) to keep the log
+        // line readable rather than emitting `null`.
+        cacheAge = websiteResponse.headers.get('age') ?? '?';
+      } catch (error) {
+        const daemonApps = await daemonCatalog;
+        if (daemonApps.length > 0) {
+          console.log(`[Apps] Falling back to daemon catalog only (${daemonApps.length} apps)`);
+          return daemonApps;
+        }
+
+        const err = error as Error & { isOffline?: boolean; originalError?: unknown };
+        const isNetworkError =
+          err.name === 'NetworkError' ||
+          err.name === 'AbortError' ||
+          err.name === 'TimeoutError' ||
+          err.isOffline ||
+          err.message?.toLowerCase().includes('network') ||
+          err.message?.toLowerCase().includes('timeout') ||
+          err.message?.toLowerCase().includes('connection') ||
+          err.message?.toLowerCase().includes('fetch');
+
+        if (isNetworkError) {
+          const networkError = new Error('No internet connection') as Error & {
+            originalError?: unknown;
+          };
+          networkError.name = 'NetworkError';
+          networkError.originalError = err;
+          throw networkError;
+        }
+
+        console.error('[Apps] Failed to fetch apps from website:', err.message);
+        throw err;
       }
 
-      const err = error as Error & { isOffline?: boolean; originalError?: unknown };
-      const isNetworkError =
-        err.name === 'NetworkError' ||
-        err.name === 'AbortError' ||
-        err.name === 'TimeoutError' ||
-        err.isOffline ||
-        err.message?.toLowerCase().includes('network') ||
-        err.message?.toLowerCase().includes('timeout') ||
-        err.message?.toLowerCase().includes('connection') ||
-        err.message?.toLowerCase().includes('fetch');
-
-      if (isNetworkError) {
-        const networkError = new Error('No internet connection') as Error & {
-          originalError?: unknown;
-        };
-        networkError.name = 'NetworkError';
-        networkError.originalError = err;
-        throw networkError;
-      }
-
-      console.error('[Apps] Failed to fetch apps from website:', err.message);
-      throw err;
-    }
-  }, [fetchAppsFromDaemonCatalog]);
+      onPreview?.(websiteApps);
+      const daemonApps = await daemonCatalog;
+      const mergedApps = mergeCatalogApps(websiteApps, daemonApps);
+      console.log(
+        `[Apps] Fetched ${mergedApps.length} apps from catalog (website=${websiteApps.length}, daemon=${daemonApps.length}, cache age: ${cacheAge}s)`
+      );
+      return mergedApps;
+    },
+    [fetchAppsFromDaemonCatalog]
+  );
 
   const fetchInstalledApps = useCallback(async (retryCount: number = 0): Promise<FetchResult> => {
     const MAX_RETRIES = 3;

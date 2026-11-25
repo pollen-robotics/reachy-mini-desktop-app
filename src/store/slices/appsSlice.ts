@@ -17,6 +17,7 @@ import type { AppsSlice, AppsSliceState, AppState } from '../../types/store';
  */
 export const appsInitialState: AppsSliceState = {
   availableApps: [],
+  appsCatalogPreview: [],
   installedApps: [],
   currentApp: null,
 
@@ -76,6 +77,21 @@ export const createAppsSlice: StateCreator<AppState, [], [], AppsSlice> = (set, 
       appsCacheValid: true,
     }),
 
+  // Show the first usable catalog during an initial load without caching it.
+  setAppsCatalogPreview: (apps, availableAtStart) =>
+    set(state => {
+      if (
+        !state.appsLoading ||
+        state.availableApps !== availableAtStart ||
+        state.availableApps.length ||
+        state.appsCatalogPreview.length ||
+        !apps.length
+      ) {
+        return state;
+      }
+      return { appsCatalogPreview: apps };
+    }),
+
   setInstalledApps: apps => set({ installedApps: apps }),
 
   setCurrentApp: (app: unknown) => {
@@ -113,7 +129,7 @@ export const createAppsSlice: StateCreator<AppState, [], [], AppsSlice> = (set, 
     }
   },
 
-  setAppsLoading: loading => set({ appsLoading: loading }),
+  setAppsLoading: loading => set({ appsLoading: loading, appsCatalogPreview: [] }),
   setAppsError: error => set({ appsError: error }),
   setIsStoppingApp: isStopping => set({ isStoppingApp: isStopping }),
   setStartupApp: appName => set({ startupAppName: appName }),
@@ -130,6 +146,7 @@ export const createAppsSlice: StateCreator<AppState, [], [], AppsSlice> = (set, 
   clearApps: () =>
     set({
       availableApps: [],
+      appsCatalogPreview: [],
       installedApps: [],
       currentApp: null,
       activeJobs: {},

@@ -99,12 +99,8 @@ const handlePermissionError = (
   return null;
 };
 
-// The catalog is a single global resource but `useAppsStore` is instantiated by
-// more than one component (ActiveRobotView and ApplicationsSection), so a
-// per-instance `useRef` guard cannot deduplicate anything: each instance had its
-// own flag and both issued the request. The daemon serialises them, which turned
-// a ~3.5s catalog call into ~6.8s and pushed it past the fetch timeout. Share
-// one in-flight fetch across every instance instead.
+// ActiveRobotView and ApplicationsSection share one catalog. Coalesce duplicate
+// requests so the daemon does not need to run them serially.
 const catalogSingleFlight = createSingleFlight<AppLike[]>();
 
 export function useAppsStore(isActive: boolean) {
@@ -174,7 +170,9 @@ export function useAppsStore(isActive: boolean) {
           let fetchError: Error | null = null;
 
           try {
-            availableAppsFromWebsite = (await fetchAppsFromWebsite()) as AppLike[];
+            availableAppsFromWebsite = await fetchAppsFromWebsite(apps =>
+              useAppStore.getState().setAppsCatalogPreview(apps, currentAvailableApps)
+            );
           } catch (err) {
             fetchError = err as Error;
             console.error('❌ Failed to fetch apps from website:', (err as Error).message);

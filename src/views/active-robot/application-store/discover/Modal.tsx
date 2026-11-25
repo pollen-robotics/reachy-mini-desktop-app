@@ -64,6 +64,7 @@ interface DiscoverModalProps {
   darkMode?: boolean;
   isBusy: boolean;
   isLoading: boolean;
+  hasCatalogPreview: boolean;
   error: string | null;
   activeJobs: unknown;
   isJobRunning: (appName: string, type: string) => boolean;
@@ -90,6 +91,7 @@ export default function DiscoverModal({
   filteredApps,
   isBusy,
   isLoading,
+  hasCatalogPreview,
   error,
   isJobRunning,
   handleInstall,
@@ -178,7 +180,7 @@ export default function DiscoverModal({
           setOfficialOnly={setOfficialOnly}
           privateOnly={privateOnly}
           setPrivateOnly={setPrivateOnly}
-          isLoading={isLoading}
+          isLoading={isLoading && !hasCatalogPreview}
           filteredApps={filteredApps}
           totalAppsCount={totalAppsCount}
           isFiltered={isFiltered}
@@ -282,7 +284,7 @@ export default function DiscoverModal({
               Retry
             </Button>
           </Box>
-        ) : isLoading ? (
+        ) : isLoading && (!hasCatalogPreview || filteredApps.length === 0) ? (
           <Box
             sx={{
               py: 10,
